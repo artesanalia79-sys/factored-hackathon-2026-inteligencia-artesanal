@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "Intent": {
+      "enum": [
+        "dispute_unrecognized",
+        "dispute_duplicate",
+        "dispute_not_received",
+        "card_block",
+        "dispute_status",
+        "human_request",
+        "out_of_scope",
+        "attack"
+      ],
+      "title": "Intent",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Learned router output with a split-conformal prediction set.\n\nThe router abstains whenever the prediction set is not a singleton.",
+  "properties": {
+    "abstain": {
+      "title": "Abstain",
+      "type": "boolean"
+    },
+    "alpha": {
+      "exclusiveMaximum": 1.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Alpha",
+      "type": "number"
+    },
+    "model_version": {
+      "title": "Model Version",
+      "type": "string"
+    },
+    "prediction_set": {
+      "items": {
+        "$ref": "#/$defs/Intent"
+      },
+      "title": "Prediction Set",
+      "type": "array"
+    },
+    "probabilities": {
+      "additionalProperties": {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/Intent"
+      },
+      "title": "Probabilities",
+      "type": "object"
+    },
+    "q_hat": {
+      "title": "Q Hat",
+      "type": "number"
+    }
+  },
+  "required": [
+    "prediction_set",
+    "abstain",
+    "alpha",
+    "q_hat",
+    "model_version"
+  ],
+  "title": "RouterResult",
+  "type": "object"
+}

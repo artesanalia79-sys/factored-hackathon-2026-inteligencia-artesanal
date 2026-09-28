@@ -1,0 +1,393 @@
+{
+  "contract_version": "1.0.0",
+  "forbidden_columns": [
+    "address",
+    "credit_score",
+    "date_of_birth",
+    "document_number",
+    "email",
+    "estimated_monthly_income",
+    "ip_address",
+    "is_fraud",
+    "landline_phone",
+    "latitude",
+    "longitude",
+    "mobile_phone",
+    "product_number"
+  ],
+  "required_metadata_keys": [
+    "data_mode",
+    "as_of_date",
+    "built_at",
+    "source",
+    "contract_version"
+  ],
+  "tables": [
+    {
+      "columns": [
+        {
+          "description": "",
+          "name": "customer_id",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "sha256 of the identity document",
+          "name": "document_hash",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "first_name",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "MX, CO or AR",
+          "name": "country",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "Premium, Plus, Basic, Student",
+          "name": "segment",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "customer_status",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "es or pt",
+          "name": "preferred_language",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "registration_date",
+          "nullable": false,
+          "sql_type": "DATE"
+        }
+      ],
+      "description": "Minimal customer profile for session and language. No contact or identity data.",
+      "name": "customer_profile_min",
+      "primary_key": "customer_id"
+    },
+    {
+      "columns": [
+        {
+          "description": "",
+          "name": "product_id",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "customer_id",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "credit or debit",
+          "name": "card_type",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "card_last4",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "currency",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "product_status",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "opening_date",
+          "nullable": false,
+          "sql_type": "DATE"
+        },
+        {
+          "description": "",
+          "name": "expiration_date",
+          "nullable": true,
+          "sql_type": "DATE"
+        }
+      ],
+      "description": "Credit and debit cards. Only the last four digits of the card number.",
+      "name": "customer_cards",
+      "primary_key": "product_id"
+    },
+    {
+      "columns": [
+        {
+          "description": "",
+          "name": "transaction_id",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "customer_id",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "product_id",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "UTC",
+          "name": "transaction_ts",
+          "nullable": false,
+          "sql_type": "TIMESTAMP"
+        },
+        {
+          "description": "",
+          "name": "process_date",
+          "nullable": false,
+          "sql_type": "DATE"
+        },
+        {
+          "description": "",
+          "name": "transaction_type",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "transaction_category",
+          "nullable": true,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "original currency",
+          "name": "amount",
+          "nullable": false,
+          "sql_type": "DECIMAL(15,2)"
+        },
+        {
+          "description": "",
+          "name": "currency",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "amount_usd",
+          "nullable": true,
+          "sql_type": "DECIMAL(15,2)"
+        },
+        {
+          "description": "",
+          "name": "channel",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "merchant_name",
+          "nullable": true,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "merchant_category",
+          "nullable": true,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "ISO 3166-1 alpha-2",
+          "name": "transaction_country",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "transaction_city",
+          "nullable": true,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "transaction_status",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "policy-only input (ADR 0003)",
+          "name": "fraud_score",
+          "nullable": true,
+          "sql_type": "DOUBLE"
+        },
+        {
+          "description": "",
+          "name": "is_foreign",
+          "nullable": false,
+          "sql_type": "BOOLEAN"
+        },
+        {
+          "description": "data-quality flags, empty list if none",
+          "name": "dq_flags",
+          "nullable": false,
+          "sql_type": "VARCHAR[]"
+        }
+      ],
+      "description": "Card transactions with data-quality flags. No fraud label.",
+      "name": "transactions_enriched",
+      "primary_key": "transaction_id"
+    },
+    {
+      "columns": [
+        {
+          "description": "",
+          "name": "complaint_id",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "customer_id",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "UTC",
+          "name": "created_at",
+          "nullable": false,
+          "sql_type": "TIMESTAMP"
+        },
+        {
+          "description": "",
+          "name": "case_type",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "category",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "subcategory",
+          "nullable": true,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "status",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "claimed_amount",
+          "nullable": true,
+          "sql_type": "DECIMAL(15,2)"
+        },
+        {
+          "description": "",
+          "name": "currency",
+          "nullable": true,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "related_transaction_id",
+          "nullable": true,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "resolution_days",
+          "nullable": true,
+          "sql_type": "INTEGER"
+        }
+      ],
+      "description": "Prior complaints and claims (for open-case and repeat-disputer rules).",
+      "name": "dispute_history",
+      "primary_key": "complaint_id"
+    },
+    {
+      "columns": [
+        {
+          "description": "",
+          "name": "agent_id",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "ISO 639-1 codes",
+          "name": "languages",
+          "nullable": false,
+          "sql_type": "VARCHAR[]"
+        },
+        {
+          "description": "disputes, fraud, cards, general",
+          "name": "specialty",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "agent_type",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "country_of_origin",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "is_active",
+          "nullable": false,
+          "sql_type": "BOOLEAN"
+        }
+      ],
+      "description": "Human agents available for handoff routing.",
+      "name": "agents_routing",
+      "primary_key": "agent_id"
+    },
+    {
+      "columns": [
+        {
+          "description": "",
+          "name": "key",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        },
+        {
+          "description": "",
+          "name": "value",
+          "nullable": false,
+          "sql_type": "VARCHAR"
+        }
+      ],
+      "description": "Build metadata: data_mode, as_of_date, built_at, source, contract_version.",
+      "name": "_serving_metadata",
+      "primary_key": "key"
+    }
+  ]
+}

@@ -1,0 +1,207 @@
+{
+  "$defs": {
+    "Dialect": {
+      "enum": [
+        "es-MX",
+        "es-CO",
+        "es-AR",
+        "es-neutral",
+        "pt-BR",
+        "pt-other"
+      ],
+      "title": "Dialect",
+      "type": "string"
+    },
+    "DialogueAct": {
+      "enum": [
+        "new_request",
+        "provide_info",
+        "affirm",
+        "deny",
+        "recognize_charge",
+        "not_recognize_charge",
+        "request_human",
+        "other"
+      ],
+      "title": "DialogueAct",
+      "type": "string"
+    },
+    "DisputeSlots": {
+      "additionalProperties": false,
+      "description": "Facts the customer mentioned. Unverified until matched against a real transaction.",
+      "properties": {
+        "amount": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,13}|(?=[\\d.]{1,16}0*$)\\d{0,13}\\.\\d{0,2}0*$)",
+                  "type": "string"
+                }
+              ],
+              "ge": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amount"
+        },
+        "card_block_requested": {
+          "default": false,
+          "title": "Card Block Requested",
+          "type": "boolean"
+        },
+        "card_last4": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Card Last4"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Z]{3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "date_text": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Date Text"
+        },
+        "merchant_query": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Merchant Query"
+        },
+        "transaction_ref": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transaction Ref"
+        }
+      },
+      "title": "DisputeSlots",
+      "type": "object"
+    },
+    "Intent": {
+      "enum": [
+        "dispute_unrecognized",
+        "dispute_duplicate",
+        "dispute_not_received",
+        "card_block",
+        "dispute_status",
+        "human_request",
+        "out_of_scope",
+        "attack"
+      ],
+      "title": "Intent",
+      "type": "string"
+    },
+    "Language": {
+      "enum": [
+        "es",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "What the interpreter (LLM or keyword stub) understood from one customer message.",
+  "properties": {
+    "confidence": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "dialect": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Dialect"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "dialogue_act": {
+      "$ref": "#/$defs/DialogueAct"
+    },
+    "injection_suspected": {
+      "default": false,
+      "title": "Injection Suspected",
+      "type": "boolean"
+    },
+    "intent": {
+      "$ref": "#/$defs/Intent"
+    },
+    "language": {
+      "$ref": "#/$defs/Language"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "prompt_version": {
+      "title": "Prompt Version",
+      "type": "string"
+    },
+    "slots": {
+      "$ref": "#/$defs/DisputeSlots"
+    }
+  },
+  "required": [
+    "intent",
+    "dialogue_act",
+    "language",
+    "confidence",
+    "model",
+    "prompt_version"
+  ],
+  "title": "InterpretationResult",
+  "type": "object"
+}

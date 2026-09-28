@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "dispute_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dispute Id"
+    },
+    "transaction_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Transaction Id"
+    }
+  },
+  "title": "GetDisputeArgs",
+  "type": "object"
+}

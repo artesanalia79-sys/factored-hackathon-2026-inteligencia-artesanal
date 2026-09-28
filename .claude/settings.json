@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.*.local)",
+      "Read(./.env.production)",
+      "Read(./private/**)",
+      "Read(./eval/heldout/**)",
+      "Read(./**/Latam_bank_complete_data_dictionary.*)",
+      "Read(./**/LATAM_Bank_Complete_Data_Dictionary.*)",
+      "Bash(git push --force:*)",
+      "Bash(git commit --no-verify:*)"
+    ]
+  }
+}

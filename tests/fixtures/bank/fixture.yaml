@@ -1,0 +1,41 @@
+# Synthetic fixture bank: global settings. All people, cards and merchants here are invented.
+# After any change in this folder run: uv run poe fixtures --update-hash
+fixture_version: 1
+seed: 20260617
+as_of_date: "2026-06-17"
+source: team_generated_synthetic
+# Fixed demo FX rates (units of currency per 1 USD). Not market data.
+fx_rates_per_usd:
+  USD: "1"
+  MXN: "17.5"
+  COP: "4000"
+  ARS: "350"
+  BRL: "5.2"
+background:
+  # Seeded filler purchases so scenario transactions are not the only rows on a card.
+  per_active_card: 5
+  lookback_days: 90
+  amount_ranges:
+    MXN: ["80", "3500"]
+    COP: ["15000", "600000"]
+    ARS: ["2000", "150000"]
+  channels: [POS, App, Web]
+  merchants:
+    MX:
+      - {name: "OXXO REFORMA", category: "Convenience", city: "Ciudad de México"}
+      - {name: "WALMART EXPRESS", category: "Groceries", city: "Guadalajara"}
+      - {name: "FARMACIA DEL AHORRO", category: "Health", city: "Monterrey"}
+      - {name: "GASOLINERA PEMEX 1024", category: "Fuel", city: "Puebla"}
+      - {name: "SANBORNS CENTRO", category: "Restaurants", city: "Ciudad de México"}
+    CO:
+      - {name: "EXITO CHAPINERO", category: "Groceries", city: "Bogotá"}
+      - {name: "CREPES Y WAFFLES", category: "Restaurants", city: "Medellín"}
+      - {name: "TERPEL CALLE 80", category: "Fuel", city: "Bogotá"}
+      - {name: "DROGUERIA ALEMANA", category: "Health", city: "Cali"}
+      - {name: "JUAN VALDEZ CAFE", category: "Coffee Shop", city: "Barranquilla"}
+    AR:
+      - {name: "CARREFOUR BELGRANO", category: "Groceries", city: "Buenos Aires"}
+      - {name: "YPF AV LIBERTADOR", category: "Fuel", city: "Buenos Aires"}
+      - {name: "FARMACITY", category: "Health", city: "Córdoba"}
+      - {name: "HAVANNA", category: "Coffee Shop", city: "Mar del Plata"}
+      - {name: "CINEMARK PALERMO", category: "Entertainment", city: "Buenos Aires"}

@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "content": {
+      "maxLength": 20000,
+      "title": "Content",
+      "type": "string"
+    },
+    "role": {
+      "enum": [
+        "system",
+        "user",
+        "assistant"
+      ],
+      "title": "Role",
+      "type": "string"
+    }
+  },
+  "required": [
+    "role",
+    "content"
+  ],
+  "title": "ChatMessage",
+  "type": "object"
+}

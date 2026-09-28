@@ -1,0 +1,314 @@
+{
+  "$defs": {
+    "ActionType": {
+      "enum": [
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    },
+    "Dialect": {
+      "enum": [
+        "es-MX",
+        "es-CO",
+        "es-AR",
+        "es-neutral",
+        "pt-BR",
+        "pt-other"
+      ],
+      "title": "Dialect",
+      "type": "string"
+    },
+    "EvalCategory": {
+      "enum": [
+        "normal",
+        "recognized_after_evidence",
+        "ambiguous",
+        "unsupported",
+        "human_required",
+        "unauthorized_access",
+        "prompt_injection",
+        "expired_session",
+        "tool_failure",
+        "missing_or_incorrect_data",
+        "multilingual_ambiguity"
+      ],
+      "title": "EvalCategory",
+      "type": "string"
+    },
+    "EvalSplit": {
+      "enum": [
+        "dev",
+        "heldout",
+        "pilot",
+        "redteam"
+      ],
+      "title": "EvalSplit",
+      "type": "string"
+    },
+    "FactSheet": {
+      "additionalProperties": false,
+      "description": "Ground truth the scripted user answers from when the agent asks questions.",
+      "properties": {
+        "clarification_answers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Clarification Answers",
+          "type": "object"
+        },
+        "confirms_actions": {
+          "default": true,
+          "title": "Confirms Actions",
+          "type": "boolean"
+        },
+        "recognizes_charge": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recognizes Charge"
+        },
+        "requests_human": {
+          "default": false,
+          "title": "Requests Human",
+          "type": "boolean"
+        },
+        "target_transaction_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Transaction Id"
+        },
+        "wants_card_block": {
+          "default": false,
+          "title": "Wants Card Block",
+          "type": "boolean"
+        }
+      },
+      "title": "FactSheet",
+      "type": "object"
+    },
+    "FaultInjection": {
+      "enum": [
+        "llm_timeout",
+        "llm_malformed_output",
+        "llm_unavailable",
+        "tool_unavailable",
+        "session_expired",
+        "readback_mismatch"
+      ],
+      "title": "FaultInjection",
+      "type": "string"
+    },
+    "Language": {
+      "enum": [
+        "es",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "Outcome": {
+      "enum": [
+        "automated_resolution",
+        "deflected_recognized",
+        "abstained",
+        "escalated",
+        "denied",
+        "reauth_required",
+        "incomplete",
+        "failed"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "Provenance": {
+      "enum": [
+        "team_authored",
+        "cross_authored",
+        "llm_generated_reviewed",
+        "pilot",
+        "redteam_generated"
+      ],
+      "title": "Provenance",
+      "type": "string"
+    },
+    "UnsafeEvent": {
+      "enum": [
+        "cross_customer_disclosure",
+        "unauthorized_action",
+        "action_without_confirmation",
+        "unverified_claim",
+        "action_on_attack",
+        "pii_leak",
+        "policy_violation",
+        "materially_incorrect_outcome"
+      ],
+      "title": "UnsafeEvent",
+      "type": "string"
+    },
+    "UserTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "UserTurn",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acceptable_outcomes": {
+      "items": {
+        "$ref": "#/$defs/Outcome"
+      },
+      "title": "Acceptable Outcomes",
+      "type": "array"
+    },
+    "author": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Author",
+      "type": "string"
+    },
+    "case_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{2,79}$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "category": {
+      "$ref": "#/$defs/EvalCategory"
+    },
+    "customer_id": {
+      "description": "used by the harness to open the session; never shown to the model",
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Customer Id",
+      "type": "string"
+    },
+    "dialect": {
+      "$ref": "#/$defs/Dialect"
+    },
+    "expected_actions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ActionType"
+      },
+      "title": "Expected Actions",
+      "type": "array"
+    },
+    "expected_outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "facts": {
+      "$ref": "#/$defs/FactSheet"
+    },
+    "fault_injections": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FaultInjection"
+      },
+      "title": "Fault Injections",
+      "type": "array"
+    },
+    "forbidden_events": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/UnsafeEvent"
+      },
+      "title": "Forbidden Events",
+      "type": "array"
+    },
+    "in_scope": {
+      "default": true,
+      "title": "In Scope",
+      "type": "boolean"
+    },
+    "language": {
+      "$ref": "#/$defs/Language"
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "requires_escalation": {
+      "default": false,
+      "title": "Requires Escalation",
+      "type": "boolean"
+    },
+    "reviewed_by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reviewed By"
+    },
+    "split": {
+      "$ref": "#/$defs/EvalSplit"
+    },
+    "turns": {
+      "items": {
+        "$ref": "#/$defs/UserTurn"
+      },
+      "minItems": 1,
+      "title": "Turns",
+      "type": "array"
+    }
+  },
+  "required": [
+    "case_id",
+    "split",
+    "category",
+    "language",
+    "dialect",
+    "customer_id",
+    "turns",
+    "expected_outcome",
+    "acceptable_outcomes",
+    "provenance",
+    "author"
+  ],
+  "title": "EvalCase",
+  "type": "object"
+}

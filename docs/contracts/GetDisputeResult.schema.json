@@ -1,0 +1,121 @@
+{
+  "$defs": {
+    "DisputeCase": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,13}|(?=[\\d.]{1,16}0*$)\\d{0,13}\\.\\d{0,2}0*$)",
+              "type": "string"
+            }
+          ],
+          "title": "Amount"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "dispute_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Dispute Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "policy_version": {
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/DisputeReason"
+        },
+        "rule_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        },
+        "sla_due_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sla Due Date"
+        },
+        "status": {
+          "$ref": "#/$defs/DisputeStatus"
+        },
+        "transaction_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Transaction Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dispute_id",
+        "transaction_id",
+        "reason",
+        "status",
+        "created_at",
+        "amount",
+        "currency",
+        "idempotency_key",
+        "policy_version"
+      ],
+      "title": "DisputeCase",
+      "type": "object"
+    },
+    "DisputeReason": {
+      "enum": [
+        "unrecognized",
+        "duplicate",
+        "not_received"
+      ],
+      "title": "DisputeReason",
+      "type": "string"
+    },
+    "DisputeStatus": {
+      "enum": [
+        "submitted",
+        "escalated_for_review"
+      ],
+      "title": "DisputeStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "dispute": {
+      "$ref": "#/$defs/DisputeCase"
+    }
+  },
+  "required": [
+    "dispute"
+  ],
+  "title": "GetDisputeResult",
+  "type": "object"
+}

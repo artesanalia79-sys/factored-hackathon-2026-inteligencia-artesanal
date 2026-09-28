@@ -1,0 +1,99 @@
+{
+  "$defs": {
+    "ActionType": {
+      "enum": [
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    },
+    "DecisionType": {
+      "enum": [
+        "proceed",
+        "clarify",
+        "abstain",
+        "escalate",
+        "ineligible"
+      ],
+      "title": "DecisionType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Deterministic decision of the policy engine for one request.",
+  "properties": {
+    "allowed_actions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ActionType"
+      },
+      "title": "Allowed Actions",
+      "type": "array"
+    },
+    "decision": {
+      "$ref": "#/$defs/DecisionType"
+    },
+    "escalation_triggers": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Escalation Triggers",
+      "type": "array"
+    },
+    "explanation_keys": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Explanation Keys",
+      "type": "array"
+    },
+    "policy_version": {
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "required_slots": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Slots",
+      "type": "array"
+    },
+    "requires_confirmation": {
+      "default": false,
+      "title": "Requires Confirmation",
+      "type": "boolean"
+    },
+    "rule_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Rule Ids",
+      "type": "array"
+    },
+    "sla_due_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sla Due Date"
+    }
+  },
+  "required": [
+    "decision",
+    "policy_version"
+  ],
+  "title": "PolicyDecision",
+  "type": "object"
+}

@@ -1,0 +1,91 @@
+[project]
+name = "bankagent"
+version = "0.1.0"
+description = "AI-first transaction dispute intake agent for a LATAM bank (Factored AI & Data Hackathon 2026)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "duckdb==1.5.5",
+    "pydantic==2.13.5",
+    "pyyaml==6.0.3",
+]
+
+# Lane-specific dependencies are added by the task that needs them, always pinned, e.g.
+#   uv add --group data "dbt-duckdb==1.11.0"
+#   uv add --group api "fastapi==0.141.1"
+[dependency-groups]
+dev = [
+    "poethepoet==0.48.0",
+    "pre-commit==4.6.2",
+    "pyright==1.1.414",
+    "pytest==9.1.1",
+    "ruff==0.16.9",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv]
+default-groups = ["dev"]
+
+# ---------------------------------------------------------------------------
+# Task runner (cross-platform; no make on Windows). Run `uv run poe` to list.
+# ---------------------------------------------------------------------------
+[tool.poe.tasks]
+lint = { cmd = "ruff check .", help = "Lint (ruff)" }
+format-check = { cmd = "ruff format --check .", help = "Check formatting (ruff)" }
+fmt = { sequence = ["ruff format .", "ruff check --fix ."], default_item_type = "cmd", help = "Auto-format and auto-fix" }
+typecheck = { cmd = "pyright", help = "Static type check (pyright)" }
+test = { cmd = "pytest", help = "Run the test suite" }
+check = { sequence = ["lint", "format-check", "typecheck", "test"], help = "Definition-of-Done gate: lint + format + types + tests" }
+
+contracts = { cmd = "python -m bankagent.contracts.export", help = "Export shared contracts as JSON Schema to docs/contracts/" }
+contracts-check = { cmd = "python -m bankagent.contracts.export --check", help = "Fail if docs/contracts/ is stale" }
+fixtures = { cmd = "python -m bankagent.fixtures.builder", help = "Build the team-generated fixture bank DuckDB (data/fixtures/)" }
+fixtures-check = { cmd = "python -m bankagent.fixtures.builder --check", help = "Fail if the fixture bank drifts from its committed content hash or contract" }
+
+sync-skills = { cmd = "python scripts/sync_skills.py", help = "Copy .agents/skills to .claude/skills and .kiro/skills" }
+skills-check = { cmd = "python scripts/sync_skills.py --check", help = "Fail if skill copies drift from .agents/skills" }
+init-env = { cmd = "python scripts/init_env.py", help = "Create a local .env from .env.example (never prints values)" }
+hooks = { cmd = "pre-commit install", help = "Install git pre-commit hooks" }
+secrets-scan = { cmd = "pre-commit run --all-files", help = "Run all pre-commit hooks on the whole repo" }
+
+# Placeholders owned by later tasks (they fail loudly until implemented).
+ingest = { cmd = "python scripts/todo_task.py 4 'Ingest to bronze with manifest' 'Juan Jose'", help = "[Task 4] S3 -> bronze parquet + manifest" }
+dbt-build = { cmd = "python scripts/todo_task.py 5 'dbt silver/gold build' 'Juan Jose'", help = "[Task 5/6] dbt build (contracts + tests)" }
+analysis = { cmd = "python scripts/todo_task.py 16 'Problem evidence and ROI' 'Juan Jose'", help = "[Task 16] Regenerate problem evidence + ROI" }
+eval-smoke = { cmd = "python scripts/todo_task.py 12 'Evaluation harness core' 'Santiago'", help = "[Task 12] 10 dev cases, StubProvider, baseline vs proposed" }
+eval-full = { cmd = "python scripts/todo_task.py 27 'Final evaluation' 'all'", help = "[Task 27] Full held-out evaluation" }
+serve = { cmd = "python scripts/todo_task.py 13 'Orchestrator + API walking skeleton' 'Victor + Jacobo'", help = "[Task 13] Run the API locally" }
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["web", "data", "private", ".agents", ".claude", ".kiro"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "PT"]
+ignore = [
+    "RUF001", # ambiguous unicode in strings: we intentionally handle ES/PT text
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S311"]
+"src/bankagent/fixtures/**" = ["S311"] # deterministic seeded generator, not crypto
+
+[tool.pyright]
+pythonVersion = "3.12"
+include = ["src", "scripts", "tests"]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --import-mode=importlib"

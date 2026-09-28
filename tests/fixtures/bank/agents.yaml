@@ -1,0 +1,10 @@
+# Synthetic human agents for handoff routing.
+agents:
+  - {agent_id: AGT-FX-01, languages: [es], specialty: disputes, agent_type: Phone, country_of_origin: MX, is_active: true}
+  - {agent_id: AGT-FX-02, languages: [es], specialty: disputes, agent_type: Digital, country_of_origin: CO, is_active: true}
+  - {agent_id: AGT-FX-03, languages: [es, pt], specialty: disputes, agent_type: Hybrid, country_of_origin: AR, is_active: true}
+  - {agent_id: AGT-FX-04, languages: [es], specialty: fraud, agent_type: Phone, country_of_origin: MX, is_active: true}
+  - {agent_id: AGT-FX-05, languages: [pt, es], specialty: fraud, agent_type: Digital, country_of_origin: BR, is_active: true}
+  - {agent_id: AGT-FX-06, languages: [es], specialty: cards, agent_type: Phone, country_of_origin: CO, is_active: true}
+  - {agent_id: AGT-FX-07, languages: [es], specialty: general, agent_type: Digital, country_of_origin: AR, is_active: true}
+  - {agent_id: AGT-FX-08, languages: [es], specialty: disputes, agent_type: Phone, country_of_origin: MX, is_active: false}

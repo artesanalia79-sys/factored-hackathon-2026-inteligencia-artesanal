@@ -1,0 +1,70 @@
+{
+  "$defs": {
+    "ActionType": {
+      "enum": [
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Single-use permission for one exact write, bound to the session and the argument hash.",
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/ActionType"
+    },
+    "args_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Args Hash",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "title": "Issued At",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "token_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Token Id",
+      "type": "string"
+    },
+    "used_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Used At"
+    }
+  },
+  "required": [
+    "token_id",
+    "session_id",
+    "action",
+    "args_hash",
+    "issued_at",
+    "expires_at"
+  ],
+  "title": "ConfirmationToken",
+  "type": "object"
+}

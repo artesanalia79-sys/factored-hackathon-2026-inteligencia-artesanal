@@ -1,0 +1,30 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "idempotency_key": {
+      "maxLength": 64,
+      "minLength": 8,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "product_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Product Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "product_id",
+    "reason",
+    "idempotency_key"
+  ],
+  "title": "BlockCardArgs",
+  "type": "object"
+}

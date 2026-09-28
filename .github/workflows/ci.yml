@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: lint, types, tests, contracts, fixtures, hooks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.19"
+          enable-cache: true
+
+      - name: Install dependencies (locked)
+        run: uv sync --locked
+
+      - name: Definition-of-Done gate (ruff, pyright, pytest)
+        run: uv run poe check
+
+      - name: Skills mirrors in sync
+        run: uv run poe skills-check
+
+      - name: Contracts JSON Schemas up to date
+        run: uv run poe contracts-check
+
+      - name: Fixture bank matches committed hash and serving contract
+        run: uv run poe fixtures-check
+
+      # Enabled by Task 12 once the evaluation harness exists (StubProvider, 0 USD):
+      # - name: Evaluation smoke test
+      #   run: uv run poe eval-smoke
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Pre-commit hooks on all files
+        # gitleaks runs in its own job below with the full git history.
+        env:
+          SKIP: gitleaks
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+
+  secrets:
+    name: gitleaks (full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The repo is user-owned, so no GITLEAKS_LICENSE is needed. If it moves to an
+          # organization, add a free license from gitleaks.io as the GITLEAKS_LICENSE secret.

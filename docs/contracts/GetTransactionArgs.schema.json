@@ -1,0 +1,16 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "transaction_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Transaction Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "transaction_id"
+  ],
+  "title": "GetTransactionArgs",
+  "type": "object"
+}
