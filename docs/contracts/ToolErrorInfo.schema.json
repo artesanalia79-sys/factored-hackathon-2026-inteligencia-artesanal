@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "ToolErrorCode": {
+      "enum": [
+        "unauthorized",
+        "not_found",
+        "confirmation_required",
+        "tool_unavailable",
+        "session_expired",
+        "invalid_arguments"
+      ],
+      "title": "ToolErrorCode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Serializable form of a tool error for records, APIs and traces.",
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/ToolErrorCode"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "retryable": {
+      "title": "Retryable",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "code",
+    "message",
+    "retryable"
+  ],
+  "title": "ToolErrorInfo",
+  "type": "object"
+}

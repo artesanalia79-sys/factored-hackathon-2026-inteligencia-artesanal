@@ -1,0 +1,83 @@
+# Synthetic customers. Names and documents are invented; any resemblance is coincidental.
+# `scenarios` documents what each persona is for (used by tests and eval-case authors).
+customers:
+  - customer_id: CUST-FX-001
+    first_name: Mariana
+    document_number: FX-DOC-MX-0001
+    country: MX
+    segment: Premium
+    customer_status: Active
+    preferred_language: es
+    registration_date: "2019-08-14"
+    dialect: es-MX
+    scenarios: [normal_unrecognized, ambiguous_two_amazon_charges]
+  - customer_id: CUST-FX-002
+    first_name: Andrés
+    document_number: FX-DOC-CO-0002
+    country: CO
+    segment: Plus
+    customer_status: Active
+    preferred_language: es
+    registration_date: "2021-02-03"
+    dialect: es-CO
+    scenarios: [duplicate_charge_37s_apart]
+  - customer_id: CUST-FX-003
+    first_name: Lucía
+    document_number: FX-DOC-AR-0003
+    country: AR
+    segment: Basic
+    customer_status: Active
+    preferred_language: es
+    registration_date: "2020-11-21"
+    dialect: es-AR
+    scenarios: [not_received, foreign_usd_hotel, voseo]
+  - customer_id: CUST-FX-004
+    first_name: Rafael
+    document_number: FX-DOC-AR-0004
+    country: AR
+    segment: Plus
+    customer_status: Active
+    preferred_language: pt
+    registration_date: "2022-05-09"
+    dialect: pt-BR
+    scenarios: [portuguese_unrecognized, portuguese_duplicate]
+  - customer_id: CUST-FX-005
+    first_name: Sofía
+    document_number: FX-DOC-MX-0005
+    country: MX
+    segment: Student
+    customer_status: Active
+    preferred_language: es
+    registration_date: "2024-01-30"
+    dialect: es-MX
+    scenarios: [recognizable_subscription_alias]
+  - customer_id: CUST-FX-006
+    first_name: Carlos
+    document_number: FX-DOC-CO-0006
+    country: CO
+    segment: Premium
+    customer_status: Active
+    preferred_language: es
+    registration_date: "2017-06-12"
+    dialect: es-CO
+    scenarios: [high_amount_foreign_high_fraud_score, blocked_second_card]
+  - customer_id: CUST-FX-007
+    first_name: Valentina
+    document_number: FX-DOC-AR-0007
+    country: AR
+    segment: Basic
+    customer_status: Active
+    preferred_language: es
+    registration_date: "2023-03-18"
+    dialect: es-AR
+    scenarios: [open_prior_dispute, repeat_disputer, expired_card_still_active]
+  - customer_id: CUST-FX-008
+    first_name: Diego
+    document_number: FX-DOC-MX-0008
+    country: MX
+    segment: Plus
+    customer_status: Active
+    preferred_language: es
+    registration_date: "2018-09-27"
+    dialect: es-MX
+    scenarios: [out_of_window, txn_before_product_opening, declined, pending]

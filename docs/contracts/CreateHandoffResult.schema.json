@@ -1,0 +1,95 @@
+{
+  "$defs": {
+    "HandoffRouting": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent Id"
+        },
+        "language": {
+          "$ref": "#/$defs/Language"
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority"
+        },
+        "specialty": {
+          "$ref": "#/$defs/Specialty"
+        }
+      },
+      "required": [
+        "specialty",
+        "language",
+        "priority"
+      ],
+      "title": "HandoffRouting",
+      "type": "object"
+    },
+    "Language": {
+      "enum": [
+        "es",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "Priority": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "Specialty": {
+      "enum": [
+        "disputes",
+        "fraud",
+        "cards",
+        "general"
+      ],
+      "title": "Specialty",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "created": {
+      "title": "Created",
+      "type": "boolean"
+    },
+    "handoff_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Handoff Id",
+      "type": "string"
+    },
+    "routing": {
+      "$ref": "#/$defs/HandoffRouting"
+    },
+    "verified": {
+      "title": "Verified",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "handoff_id",
+    "routing",
+    "created",
+    "verified"
+  ],
+  "title": "CreateHandoffResult",
+  "type": "object"
+}

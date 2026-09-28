@@ -1,0 +1,266 @@
+{
+  "$defs": {
+    "ActionTaken": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ActionType"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "ref_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Ref Id",
+          "type": "string"
+        },
+        "verified": {
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action",
+        "ref_id",
+        "verified",
+        "at"
+      ],
+      "title": "ActionTaken",
+      "type": "object"
+    },
+    "ActionType": {
+      "enum": [
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    },
+    "HandoffDraft": {
+      "additionalProperties": false,
+      "description": "Everything a human agent needs so the customer does not have to repeat themselves.",
+      "properties": {
+        "actions_taken": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ActionTaken"
+          },
+          "title": "Actions Taken",
+          "type": "array"
+        },
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "intent": {
+          "$ref": "#/$defs/Intent"
+        },
+        "language": {
+          "$ref": "#/$defs/Language"
+        },
+        "open_questions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Open Questions",
+          "type": "array"
+        },
+        "policy_version": {
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "request": {
+          "description": "customer request, redacted",
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Request",
+          "type": "string"
+        },
+        "routing": {
+          "$ref": "#/$defs/HandoffRouting"
+        },
+        "trace_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Trace Id",
+          "type": "string"
+        },
+        "trigger_rule_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Trigger Rule Ids",
+          "type": "array"
+        },
+        "verified_facts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/VerifiedFact"
+          },
+          "title": "Verified Facts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "trace_id",
+        "language",
+        "request",
+        "intent",
+        "policy_version",
+        "routing"
+      ],
+      "title": "HandoffDraft",
+      "type": "object"
+    },
+    "HandoffRouting": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent Id"
+        },
+        "language": {
+          "$ref": "#/$defs/Language"
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority"
+        },
+        "specialty": {
+          "$ref": "#/$defs/Specialty"
+        }
+      },
+      "required": [
+        "specialty",
+        "language",
+        "priority"
+      ],
+      "title": "HandoffRouting",
+      "type": "object"
+    },
+    "Intent": {
+      "enum": [
+        "dispute_unrecognized",
+        "dispute_duplicate",
+        "dispute_not_received",
+        "card_block",
+        "dispute_status",
+        "human_request",
+        "out_of_scope",
+        "attack"
+      ],
+      "title": "Intent",
+      "type": "string"
+    },
+    "Language": {
+      "enum": [
+        "es",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "Priority": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "Specialty": {
+      "enum": [
+        "disputes",
+        "fraud",
+        "cards",
+        "general"
+      ],
+      "title": "Specialty",
+      "type": "string"
+    },
+    "VerifiedFact": {
+      "additionalProperties": false,
+      "description": "A fact read from a system of record, with where it came from.",
+      "properties": {
+        "key": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "record id, e.g. a txn id",
+          "title": "Ref"
+        },
+        "source": {
+          "description": "tool or table that produced it",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 500,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "source"
+      ],
+      "title": "VerifiedFact",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "draft": {
+      "$ref": "#/$defs/HandoffDraft"
+    },
+    "idempotency_key": {
+      "maxLength": 64,
+      "minLength": 8,
+      "title": "Idempotency Key",
+      "type": "string"
+    }
+  },
+  "required": [
+    "draft",
+    "idempotency_key"
+  ],
+  "title": "CreateHandoffArgs",
+  "type": "object"
+}

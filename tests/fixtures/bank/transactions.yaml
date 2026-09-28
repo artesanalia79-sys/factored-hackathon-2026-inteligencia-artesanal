@@ -1,0 +1,36 @@
+# Scenario transactions. Timestamps are UTC. customer_id, is_foreign, amount_usd and dq_flags are
+# derived by the builder from the card, the customer country and the FX table.
+transactions:
+  # --- CUST-FX-001 Mariana (MX): normal unrecognized + ambiguous Amazon pair -------------------
+  - {transaction_id: TXN-FX-0101, product_id: CARD-FX-011, ts: "2026-06-12T21:14:05", type: Purchase, category: Other, amount: "2450.00", currency: MXN, channel: Web, merchant_name: "ELECTROMUNDO ONLINE", merchant_category: Electronics, country: MX, city: "Ciudad de México", status: Approved, fraud_score: 12.4}
+  - {transaction_id: TXN-FX-0104, product_id: CARD-FX-011, ts: "2026-06-10T15:02:00", type: Purchase, category: Other, amount: "899.00", currency: MXN, channel: Web, merchant_name: "AMAZON MX MARKETPLACE", merchant_category: Retail, country: MX, city: "Ciudad de México", status: Approved, fraud_score: 5.1}
+  - {transaction_id: TXN-FX-0105, product_id: CARD-FX-011, ts: "2026-06-11T09:47:30", type: Purchase, category: Other, amount: "1249.00", currency: MXN, channel: Web, merchant_name: "AMAZON MX", merchant_category: Retail, country: MX, city: "Ciudad de México", status: Approved, fraud_score: 4.8}
+
+  # --- CUST-FX-002 Andrés (CO): duplicate charge 37 seconds apart ------------------------------
+  - {transaction_id: TXN-FX-0201, product_id: CARD-FX-021, ts: "2026-06-14T13:05:12", type: Purchase, category: Food, amount: "85900.00", currency: COP, channel: App, merchant_name: "RAPPI*RESTAURANTE", merchant_category: "Food Delivery", country: CO, city: "Bogotá", status: Approved, fraud_score: 8.2}
+  - {transaction_id: TXN-FX-0202, product_id: CARD-FX-021, ts: "2026-06-14T13:05:49", type: Purchase, category: Food, amount: "85900.00", currency: COP, channel: App, merchant_name: "RAPPI*RESTAURANTE", merchant_category: "Food Delivery", country: CO, city: "Bogotá", status: Approved, fraud_score: 8.2}
+
+  # --- CUST-FX-003 Lucía (AR, voseo): not received + foreign USD hotel ---------------------------
+  - {transaction_id: TXN-FX-0301, product_id: CARD-FX-031, ts: "2026-05-28T18:20:00", type: Purchase, category: Other, amount: "45999.00", currency: ARS, channel: Web, merchant_name: "MERCADOLIBRE*TIENDA", merchant_category: Marketplace, country: AR, city: "Buenos Aires", status: Approved, fraud_score: 6.0}
+  - {transaction_id: TXN-FX-0302, product_id: CARD-FX-031, ts: "2026-06-05T02:11:00", type: Purchase, category: Services, amount: "180.00", currency: USD, channel: POS, merchant_name: "HOTEL COPACABANA PALACE", merchant_category: Hotels, country: BR, city: "Rio de Janeiro", status: Approved, fraud_score: 22.0}
+
+  # --- CUST-FX-004 Rafael (AR, Portuguese): unrecognized + duplicate Starbucks ------------------
+  - {transaction_id: TXN-FX-0401, product_id: CARD-FX-041, ts: "2026-06-15T23:40:00", type: Purchase, category: Entertainment, amount: "32500.00", currency: ARS, channel: Web, merchant_name: "GAMESTORE DIGITAL", merchant_category: "Digital Goods", country: AR, city: "Buenos Aires", status: Approved, fraud_score: 18.7}
+  - {transaction_id: TXN-FX-0403, product_id: CARD-FX-041, ts: "2026-06-16T08:12:03", type: Purchase, category: Food, amount: "6800.00", currency: ARS, channel: POS, merchant_name: "STARBUCKS PALERMO", merchant_category: "Coffee Shop", country: AR, city: "Buenos Aires", status: Approved, fraud_score: 3.3}
+  - {transaction_id: TXN-FX-0404, product_id: CARD-FX-041, ts: "2026-06-16T08:12:40", type: Purchase, category: Food, amount: "6800.00", currency: ARS, channel: POS, merchant_name: "STARBUCKS PALERMO", merchant_category: "Coffee Shop", country: AR, city: "Buenos Aires", status: Approved, fraud_score: 3.3}
+
+  # --- CUST-FX-005 Sofía (MX): recognizable subscription behind a payment alias -----------------
+  - {transaction_id: TXN-FX-0501, product_id: CARD-FX-051, ts: "2026-06-01T06:00:00", type: Purchase, category: Entertainment, amount: "129.00", currency: MXN, channel: Web, merchant_name: "PAYPAL *SPOTIFYMX", merchant_category: Streaming, country: MX, city: null, status: Approved, fraud_score: 2.1}
+
+  # --- CUST-FX-006 Carlos (CO): high-amount foreign charge with a high fraud score --------------
+  - {transaction_id: TXN-FX-0601, product_id: CARD-FX-061, ts: "2026-06-16T04:33:10", type: Purchase, category: Other, amount: "9800000.00", currency: COP, channel: Web, merchant_name: "LUXURY WATCHES INTL", merchant_category: Jewelry, country: US, city: "Miami", status: Approved, fraud_score: 78.5}
+
+  # --- CUST-FX-007 Valentina (AR): open prior dispute + use after card expiry -------------------
+  - {transaction_id: TXN-FX-0701, product_id: CARD-FX-071, ts: "2026-04-12T12:00:00", type: Purchase, category: Food, amount: "15200.00", currency: ARS, channel: POS, merchant_name: "PEDIDOSYA", merchant_category: "Food Delivery", country: AR, city: "Córdoba", status: Approved, fraud_score: 9.9}
+  - {transaction_id: TXN-FX-0702, product_id: CARD-FX-071, ts: "2026-06-10T19:30:00", type: Purchase, category: Transport, amount: "5000.00", currency: ARS, channel: App, merchant_name: "SUBE RECARGA", merchant_category: Transport, country: AR, city: "Córdoba", status: Approved, fraud_score: 4.0}
+
+  # --- CUST-FX-008 Diego (MX): out of window, before opening, declined, pending ---------------
+  - {transaction_id: TXN-FX-0801, product_id: CARD-FX-081, ts: "2026-02-10T10:00:00", type: Purchase, category: Other, amount: "3200.00", currency: MXN, channel: POS, merchant_name: "LIVERPOOL POLANCO", merchant_category: "Department Store", country: MX, city: "Ciudad de México", status: Approved, fraud_score: 7.0}
+  - {transaction_id: TXN-FX-0802, product_id: CARD-FX-081, ts: "2025-10-20T20:15:00", type: Purchase, category: Entertainment, amount: "450.00", currency: MXN, channel: POS, merchant_name: "CINEPOLIS", merchant_category: Entertainment, country: MX, city: "Ciudad de México", status: Approved, fraud_score: 3.0}
+  - {transaction_id: TXN-FX-0803, product_id: CARD-FX-081, ts: "2026-06-13T16:45:00", type: Purchase, category: Other, amount: "1999.00", currency: MXN, channel: Web, merchant_name: "ELECTRONICA EXPRESS", merchant_category: Electronics, country: MX, city: null, status: Declined, fraud_score: 35.0}
+  - {transaction_id: TXN-FX-0804, product_id: CARD-FX-081, ts: "2026-06-16T22:05:00", type: Purchase, category: Food, amount: "560.00", currency: MXN, channel: App, merchant_name: "UBER EATS MX", merchant_category: "Food Delivery", country: MX, city: "Ciudad de México", status: Pending, fraud_score: 5.5}

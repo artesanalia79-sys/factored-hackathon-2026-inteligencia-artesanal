@@ -1,0 +1,12 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "include_inactive": {
+      "default": false,
+      "title": "Include Inactive",
+      "type": "boolean"
+    }
+  },
+  "title": "ListCardsArgs",
+  "type": "object"
+}

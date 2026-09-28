@@ -1,0 +1,57 @@
+{
+  "$defs": {
+    "Language": {
+      "enum": [
+        "es",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Server-side authenticated session.\n\n``customer_id`` never leaves the server: it is not sent to the LLM, not accepted from the\nclient and not present in any tool argument model.",
+  "properties": {
+    "customer_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Customer Id",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "title": "Issued At",
+      "type": "string"
+    },
+    "language": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Language"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "session_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "customer_id",
+    "issued_at",
+    "expires_at"
+  ],
+  "title": "Session",
+  "type": "object"
+}

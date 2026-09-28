@@ -1,0 +1,244 @@
+{
+  "$defs": {
+    "ConversationState": {
+      "enum": [
+        "auth",
+        "understand",
+        "identify_txn",
+        "recognize",
+        "check_policy",
+        "confirm",
+        "act",
+        "verify",
+        "respond",
+        "clarify",
+        "abstain",
+        "escalate",
+        "done"
+      ],
+      "title": "ConversationState",
+      "type": "string"
+    },
+    "StepKind": {
+      "description": "What an ExecutionRecord step did.",
+      "enum": [
+        "authenticate",
+        "route",
+        "interpret",
+        "tool_call",
+        "policy",
+        "confirmation",
+        "verify",
+        "render",
+        "handoff"
+      ],
+      "title": "StepKind",
+      "type": "string"
+    },
+    "StepOutcome": {
+      "enum": [
+        "success",
+        "failure",
+        "blocked",
+        "fallback"
+      ],
+      "title": "StepOutcome",
+      "type": "string"
+    },
+    "ToolErrorCode": {
+      "enum": [
+        "unauthorized",
+        "not_found",
+        "confirmation_required",
+        "tool_unavailable",
+        "session_expired",
+        "invalid_arguments"
+      ],
+      "title": "ToolErrorCode",
+      "type": "string"
+    },
+    "ToolName": {
+      "enum": [
+        "list_cards",
+        "search_transactions",
+        "get_transaction",
+        "get_dispute",
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ToolName",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One step of one turn. Never contains raw PII, prompts or secrets.",
+  "properties": {
+    "args_hash": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Args Hash"
+    },
+    "cost_usd": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,8}0*$",
+          "type": "string"
+        }
+      ],
+      "default": "0",
+      "title": "Cost Usd"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolErrorCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "latency_ms": {
+      "minimum": 0.0,
+      "title": "Latency Ms",
+      "type": "number"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "outcome": {
+      "$ref": "#/$defs/StepOutcome"
+    },
+    "prompt_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prompt Version"
+    },
+    "record_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Record Id",
+      "type": "string"
+    },
+    "rule_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Rule Ids",
+      "type": "array"
+    },
+    "session_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Id"
+    },
+    "state": {
+      "$ref": "#/$defs/ConversationState"
+    },
+    "step": {
+      "$ref": "#/$defs/StepKind"
+    },
+    "step_index": {
+      "minimum": 0,
+      "title": "Step Index",
+      "type": "integer"
+    },
+    "tokens_in": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Tokens In",
+      "type": "integer"
+    },
+    "tokens_out": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Tokens Out",
+      "type": "integer"
+    },
+    "tool": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolName"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "trace_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Trace Id",
+      "type": "string"
+    },
+    "turn_index": {
+      "minimum": 0,
+      "title": "Turn Index",
+      "type": "integer"
+    },
+    "verified": {
+      "default": false,
+      "title": "Verified",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "record_id",
+    "trace_id",
+    "turn_index",
+    "step_index",
+    "step",
+    "state",
+    "outcome",
+    "latency_ms",
+    "created_at"
+  ],
+  "title": "ExecutionRecord",
+  "type": "object"
+}

@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "CardBlockEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "block_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Block Id",
+          "type": "string"
+        },
+        "blocked_at": {
+          "format": "date-time",
+          "title": "Blocked At",
+          "type": "string"
+        },
+        "card_last4": {
+          "pattern": "^\\d{4}$",
+          "title": "Card Last4",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "product_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Product Id",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_id",
+        "product_id",
+        "card_last4",
+        "blocked_at",
+        "reason",
+        "idempotency_key"
+      ],
+      "title": "CardBlockEvent",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "block": {
+      "$ref": "#/$defs/CardBlockEvent"
+    },
+    "created": {
+      "title": "Created",
+      "type": "boolean"
+    },
+    "verified": {
+      "title": "Verified",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "block",
+    "created",
+    "verified"
+  ],
+  "title": "BlockCardResult",
+  "type": "object"
+}

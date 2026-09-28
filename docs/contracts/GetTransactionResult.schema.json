@@ -1,0 +1,212 @@
+{
+  "$defs": {
+    "Channel": {
+      "enum": [
+        "ATM",
+        "Branch",
+        "Web",
+        "App",
+        "POS",
+        "Transfer"
+      ],
+      "title": "Channel",
+      "type": "string"
+    },
+    "TransactionStatus": {
+      "enum": [
+        "Approved",
+        "Declined",
+        "Pending",
+        "Reversed"
+      ],
+      "title": "TransactionStatus",
+      "type": "string"
+    },
+    "TransactionType": {
+      "enum": [
+        "Deposit",
+        "Withdrawal",
+        "Transfer",
+        "Payment",
+        "Purchase",
+        "Adjustment"
+      ],
+      "title": "TransactionType",
+      "type": "string"
+    },
+    "TransactionView": {
+      "additionalProperties": false,
+      "description": "A transaction as the agent may see it. No fraud label or score by design (ADR 0003).",
+      "properties": {
+        "amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,13}|(?=[\\d.]{1,16}0*$)\\d{0,13}\\.\\d{0,2}0*$)",
+              "type": "string"
+            }
+          ],
+          "title": "Amount"
+        },
+        "amount_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,13}|(?=[\\d.]{1,16}0*$)\\d{0,13}\\.\\d{0,2}0*$)",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amount Usd"
+        },
+        "card_last4": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Card Last4"
+        },
+        "channel": {
+          "$ref": "#/$defs/Channel"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "is_foreign": {
+          "title": "Is Foreign",
+          "type": "boolean"
+        },
+        "merchant_category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Merchant Category"
+        },
+        "merchant_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Merchant Name"
+        },
+        "product_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Product Id",
+          "type": "string"
+        },
+        "transaction_category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transaction Category"
+        },
+        "transaction_city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transaction City"
+        },
+        "transaction_country": {
+          "pattern": "^[A-Z]{2}$",
+          "title": "Transaction Country",
+          "type": "string"
+        },
+        "transaction_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Transaction Id",
+          "type": "string"
+        },
+        "transaction_status": {
+          "$ref": "#/$defs/TransactionStatus"
+        },
+        "transaction_ts": {
+          "format": "date-time",
+          "title": "Transaction Ts",
+          "type": "string"
+        },
+        "transaction_type": {
+          "$ref": "#/$defs/TransactionType"
+        }
+      },
+      "required": [
+        "transaction_id",
+        "product_id",
+        "transaction_ts",
+        "transaction_type",
+        "amount",
+        "currency",
+        "channel",
+        "transaction_country",
+        "transaction_status",
+        "is_foreign"
+      ],
+      "title": "TransactionView",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "open_dispute_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Open Dispute Id"
+    },
+    "transaction": {
+      "$ref": "#/$defs/TransactionView"
+    }
+  },
+  "required": [
+    "transaction"
+  ],
+  "title": "GetTransactionResult",
+  "type": "object"
+}

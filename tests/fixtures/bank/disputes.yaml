@@ -1,0 +1,8 @@
+# Prior complaints/claims (dispute_history). Timestamps are UTC.
+disputes:
+  # Open claim on TXN-FX-0701: a new dispute on the same transaction must not be duplicated.
+  - {complaint_id: CMP-FX-701, customer_id: CUST-FX-007, created_at: "2026-04-15T14:20:00", case_type: Claim, category: Transactions, subcategory: "Unrecognized charge", status: "In Process", claimed_amount: "15200.00", currency: ARS, related_transaction_id: TXN-FX-0701, resolution_days: null}
+  # Earlier resolved claim within 90 days: makes CUST-FX-007 a repeat disputer.
+  - {complaint_id: CMP-FX-702, customer_id: CUST-FX-007, created_at: "2026-04-02T10:05:00", case_type: Claim, category: Transactions, subcategory: "Duplicate charge", status: Resolved, claimed_amount: "8000.00", currency: ARS, related_transaction_id: null, resolution_days: 12}
+  # Old, closed complaint unrelated to disputes (should not trigger any rule).
+  - {complaint_id: CMP-FX-101, customer_id: CUST-FX-001, created_at: "2025-09-03T09:00:00", case_type: Complaint, category: Service, subcategory: "Branch wait time", status: Closed, claimed_amount: null, currency: null, related_transaction_id: null, resolution_days: 3}

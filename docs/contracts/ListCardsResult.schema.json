@@ -1,0 +1,86 @@
+{
+  "$defs": {
+    "CardType": {
+      "enum": [
+        "credit",
+        "debit"
+      ],
+      "title": "CardType",
+      "type": "string"
+    },
+    "CardView": {
+      "additionalProperties": false,
+      "properties": {
+        "card_last4": {
+          "pattern": "^\\d{4}$",
+          "title": "Card Last4",
+          "type": "string"
+        },
+        "card_type": {
+          "$ref": "#/$defs/CardType"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "expiration_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expiration Date"
+        },
+        "product_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Product Id",
+          "type": "string"
+        },
+        "product_status": {
+          "$ref": "#/$defs/ProductStatus"
+        }
+      },
+      "required": [
+        "product_id",
+        "card_type",
+        "card_last4",
+        "currency",
+        "product_status"
+      ],
+      "title": "CardView",
+      "type": "object"
+    },
+    "ProductStatus": {
+      "enum": [
+        "Active",
+        "Blocked",
+        "Closed",
+        "Suspended"
+      ],
+      "title": "ProductStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "cards": {
+      "items": {
+        "$ref": "#/$defs/CardView"
+      },
+      "title": "Cards",
+      "type": "array"
+    }
+  },
+  "required": [
+    "cards"
+  ],
+  "title": "ListCardsResult",
+  "type": "object"
+}

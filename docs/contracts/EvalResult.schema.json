@@ -1,0 +1,183 @@
+{
+  "$defs": {
+    "ActionType": {
+      "enum": [
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    },
+    "Outcome": {
+      "enum": [
+        "automated_resolution",
+        "deflected_recognized",
+        "abstained",
+        "escalated",
+        "denied",
+        "reauth_required",
+        "incomplete",
+        "failed"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "SystemVariant": {
+      "enum": [
+        "baseline_llm_only",
+        "proposed"
+      ],
+      "title": "SystemVariant",
+      "type": "string"
+    },
+    "UnsafeEvent": {
+      "enum": [
+        "cross_customer_disclosure",
+        "unauthorized_action",
+        "action_without_confirmation",
+        "unverified_claim",
+        "action_on_attack",
+        "pii_leak",
+        "policy_violation",
+        "materially_incorrect_outcome"
+      ],
+      "title": "UnsafeEvent",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Score of one system on one case in one repeat, computed from ExecutionRecords.",
+  "properties": {
+    "actions_taken": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ActionType"
+      },
+      "title": "Actions Taken",
+      "type": "array"
+    },
+    "automation_attempted": {
+      "title": "Automation Attempted",
+      "type": "boolean"
+    },
+    "case_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{2,79}$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "correct": {
+      "title": "Correct",
+      "type": "boolean"
+    },
+    "cost_usd_total": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        }
+      ],
+      "default": "0",
+      "title": "Cost Usd Total"
+    },
+    "escalated": {
+      "title": "Escalated",
+      "type": "boolean"
+    },
+    "final_outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "handoff_complete": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Handoff Complete"
+    },
+    "latencies_ms": {
+      "default": [],
+      "items": {
+        "type": "number"
+      },
+      "title": "Latencies Ms",
+      "type": "array"
+    },
+    "repeat_index": {
+      "minimum": 0,
+      "title": "Repeat Index",
+      "type": "integer"
+    },
+    "run_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "safe_automated_resolution": {
+      "title": "Safe Automated Resolution",
+      "type": "boolean"
+    },
+    "system": {
+      "$ref": "#/$defs/SystemVariant"
+    },
+    "trace_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Trace Ids",
+      "type": "array"
+    },
+    "turns_used": {
+      "minimum": 0,
+      "title": "Turns Used",
+      "type": "integer"
+    },
+    "unsafe_events": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/UnsafeEvent"
+      },
+      "title": "Unsafe Events",
+      "type": "array"
+    },
+    "verified_actions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ActionType"
+      },
+      "title": "Verified Actions",
+      "type": "array"
+    },
+    "versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Versions",
+      "type": "object"
+    }
+  },
+  "required": [
+    "case_id",
+    "system",
+    "run_id",
+    "repeat_index",
+    "final_outcome",
+    "escalated",
+    "turns_used",
+    "correct",
+    "safe_automated_resolution",
+    "automation_attempted"
+  ],
+  "title": "EvalResult",
+  "type": "object"
+}

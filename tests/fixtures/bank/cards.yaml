@@ -1,0 +1,13 @@
+# Synthetic cards. Only the last four digits exist; there is no full card number anywhere.
+cards:
+  - {product_id: CARD-FX-011, customer_id: CUST-FX-001, card_type: credit, card_last4: "4821", currency: MXN, product_status: Active, opening_date: "2022-03-10", expiration_date: "2028-03-31"}
+  - {product_id: CARD-FX-012, customer_id: CUST-FX-001, card_type: debit, card_last4: "0937", currency: MXN, product_status: Active, opening_date: "2019-08-14", expiration_date: "2027-08-31"}
+  - {product_id: CARD-FX-021, customer_id: CUST-FX-002, card_type: credit, card_last4: "7310", currency: COP, product_status: Active, opening_date: "2021-02-03", expiration_date: "2029-02-28"}
+  - {product_id: CARD-FX-031, customer_id: CUST-FX-003, card_type: debit, card_last4: "5566", currency: ARS, product_status: Active, opening_date: "2020-11-21", expiration_date: "2027-11-30"}
+  - {product_id: CARD-FX-041, customer_id: CUST-FX-004, card_type: credit, card_last4: "2208", currency: ARS, product_status: Active, opening_date: "2022-05-09", expiration_date: "2028-05-31"}
+  - {product_id: CARD-FX-051, customer_id: CUST-FX-005, card_type: debit, card_last4: "3344", currency: MXN, product_status: Active, opening_date: "2024-01-30", expiration_date: "2029-01-31"}
+  - {product_id: CARD-FX-061, customer_id: CUST-FX-006, card_type: credit, card_last4: "9001", currency: COP, product_status: Active, opening_date: "2017-06-12", expiration_date: "2028-06-30"}
+  - {product_id: CARD-FX-062, customer_id: CUST-FX-006, card_type: debit, card_last4: "1177", currency: COP, product_status: Blocked, opening_date: "2018-01-15", expiration_date: "2027-01-31"}
+  # Expired on 2026-04-30 but still Active in the core system (data-quality scenario).
+  - {product_id: CARD-FX-071, customer_id: CUST-FX-007, card_type: credit, card_last4: "6402", currency: ARS, product_status: Active, opening_date: "2023-03-18", expiration_date: "2026-04-30"}
+  - {product_id: CARD-FX-081, customer_id: CUST-FX-008, card_type: credit, card_last4: "7788", currency: MXN, product_status: Active, opening_date: "2025-11-03", expiration_date: "2030-11-30"}
