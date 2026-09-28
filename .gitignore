@@ -1,0 +1,67 @@
+# ---------------------------------------------------------------------------
+# Secrets and organizer material (NEVER commit)
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+private/
+# Original organizer documents (the data dictionary PDF contains credentials).
+# They belong in private/; these patterns are a safety net if they are left at the root.
+*.pdf
+*.docx
+LATAM_Bank_Complete_Data_Dictionary.*
+Latam_bank_complete_data_dictionary.*
+# Raw organizer text/slides kept locally; the versioned copies live in docs/challenge/
+Factored_ai_data_hackaton_2026.txt
+Latam_bank_dataset_summary.txt
+FactoredFolder/
+
+# ---------------------------------------------------------------------------
+# Data artifacts (organizer-derived data is never versioned)
+# ---------------------------------------------------------------------------
+data/
+serving/*.duckdb
+serving/*.duckdb.wal
+*.duckdb
+*.duckdb.wal
+*.parquet
+*.sqlite
+*.sqlite3
+# Sealed held-out evaluation material lives outside the repo (HELDOUT_DIR)
+eval/heldout/
+
+# ---------------------------------------------------------------------------
+# Python / tooling
+# ---------------------------------------------------------------------------
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# MLflow local tracking
+mlruns/
+mlartifacts/
+
+# dbt
+data_pipeline/dbt/target/
+data_pipeline/dbt/dbt_packages/
+data_pipeline/dbt/logs/
+logs/
+
+# Node / web
+node_modules/
+web/dist/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
