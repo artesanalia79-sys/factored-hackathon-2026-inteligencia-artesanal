@@ -1,0 +1,48 @@
+# Code owners are requested for review automatically. Owners must be repository collaborators
+# with write access, and they only block merges once branch protection with
+# "Require review from Code Owners" is enabled on main.
+#
+# Victor: @VictorJVA · Jacobo: @jacobozj · Juan José: @jjresher · Santiago: @santig005
+# Later rules override earlier ones for the same path.
+
+*                               @santig005 @artesanalia79-sys
+
+# Harness, CI, evaluation, deploy (Santiago)
+/AGENTS.md                      @santig005
+/CLAUDE.md                      @santig005
+/.github/                       @santig005
+/.agents/                       @santig005
+/.claude/                       @santig005
+/.kiro/                         @santig005
+/scripts/                       @santig005
+/eval/                          @santig005
+/docs/rules/                    @santig005 @VictorJVA @jacobozj @jjresher
+
+# Shared contracts: everyone depends on them
+/src/bankagent/contracts/       @VictorJVA @jacobozj @jjresher @santig005
+/docs/contracts/                @VictorJVA @jacobozj @jjresher @santig005
+
+# Data pipeline and fixture bank (Juan José)
+/data_pipeline/                 @jjresher
+/src/bankagent/fixtures/        @jjresher @VictorJVA
+/tests/fixtures/                @jjresher @VictorJVA
+/docs/evidence/                 @jjresher
+
+# Learned router (Juan José + Santiago)
+/src/bankagent/router/          @jjresher @santig005
+/docs/models/                   @jjresher @santig005
+
+# Backend: auth, tools, policy, store, orchestrator (Victor)
+/src/bankagent/auth/            @VictorJVA
+/src/bankagent/tools/           @VictorJVA
+/src/bankagent/policy/          @VictorJVA
+/src/bankagent/store/           @VictorJVA
+/src/bankagent/orchestrator/    @VictorJVA @jacobozj
+/src/bankagent/api/             @VictorJVA @jacobozj
+/src/bankagent/obs/             @santig005 @VictorJVA
+/policy/                        @VictorJVA
+
+# Interpreter, templates, web (Jacobo)
+/src/bankagent/interpret/       @jacobozj
+/src/bankagent/render/          @jacobozj
+/web/                           @jacobozj
