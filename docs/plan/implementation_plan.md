@@ -93,7 +93,7 @@ personas in YAML and a deterministic DuckDB builder validated against the servin
 
 ### M1 Shippable v0 (D2-3)
 
-**T4. Ingest to bronze with manifest** [P0] (Juan José)
+**T4. Ingest to bronze with manifest** [P0] (Santiago)
 Download with `AWS_PROFILE`; `data/raw` → bronze parquet; `_manifest.json` with rows and sha256
 per file; drift detection against the previous manifest; control file. `poe ingest`.
 
