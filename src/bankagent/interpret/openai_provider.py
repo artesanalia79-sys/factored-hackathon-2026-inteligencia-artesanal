@@ -7,10 +7,19 @@ from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
-from typing import Any, cast
+from typing import cast
 
 import yaml
-from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
+from openai import (
+    APIConnectionError,
+    APIResponseValidationError,
+    APIStatusError,
+    APITimeoutError,
+    ContentFilterFinishReasonError,
+    LengthFinishReasonError,
+    OpenAI,
+    OpenAIError,
+)
 from openai.types.responses import ResponseInputParam
 from pydantic import BaseModel, ValidationError
 
@@ -18,7 +27,6 @@ from bankagent.contracts.decisions import InterpretationResult
 from bankagent.contracts.enums import Dialect, DialogueAct, Intent, Language
 from bankagent.contracts.llm import (
     ChatMessage,
-    LLMError,
     LLMMalformedOutput,
     LLMTimeout,
     LLMUnavailable,
@@ -31,6 +39,8 @@ PROMPT_VERSION = "interpret-v1"
 MAX_OUTPUT_TOKENS = 512
 _MILLION = Decimal("1000000")
 _DEFAULT_PRICING = Path(__file__).resolve().parents[3] / "config" / "pricing.yaml"
+# Defense in depth for known text patterns. Callers must exclude server-side identity and fraud
+# fields structurally; arbitrary customer identifiers cannot be recognized by this regex.
 _SENSITIVE = re.compile(
     r"\bCUST-[\w-]+\b|\b(?:customer_id|is_fraud|fraud_score)\b\s*[:=]\s*[^\s,;]+"
     r"|\b(?:customer_id|is_fraud|fraud_score)\b",
@@ -67,7 +77,7 @@ class _ParsedInterpretation(BaseModel):
     injection_suspected: bool
 
 
-class SpendLimitExceeded(LLMError):
+class SpendLimitExceeded(LLMUnavailable):
     """A further call would exceed the configured run budget."""
 
 
@@ -76,17 +86,21 @@ def _redact(text: str) -> str:
 
 
 class OpenAIProvider:
-    """A synchronous LLMProvider. Create one instance per budgeted run."""
+    """A synchronous LLMProvider. Create one instance per budgeted run.
+
+    Pass ``pricing_path`` when using a built wheel outside the repository checkout.
+    """
 
     def __init__(
         self,
         *,
-        client: OpenAI | Any | None = None,
+        client: OpenAI | None = None,
         model: str = MODEL,
         pricing_path: Path = _DEFAULT_PRICING,
         spend_limit_usd: Decimal | None = None,
         max_output_tokens: int = MAX_OUTPUT_TOKENS,
     ) -> None:
+        # The default path is for a source checkout; installed wheels need an explicit path.
         config = yaml.safe_load(pricing_path.read_text(encoding="utf-8"))
         if model not in config["models"]:
             raise ValueError(f"no price configured for model {model}")
@@ -155,14 +169,27 @@ class OpenAIProvider:
                 store=False,
             )
         except APITimeoutError as exc:
+            self._spent += reservation
             raise LLMTimeout("OpenAI request timed out") from exc
         except (APIConnectionError, APIStatusError) as exc:
+            self._spent += reservation
             raise LLMUnavailable("OpenAI request unavailable") from exc
-        except (ValidationError, ValueError) as exc:
+        except (
+            ValidationError,
+            ValueError,
+            LengthFinishReasonError,
+            ContentFilterFinishReasonError,
+            APIResponseValidationError,
+        ) as exc:
+            self._spent += reservation
             raise LLMMalformedOutput("OpenAI returned invalid structured output") from exc
+        except OpenAIError as exc:
+            self._spent += reservation
+            raise LLMUnavailable("OpenAI request failed") from exc
 
         usage = response.usage
         if usage is None:
+            self._spent += reservation
             raise LLMMalformedOutput("OpenAI response has no token usage")
         cost = self._price(usage.input_tokens, usage.output_tokens)
         self._spent += cost

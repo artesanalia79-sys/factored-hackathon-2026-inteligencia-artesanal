@@ -1,4 +1,4 @@
-"""Offline API-shape cassettes, budget and privacy checks for the real provider."""
+"""Offline synthetic transport fixtures, budget and privacy checks for the real provider."""
 
 from __future__ import annotations
 
@@ -10,7 +10,13 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from openai import APIConnectionError, APITimeoutError
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    ContentFilterFinishReasonError,
+    LengthFinishReasonError,
+)
 
 from bankagent.contracts.decisions import InterpretationResult
 from bankagent.contracts.llm import (
@@ -20,21 +26,43 @@ from bankagent.contracts.llm import (
     LLMTimeout,
     LLMUnavailable,
 )
-from bankagent.interpret.openai_provider import OpenAIProvider, SpendLimitExceeded
+from bankagent.interpret.openai_provider import (
+    OpenAIProvider,
+    SpendLimitExceeded,
+    _ParsedInterpretation,
+)
 from bankagent.interpret.records import interpretation_record
 
-CASSETTES = json.loads(
-    (Path(__file__).parent / "cassettes" / "openai_interpret.json").read_text(encoding="utf-8")
+FIXTURES = json.loads(
+    (Path(__file__).parent / "synthetic_interpret.json").read_text(encoding="utf-8")
 )
 
 
-@pytest.mark.parametrize("cassette", CASSETTES)
-def test_offline_structured_cassettes(cassette: dict[str, object]) -> None:
-    output = InterpretationResult.model_validate(cassette["output"])
+def _response(output: object = None, *, usage: object = True) -> SimpleNamespace:
+    parsed = _ParsedInterpretation.model_validate(output or FIXTURES[0]["output"])
+    metering = SimpleNamespace(input_tokens=1000, output_tokens=100) if usage is True else usage
+    return SimpleNamespace(output_parsed=parsed, usage=metering)
+
+
+def _complete(provider: OpenAIProvider) -> object:
+    return provider.complete_structured(
+        system="interpret",
+        messages=[ChatMessage(role="user", content="cobro duplicado")],
+        response_model=InterpretationResult,
+        timeout_s=5,
+    )
+
+
+@pytest.mark.parametrize("fixture", FIXTURES)
+def test_offline_structured_fixtures(fixture: dict[str, object]) -> None:
+    parsed = _ParsedInterpretation.model_validate(fixture["output"])
+    output = InterpretationResult.model_validate(
+        {**parsed.model_dump(), "model": "gpt-6-luna", "prompt_version": "interpret-v1"}
+    )
     response = SimpleNamespace(
-        output_parsed=output,
+        output_parsed=parsed,
         usage=SimpleNamespace(
-            input_tokens=cassette["tokens_in"], output_tokens=cassette["tokens_out"]
+            input_tokens=fixture["tokens_in"], output_tokens=fixture["tokens_out"]
         ),
     )
     client = Mock()
@@ -42,7 +70,7 @@ def test_offline_structured_cassettes(cassette: dict[str, object]) -> None:
     provider: LLMProvider = OpenAIProvider(client=client)
     completion = provider.complete_structured(
         system="Interpret customer message",
-        messages=[ChatMessage(role="user", content=str(cassette["user"]))],
+        messages=[ChatMessage(role="user", content=str(fixture["user"]))],
         response_model=InterpretationResult,
         timeout_s=5,
     )
@@ -60,28 +88,34 @@ def test_offline_structured_cassettes(cassette: dict[str, object]) -> None:
     )
     assert record.cost_usd == completion.usage.cost_usd
     assert record.prompt_version == "interpret-v1"
-    assert str(cassette["user"]) not in record.model_dump_json()
+    assert str(fixture["user"]) not in record.model_dump_json()
 
 
 def test_spend_limit_aborts_before_api_call() -> None:
     client = Mock()
     provider = OpenAIProvider(client=client, spend_limit_usd=Decimal("0.000001"))
-    with pytest.raises(SpendLimitExceeded):
-        provider.complete_structured(
-            system="interpret",
-            messages=[ChatMessage(role="user", content="cobro duplicado")],
-            response_model=InterpretationResult,
-            timeout_s=5,
-        )
+    with pytest.raises(SpendLimitExceeded) as caught:
+        _complete(provider)
+    assert isinstance(caught.value, LLMUnavailable)
     client.responses.parse.assert_not_called()
+
+
+def test_budget_accumulates_and_blocks_next_call() -> None:
+    client = Mock()
+    client.responses.parse.return_value = _response()
+    provider = OpenAIProvider(client=client, spend_limit_usd=Decimal("0.0009"))
+    _complete(provider)
+    first = provider.spent_usd
+    _complete(provider)
+    assert provider.spent_usd == 2 * first
+    with pytest.raises(SpendLimitExceeded):
+        _complete(provider)
+    assert client.responses.parse.call_count == 2
 
 
 def test_prompts_strip_customer_identifiers_and_runtime_labels() -> None:
     client = Mock()
-    client.responses.parse.return_value = SimpleNamespace(
-        output_parsed=InterpretationResult.model_validate(CASSETTES[0]["output"]),
-        usage=SimpleNamespace(input_tokens=100, output_tokens=50),
-    )
+    client.responses.parse.return_value = _response()
     provider = OpenAIProvider(client=client)
     provider.complete_structured(
         system="customer_id=CUST-FX-007; fraud_score=7",
@@ -106,6 +140,10 @@ def test_prompts_strip_customer_identifiers_and_runtime_labels() -> None:
     [
         (APITimeoutError(request=Mock()), LLMTimeout),
         (APIConnectionError(request=Mock()), LLMUnavailable),
+        (APIStatusError("rate limited", response=Mock(status_code=429), body=None), LLMUnavailable),
+        (APIStatusError("server error", response=Mock(status_code=500), body=None), LLMUnavailable),
+        (ContentFilterFinishReasonError(), LLMMalformedOutput),
+        (LengthFinishReasonError(completion=Mock()), LLMMalformedOutput),
     ],
 )
 def test_api_failures_map_to_typed_errors(error: Exception, expected: type[Exception]) -> None:
@@ -113,12 +151,32 @@ def test_api_failures_map_to_typed_errors(error: Exception, expected: type[Excep
     client.responses.parse.side_effect = error
     provider = OpenAIProvider(client=client)
     with pytest.raises(expected):
-        provider.complete_structured(
-            system="interpret",
-            messages=[ChatMessage(role="user", content="cobro duplicado")],
-            response_model=InterpretationResult,
-            timeout_s=5,
-        )
+        _complete(provider)
+    assert provider.spent_usd > 0
+
+
+def test_missing_usage_reserves_possible_spend() -> None:
+    client = Mock()
+    client.responses.parse.return_value = _response(usage=None)
+    provider = OpenAIProvider(client=client)
+    with pytest.raises(LLMMalformedOutput):
+        _complete(provider)
+    assert provider.spent_usd > 0
+
+
+@pytest.mark.parametrize(("field", "value"), [("confidence", 1.5), ("card_last4", "12")])
+def test_transport_output_failing_shared_contract_is_malformed(field: str, value: object) -> None:
+    client = Mock()
+    output = dict(FIXTURES[0]["output"])
+    if field == "card_last4":
+        output["slots"] = {**output["slots"], "card_last4": value}
+    else:
+        output[field] = value
+    client.responses.parse.return_value = _response(output)
+    provider = OpenAIProvider(client=client)
+    with pytest.raises(LLMMalformedOutput):
+        _complete(provider)
+    assert provider.spent_usd == provider._price(1000, 100)
 
 
 def test_missing_parsed_output_is_malformed() -> None:
@@ -128,9 +186,5 @@ def test_missing_parsed_output_is_malformed() -> None:
     )
     provider = OpenAIProvider(client=client)
     with pytest.raises(LLMMalformedOutput):
-        provider.complete_structured(
-            system="interpret",
-            messages=[ChatMessage(role="user", content="cobro duplicado")],
-            response_model=InterpretationResult,
-            timeout_s=5,
-        )
+        _complete(provider)
+    assert provider.spent_usd == provider._price(100, 20)
