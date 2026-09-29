@@ -79,6 +79,13 @@ def download_objects(
     Downloads run concurrently (`max_workers` threads sharing one boto3 client, which is
     thread-safe) since a single table can be split into 1000+ small daily-partition files.
     Returned paths are in the same order as `objects`, regardless of completion order.
+
+    A file already present in `dest_dir` with the same byte size as the S3 object is reused
+    instead of downloaded again, so re-running an ingest (or rebuilding bronze after deleting
+    it) does not repeat a ~20-minute download. A size mismatch (e.g. an interrupted download)
+    triggers a fresh download. Known limit: a local file corrupted without changing its size is
+    reused; the bronze sha256 in the manifest would then differ and be reported as drift.
+    Delete `data/raw/` to force a clean download.
     """
     client = _session(aws_profile, region).client(
         "s3", config=BotoConfig(retries={"max_attempts": 3}, max_pool_connections=max_workers)
@@ -86,6 +93,9 @@ def download_objects(
 
     def _download_one(obj: SourceObject) -> Path:
         target = dest_dir / obj.key
+        if target.is_file() and target.stat().st_size == obj.size:
+            logger.debug("cached, skipping s3://%s/%s", bucket, obj.key)
+            return target
         target.parent.mkdir(parents=True, exist_ok=True)
         logger.info("downloading s3://%s/%s -> %s", bucket, obj.key, target)
         client.download_file(bucket, obj.key, str(target))
