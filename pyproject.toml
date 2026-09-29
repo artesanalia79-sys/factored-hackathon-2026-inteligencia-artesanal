@@ -14,9 +14,11 @@ dependencies = [
 #   uv add --group data "dbt-duckdb==1.11.0"
 #   uv add --group api "fastapi==0.141.1"
 [dependency-groups]
-# Ingest (T4) and, later, dbt (T5, T6). Not installed by default: `uv sync --group data`.
+# Ingest (T4) and dbt silver/gold (T5, T6). Not installed by default: `uv sync --group data`.
 data = [
     "boto3==1.43.103",
+    "dbt-core==1.12.5",
+    "dbt-duckdb==1.11.0",
     "pyarrow==25.0.1",
 ]
 dev = [
@@ -59,8 +61,10 @@ secrets-scan = { cmd = "pre-commit run --all-files", help = "Run all pre-commit 
 ingest = { cmd = "python -m bankagent.ingest.cli", help = "[Task 4] S3 -> bronze parquet + manifest (needs: uv sync --group data)" }
 ingest-check = { cmd = "python -m bankagent.ingest.cli --check", help = "[Task 4] Verify bronze files against _manifest.json (sha256 + row counts), no download" }
 
+dbt-build = { cmd = "python -m bankagent.silver.cli", help = "[Task 5] Verify bronze manifest, then dbt build silver (needs: uv sync --group data)" }
+dq-report = { cmd = "python -m bankagent.silver.report", help = "[Task 5] Regenerate docs/evidence/dq_report.md + fraud_score_thresholds.md from the warehouse" }
+
 # Placeholders owned by later tasks (they fail loudly until implemented).
-dbt-build = { cmd = "python scripts/todo_task.py 5 'dbt silver/gold build' 'Juan Jose'", help = "[Task 5/6] dbt build (contracts + tests)" }
 analysis = { cmd = "python scripts/todo_task.py 16 'Problem evidence and ROI' 'Juan Jose'", help = "[Task 16] Regenerate problem evidence + ROI" }
 eval-smoke = { cmd = "python scripts/todo_task.py 12 'Evaluation harness core' 'Santiago'", help = "[Task 12] 10 dev cases, StubProvider, baseline vs proposed" }
 eval-full = { cmd = "python scripts/todo_task.py 27 'Final evaluation' 'all'", help = "[Task 27] Full held-out evaluation" }

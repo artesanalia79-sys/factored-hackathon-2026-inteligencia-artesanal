@@ -1,0 +1,13 @@
+# Committed on purpose: it contains no secrets, only env vars with repo-relative defaults.
+# Relative defaults assume the working directory is the repository root; the entrypoint
+# (`uv run poe dbt-build`, src/bankagent/silver/) always passes absolute paths.
+bankagent:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ env_var('WAREHOUSE_PATH', 'data/warehouse.duckdb') }}"
+      threads: "{{ env_var('DBT_THREADS', '4') | int }}"
+      settings:
+        memory_limit: "{{ env_var('DUCKDB_MEMORY_LIMIT', '6GB') }}"
+        preserve_insertion_order: false
