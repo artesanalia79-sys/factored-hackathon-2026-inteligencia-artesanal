@@ -1,0 +1,11 @@
+# Standard processing, short context, USD per million tokens.
+# Source: https://developers.openai.com/api/docs/models/gpt-6-luna
+# Recheck before the final evaluation; see ADR 0002.
+models:
+  gpt-6-luna:
+    input_per_million_usd: "0.10"
+    output_per_million_usd: "0.50"
+  gpt-6-sol:
+    input_per_million_usd: "2.00"
+    output_per_million_usd: "10.00"
+default_run_limit_usd: "0.10"

@@ -21,13 +21,16 @@ dev = [
     "pytest==9.1.1",
     "ruff==0.16.9",
 ]
+llm = [
+    "openai==3.19.2",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13"]
 build-backend = "uv_build"
 
 [tool.uv]
-default-groups = ["dev"]
+default-groups = ["dev", "llm"]
 
 # ---------------------------------------------------------------------------
 # Task runner (cross-platform; no make on Windows). Run `uv run poe` to list.
