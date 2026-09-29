@@ -10,7 +10,9 @@ Owner: Juan José (Tasks 4, 5, 6, 16, 19). Skills: `dbt-modeling`, `data-contrac
 - Raw files land in `data/raw/`, bronze parquet in `data/bronze/`. Everything under `data/` is
   gitignored and blocked by pre-commit. Never commit organizer-derived rows, even samples.
 - Every ingest writes `data/bronze/_manifest.json` with row counts and sha256 per file, and fails on
-  unexpected drift against the previous manifest.
+  unexpected drift against the previous manifest. Implementation: `src/bankagent/ingest/`
+  (`uv run poe ingest`, needs `uv sync --group data`); use `--allow-drift` when a source change is
+  expected, `--check` to verify the current manifest without downloading anything.
 
 ## Layers
 
