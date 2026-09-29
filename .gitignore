@@ -42,6 +42,8 @@ __pycache__/
 .pyright/
 .coverage
 htmlcov/
+.uv-cache/
+.tmp/
 *.egg-info/
 build/
 dist/
