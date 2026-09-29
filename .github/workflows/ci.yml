@@ -28,7 +28,9 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies (locked)
-        run: uv sync --locked
+        # --group data pulls in the ingest lane (boto3, pyarrow) so its lint/types/tests run too.
+        # No AWS credentials are used or needed here: ingest tests fake S3 entirely (tests/ingest).
+        run: uv sync --locked --group data
 
       - name: Definition-of-Done gate (ruff, pyright, pytest)
         run: uv run poe check
