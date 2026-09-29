@@ -57,7 +57,7 @@ hooks = { cmd = "pre-commit install", help = "Install git pre-commit hooks" }
 secrets-scan = { cmd = "pre-commit run --all-files", help = "Run all pre-commit hooks on the whole repo" }
 
 ingest = { cmd = "python -m bankagent.ingest.cli", help = "[Task 4] S3 -> bronze parquet + manifest (needs: uv sync --group data)" }
-ingest-check = { cmd = "python -m bankagent.ingest.cli --check", help = "[Task 4] Fail if bronze drifts from the previous manifest without --allow-drift" }
+ingest-check = { cmd = "python -m bankagent.ingest.cli --check", help = "[Task 4] Verify bronze files against _manifest.json (sha256 + row counts), no download" }
 
 # Placeholders owned by later tasks (they fail loudly until implemented).
 dbt-build = { cmd = "python scripts/todo_task.py 5 'dbt silver/gold build' 'Juan Jose'", help = "[Task 5/6] dbt build (contracts + tests)" }

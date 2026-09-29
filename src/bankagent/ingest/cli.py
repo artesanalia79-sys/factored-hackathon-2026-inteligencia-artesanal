@@ -3,8 +3,8 @@
 Usage:
     python -m bankagent.ingest.cli               # ingest, fail loudly on drift
     python -m bankagent.ingest.cli --allow-drift  # ingest, accept and record drift
-    python -m bankagent.ingest.cli --check        # verify the last manifest is still current,
-                                                    # without downloading anything
+    python -m bankagent.ingest.cli --check        # verify bronze files against the manifest
+                                                    # (sha256 + row count), no download
 
 Requires `AWS_PROFILE` and `S3_BUCKET` from `.env` (see `.env.example`), and AWS credentials in
 the local profile: `aws configure --profile factored`. Never pass AWS keys as arguments or env
@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="only report drift against the current bronze files; no download",
+        help="verify bronze files against the manifest (sha256 + row count); no download",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
@@ -73,17 +73,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check:
         from bankagent.ingest.manifest import load_manifest
+        from bankagent.ingest.pipeline import check_bronze
 
         manifest = load_manifest(config.manifest_path)
         if manifest is None:
             print("No manifest yet; run `uv run poe ingest` first.", file=sys.stderr)
             return 1
-        for entry in manifest.files:
-            path = config.bronze_dir / entry.relative_path
-            if not path.exists():
-                print(f"ERROR: {entry.relative_path} is missing", file=sys.stderr)
-                return 1
-        print(f"Manifest OK: {len(manifest.files)} tables recorded, all files present.")
+        problems = check_bronze(config.bronze_dir, manifest)
+        if problems:
+            print("ERROR: bronze does not match its manifest:", file=sys.stderr)
+            for problem in problems:
+                print(f"  - {problem}", file=sys.stderr)
+            return 1
+        print(
+            f"Bronze OK: {len(manifest.files)} tables match the manifest (sha256 and row counts)."
+        )
         return 0
 
     def list_objects_fn():

@@ -19,14 +19,36 @@ class UnsupportedSourceFormat(ValueError):
         super().__init__(f"don't know how to read {path.name}: unsupported extension")
 
 
+class NonStringColumn(ValueError):
+    def __init__(self, path: Path, columns: list[str]) -> None:
+        super().__init__(f"{path.name}: columns not read as strings: {', '.join(columns)}")
+
+
+def _csv_column_names(path: Path) -> list[str]:
+    """Header names exactly as pyarrow parses them (quoting, BOM), reading only the first block."""
+    reader = pa_csv.open_csv(path)
+    try:
+        return reader.schema.names
+    finally:
+        reader.close()
+
+
 def _read_csv_as_strings(path: Path) -> pa.Table:
+    # Every column is declared as a string up front. Letting pyarrow infer types and casting
+    # afterwards is lossy: '00' -> 0 -> '0' (response_code), 'True' -> 'true', '450.0' -> '450'.
+    names = _csv_column_names(path)
     table = pa_csv.read_csv(
         path,
         convert_options=pa_csv.ConvertOptions(
-            column_types={}, strings_can_be_null=True, null_values=["", "NULL", "null", "NA"]
+            column_types={name: pa.string() for name in names},
+            strings_can_be_null=True,
+            null_values=["", "NULL", "null", "NA"],
         ),
     )
-    return table.cast(pa.schema([pa.field(name, pa.string()) for name in table.schema.names]))
+    not_strings = [field.name for field in table.schema if field.type != pa.string()]
+    if not_strings:
+        raise NonStringColumn(path, not_strings)
+    return table
 
 
 def _read_json_as_strings(path: Path) -> pa.Table:
@@ -79,3 +101,8 @@ def concat_tables(tables: list[pa.Table]) -> pa.Table:
 def write_bronze_table(table: pa.Table, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(table, dest)
+
+
+def parquet_row_count(path: Path) -> int:
+    """Row count from the parquet footer, without reading the data."""
+    return pq.ParquetFile(path).metadata.num_rows
