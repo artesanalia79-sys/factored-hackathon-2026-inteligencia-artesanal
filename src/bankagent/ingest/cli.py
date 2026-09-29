@@ -88,7 +88,10 @@ def main(argv: list[str] | None = None) -> int:
 
     def list_objects_fn():
         return list_bucket_objects(
-            bucket=config.s3_bucket, aws_profile=config.aws_profile, region=config.region
+            bucket=config.s3_bucket,
+            aws_profile=config.aws_profile,
+            region=config.region,
+            prefix=config.source_prefix,
         )
 
     def download_fn(objects, dest_dir):

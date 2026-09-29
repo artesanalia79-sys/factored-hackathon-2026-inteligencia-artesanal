@@ -38,6 +38,7 @@ def _config(tmp_path: Path, *, allow_drift: bool = False) -> IngestConfig:
         aws_profile="factored",
         s3_bucket="test-bucket",
         region="us-east-1",
+        source_prefix="",
         raw_dir=tmp_path / "raw",
         bronze_dir=tmp_path / "bronze",
         manifest_path=tmp_path / "bronze" / "_manifest.json",
@@ -134,6 +135,32 @@ def test_allow_drift_accepts_and_records_the_change(tmp_path: Path) -> None:
     assert manifest.by_table["customers"].row_count == 3
 
 
+def test_sibling_backup_folder_is_excluded_by_the_source_prefix(tmp_path: Path) -> None:
+    """Regression test: the real bucket root also holds a dated backup folder. Without scoping
+    the listing to a prefix, `list_objects_fn` would return both copies and every table would be
+    double-counted."""
+    bucket = FakeBucket(
+        {
+            "data/customers.csv": "customer_id,segment\nCUST-FX-001,Premium\n",
+            "data/products.csv": "product_id,customer_id\nCARD-FX-011,CUST-FX-001\n",
+            "data_backup_20260831/customers.csv": ("customer_id,segment\nCUST-FX-001,Premium\n"),
+            "data_backup_20260831/products.csv": (
+                "product_id,customer_id\nCARD-FX-011,CUST-FX-001\n"
+            ),
+        }
+    )
+
+    def list_under_data() -> list[SourceObject]:
+        return [obj for obj in bucket.list_objects() if obj.key.startswith("data/")]
+
+    manifest, problems = run_ingest(
+        _config(tmp_path), list_objects_fn=list_under_data, download_fn=bucket.download
+    )
+    assert problems == []
+    assert manifest.by_table["customers"].row_count == 1
+    assert manifest.by_table["customers"].source_key == "data/customers.csv"
+
+
 def test_missing_table_in_bucket_raises_source_table_not_found(tmp_path: Path) -> None:
     bucket = FakeBucket({"customers.csv": "customer_id\nCUST-FX-001\n"})
     with pytest.raises(SourceTableNotFound, match="products"):
@@ -151,8 +178,18 @@ def test_resolve_config_reads_env_and_requires_bucket(
     config = resolve_config(root=tmp_path)
     assert config.s3_bucket == "my-bucket"
     assert config.region == "us-east-2"
+    assert config.source_prefix == "data/"
     assert config.raw_dir == tmp_path / "data" / "raw"
 
     monkeypatch.delenv("S3_BUCKET")
     with pytest.raises(ValueError, match="S3_BUCKET"):
         resolve_config(root=tmp_path)
+
+
+def test_resolve_config_source_prefix_is_overridable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AWS_PROFILE", "factored")
+    monkeypatch.setenv("S3_BUCKET", "my-bucket")
+    monkeypatch.setenv("INGEST_SOURCE_PREFIX", "custom/")
+    assert resolve_config(root=tmp_path).source_prefix == "custom/"

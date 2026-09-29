@@ -38,11 +38,18 @@ class IngestDriftError(RuntimeError):
         self.problems = problems
 
 
+DEFAULT_SOURCE_PREFIX = "data/"
+"""The organizer bucket root also holds sibling folders (e.g. a dated backup) that are not part
+of the active dataset. Scoping every listing to this prefix keeps them out. Override with the
+`INGEST_SOURCE_PREFIX` env var only if the organizers change the bucket layout."""
+
+
 @dataclass(frozen=True, slots=True)
 class IngestConfig:
     aws_profile: str
     s3_bucket: str
     region: str
+    source_prefix: str
     raw_dir: Path
     bronze_dir: Path
     manifest_path: Path
@@ -64,6 +71,7 @@ def resolve_config(*, root: Path, allow_drift: bool = False) -> IngestConfig:
         aws_profile=os.environ["AWS_PROFILE"],
         s3_bucket=os.environ["S3_BUCKET"],
         region=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
+        source_prefix=os.environ.get("INGEST_SOURCE_PREFIX", DEFAULT_SOURCE_PREFIX),
         raw_dir=root / "data" / "raw",
         bronze_dir=root / "data" / "bronze",
         manifest_path=root / "data" / "bronze" / "_manifest.json",
