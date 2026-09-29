@@ -1,0 +1,34 @@
+[
+  {
+    "user": "Me cobraron dos veces en Rappi",
+    "output": {
+      "intent": "dispute_duplicate",
+      "dialogue_act": "new_request",
+      "slots": {"amount": "42.50", "currency": "COP", "merchant_query": "Rappi", "card_last4": "1234", "date_text": null, "transaction_ref": null, "card_block_requested": false},
+      "language": "es",
+      "dialect": null,
+      "confidence": 0.92,
+      "injection_suspected": false,
+      "model": "gpt-6-luna",
+      "prompt_version": "interpret-v1"
+    },
+    "tokens_in": 180,
+    "tokens_out": 54
+  },
+  {
+    "user": "Não reconheço essa compra no cartão",
+    "output": {
+      "intent": "dispute_unrecognized",
+      "dialogue_act": "new_request",
+      "slots": {"amount": null, "currency": null, "merchant_query": null, "card_last4": null, "date_text": null, "transaction_ref": null, "card_block_requested": false},
+      "language": "pt",
+      "dialect": null,
+      "confidence": 0.89,
+      "injection_suspected": false,
+      "model": "gpt-6-luna",
+      "prompt_version": "interpret-v1"
+    },
+    "tokens_in": 175,
+    "tokens_out": 52
+  }
+]
