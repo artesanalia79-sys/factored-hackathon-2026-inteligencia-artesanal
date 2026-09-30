@@ -22,6 +22,8 @@ Owners: Santiago (Tasks 4, 5), Juan José (Tasks 6, 16, 19). Skills: `dbt-modeli
   (`unique`, `not_null`, `relationships`, `accepted_values`) for its keys and enums.
 - **Gold / serving**: exactly the tables and columns in `src/bankagent/contracts/serving.py`
   (`SERVING_CONTRACT_VERSION`). The build must call `validate_serving_db()` and fail on mismatch.
+  Implementation: `uv run poe serving-build` (`src/bankagent/gold/`, models in
+  `data_pipeline/dbt/models/gold/`); `uv run poe dbt-build` builds silver only.
 
 ## Hard rules
 
