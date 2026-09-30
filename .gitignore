@@ -29,6 +29,8 @@ serving/*.duckdb.wal
 *.sqlite3
 # Sealed held-out evaluation material lives outside the repo (HELDOUT_DIR)
 eval/heldout/
+# Evaluation run outputs (results.jsonl, report.md); final reports go to eval/reports/
+eval/runs/
 
 # ---------------------------------------------------------------------------
 # Python / tooling
