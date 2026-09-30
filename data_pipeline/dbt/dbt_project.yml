@@ -1,0 +1,90 @@
+name: bankagent
+version: "1.0.0"
+config-version: 2
+profile: bankagent
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "logs", "dbt_packages"]
+
+flags:
+  send_anonymous_usage_stats: false
+  partial_parse: true
+
+# Enumerations accepted by silver. One list per enum, used both by the SQL `dq_invalid_enum`
+# flags (macro `invalid_enum`) and by the `accepted_values` tests in the model YAML, so the flag
+# and the test can never disagree. Lists hold the documented values plus the values the source
+# actually uses: several enums are published only in Spanish (monolingual per column) and are
+# kept as published (structure.md: enums mirroring source data keep source values). Values that
+# are neither documented nor observed are not listed. See docs/decision_ledger.md.
+vars:
+  enums:
+    currency: ["MXN", "COP", "ARS", "USD"]
+    country: ["Mexico", "México", "Colombia", "Argentina"]
+    document_type: ["DNI", "CURP", "CC", "CE", "Passport", "Pasaporte"]
+    gender: ["M", "F", "O"]
+    accent: ["mexican", "colombian", "argentine", "neutral"]
+    segment: ["Premium", "Plus", "Basic", "Student"]
+    customer_status: ["Active", "Inactive", "Suspended", "Closed"]
+    product_type:
+      ["Checking Account", "Savings Account", "Credit Card", "Debit Card", "Personal Loan",
+       "Mortgage", "Investment", "Cuenta Corriente", "Cuenta Ahorro",
+       "Tarjeta Crédito", "Tarjeta Débito", "Préstamo Personal", "Préstamo Hipotecario",
+       "Inversión", "Seguro"]
+    product_status: ["Active", "Blocked", "Closed", "Suspended"]
+    opening_channel: ["Branch", "Web", "App", "Call Center"]
+    branch_type: ["Main", "Express", "Premium", "Corporate"]
+    geographic_zone: ["Urban", "Suburban", "Rural", "Urbana"]
+    branch_status: ["Active", "Temporarily Closed", "Closed"]
+    agent_type: ["Phone", "In-Person", "Digital", "Hybrid"]
+    experience_level: ["Junior", "Mid-Senior", "Senior", "Specialist"]
+    agent_status: ["Active", "Vacation", "Leave", "Inactive"]
+    work_shift: ["Morning", "Afternoon", "Night", "Rotating"]
+    campaign_type: ["Email", "SMS", "Push", "WhatsApp", "Voice", "Mix"]
+    campaign_objective: ["Acquisition", "Retention", "Cross-sell", "Up-sell", "Reactivation"]
+    campaign_status: ["Planned", "Active", "Paused", "Completed"]
+    transaction_type: ["Deposit", "Withdrawal", "Transfer", "Payment", "Purchase", "Adjustment"]
+    transaction_category: ["Food", "Transport", "Services", "Entertainment", "Health", "Other"]
+    transaction_channel: ["ATM", "Branch", "Web", "App", "POS", "Transfer"]
+    transaction_status: ["Approved", "Declined", "Pending", "Reversed"]
+    interaction_type: ["Inbound Call", "Outbound Call", "Chat", "Email", "Video"]
+    interaction_channel: ["Phone", "Web Chat", "WhatsApp", "Email", "App", "Web"]
+    reason_category:
+      ["Transactional", "Product", "Technical", "Commercial", "Complaint",
+       "Transaccional", "Producto", "Técnico", "Comercial", "Queja", "Retención"]
+    sentiment:
+      ["Positive", "Neutral", "Negative", "Very Negative", "Muy Positivo",
+       "Positivo", "Negativo", "Muy Negativo"]
+    audio_quality: ["High", "Medium", "Low"]
+    survey_type: ["CSAT", "NPS", "CES"]
+    survey_channel: ["Email", "SMS", "IVR", "App", "Web"]
+    nps_category: ["Promoter", "Passive", "Detractor"]
+    comment_sentiment: ["Positive", "Neutral", "Negative"]
+    event_type: ["PageView", "Click", "FormSubmit", "Login", "Logout", "Error", "Purchase"]
+    event_category: ["Navigation", "Transaction", "Authentication", "Product"]
+    digital_channel: ["Android App", "iOS App", "Desktop Web", "Mobile Web"]
+    platform: ["Android", "iOS", "Windows", "MacOS", "Linux"]
+    case_type: ["Complaint", "Claim", "Request", "Suggestion"]
+    reception_channel: ["Call Center", "Email", "Web", "App", "Branch", "Regulator"]
+    priority: ["Low", "Medium", "High", "Critical"]
+    complaint_status: ["Open", "In Process", "Escalated", "Resolved", "Closed", "Rejected"]
+    send_channel: ["Email", "SMS", "Push", "WhatsApp", "Voice"]
+    send_status: ["Sent", "Failed", "Bounced", "Blocked"]
+  # The source computes amount_usd with a fixed rate per currency (measured: amount / 350 for
+  # ARS and amount / 4000 for COP, rounded to cents; max abs diff 0.005 USD), not the daily FX
+  # table. dq_amount_usd_mismatch re-derives round(amount / rate, 2) for these currencies and
+  # fires when the published value is more than `amount_usd_tolerance_usd` (absolute USD) away;
+  # dq_amount_usd_missing fires when amount_usd is NULL for one of them. USD rows have NULL
+  # amount_usd by design and are not checked. See docs/decision_ledger.md.
+  amount_usd_fixed_rate: {ARS: 350, COP: 4000}
+  amount_usd_tolerance_usd: 0.01
+
+models:
+  bankagent:
+    silver:
+      +materialized: table
+      +contract: {enforced: true}
+      +tags: ["silver"]

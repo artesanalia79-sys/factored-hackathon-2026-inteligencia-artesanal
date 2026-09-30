@@ -97,7 +97,7 @@ personas in YAML and a deterministic DuckDB builder validated against the servin
 Download with `AWS_PROFILE`; `data/raw` → bronze parquet; `_manifest.json` with rows and sha256
 per file; drift detection against the previous manifest; control file. `poe ingest`.
 
-**T5. dbt silver** [P0] (Juan José)
+**T5. dbt silver** [P0] (Santiago)
 Enforced contracts, `dq_*` flags, tests, `dq_report.md`; reproduce or refute other teams' public
 data findings and record them in `docs/decision_ledger.md`. Verify the `fraud_score` threshold
 (ADR 0003).

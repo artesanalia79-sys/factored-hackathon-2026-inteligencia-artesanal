@@ -1,0 +1,906 @@
+version: 2
+
+# Silver contracts. Every model: one row per business key, typed columns, dq_* flags (boolean,
+# never NULL) instead of dropped rows. Enums come from `vars.enums` in dbt_project.yml so the
+# accepted_values tests and the dq_invalid_enum flags share one list.
+# `severity: warn` is used only for measured source defects, each recorded in
+# docs/decision_ledger.md.
+
+x-dq:
+  cast_failed: &dq_cast_failed
+    name: dq_cast_failed
+    data_type: boolean
+    description: >
+      A non-empty source value did not survive typing: the cast failed (kept as NULL), a
+      decimal/integer cast changed the value (DuckDB rounds silently, e.g. '4.6' -> 5), or a
+      timestamp carried a UTC offset or `Z` suffix (DuckDB drops it silently). Macro
+      `cast_failed` in macros/silver.sql.
+    constraints: [{type: not_null}]
+  missing_required: &dq_missing_required
+    name: dq_missing_required
+    data_type: boolean
+    description: A column documented as NOT NULL is NULL or empty (after typing).
+    constraints: [{type: not_null}]
+  invalid_enum: &dq_invalid_enum
+    name: dq_invalid_enum
+    data_type: boolean
+    description: An enumerated column holds a value outside `vars.enums` in dbt_project.yml.
+    constraints: [{type: not_null}]
+  out_of_range: &dq_out_of_range
+    name: dq_out_of_range
+    data_type: boolean
+    description: A numeric or date value is outside its documented or logical range.
+    constraints: [{type: not_null}]
+  late_arrival: &dq_late_arrival
+    name: dq_late_arrival
+    data_type: boolean
+    description: >
+      process_date is after the UTC calendar date of the event. Source timestamps are UTC and
+      process_date is the batch date of a fixed UTC cutoff, which is never later than the UTC date.
+    constraints: [{type: not_null}]
+  orphan_customer: &dq_orphan_customer
+    name: dq_orphan_customer
+    data_type: boolean
+    description: customer_id is set but not present in silver_customers.
+    constraints: [{type: not_null}]
+  orphan_product: &dq_orphan_product
+    name: dq_orphan_product
+    data_type: boolean
+    description: The product foreign key is set but not present in silver_products.
+    constraints: [{type: not_null}]
+  orphan_branch: &dq_orphan_branch
+    name: dq_orphan_branch
+    data_type: boolean
+    description: The branch foreign key is set but not present in silver_branches.
+    constraints: [{type: not_null}]
+  orphan_agent: &dq_orphan_agent
+    name: dq_orphan_agent
+    data_type: boolean
+    description: The agent foreign key is set but not present in silver_service_agents.
+    constraints: [{type: not_null}]
+  orphan_interaction: &dq_orphan_interaction
+    name: dq_orphan_interaction
+    data_type: boolean
+    description: The interaction foreign key is set but not in silver_call_center_interactions.
+    constraints: [{type: not_null}]
+  orphan_campaign: &dq_orphan_campaign
+    name: dq_orphan_campaign
+    data_type: boolean
+    description: campaign_id is set but not present in silver_marketing_campaigns.
+    constraints: [{type: not_null}]
+  duplicate_count: &dq_duplicate_count
+    name: dq_duplicate_count
+    data_type: integer
+    description: Number of bronze rows sharing this business key (1 = no duplicate). One is kept.
+    constraints: [{type: not_null}]
+  any: &dq_any
+    name: dq_any
+    data_type: boolean
+    description: >
+      True when any dq_* flag is set or the key was duplicated. Exception: dq_orphan_branch in
+      silver_customers and silver_service_agents is not folded in (the source branch FK is a
+      random token on almost every row); read that flag directly.
+    constraints: [{type: not_null}]
+  process_date: &process_date
+    name: process_date
+    data_type: date
+    description: Source process (partition) date. Batch date of a fixed UTC cutoff (06:00 UTC; 08:00 for call center and complaints; surveys lag up to 2 days), close to local midnight in MX/CO/AR. Not the local business date (docs/evidence/data_audit.md A1).
+
+models:
+  - name: silver_branches
+    description: One row per branch_id. No address, phone, email or coordinates.
+    columns:
+      - name: branch_id
+        data_type: varchar
+        description: Branch ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: branch_code, data_type: varchar, description: Internal branch code.}
+      - {name: branch_name, data_type: varchar, description: Branch name.}
+      - name: branch_type
+        data_type: varchar
+        description: Main, Express, Premium, Corporate.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['branch_type'] }}"}}
+      - {name: city, data_type: varchar, description: City.}
+      - {name: state, data_type: varchar, description: State or province.}
+      - name: country
+        data_type: varchar
+        description: Country name as published.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['country'] }}"}}
+      - {name: country_code, data_type: varchar, description: ISO 3166-1 alpha-2 from country.}
+      - name: geographic_zone
+        data_type: varchar
+        description: Documented Urban, Suburban, Rural; the source publishes only `Urbana` (constant).
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['geographic_zone'] }}"}}
+      - {name: opening_time, data_type: time, description: Opening time.}
+      - {name: closing_time, data_type: time, description: Closing time.}
+      - {name: has_atms, data_type: boolean, description: Has ATMs.}
+      - {name: atm_count, data_type: integer, description: Number of ATMs.}
+      - {name: has_teller_windows, data_type: boolean, description: Has teller windows.}
+      - {name: teller_window_count, data_type: integer, description: Number of teller windows.}
+      - {name: branch_opening_date, data_type: date, description: Branch opening date.}
+      - name: branch_status
+        data_type: varchar
+        description: Active, Temporarily Closed, Closed.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['branch_status'] }}"}}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_out_of_range
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_customers
+    description: >
+      One row per customer_id (latest last_updated wins). document_number is replaced by
+      document_hash (sha256); email, phones, address, date of birth, credit score and income are
+      used only to compute flags and are not carried.
+    columns:
+      - name: customer_id
+        data_type: varchar
+        description: Customer ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: document_hash, data_type: varchar, description: sha256 hex of the trimmed identity document number.}
+      - name: document_type
+        data_type: varchar
+        description: DNI, CURP, CC, CE, Passport (source uses Pasaporte).
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['document_type'] }}"}}
+      - {name: first_name, data_type: varchar, description: First name (needed for greeting).}
+      - name: gender
+        data_type: varchar
+        description: M, F, O.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['gender'] }}"}}
+      - {name: city, data_type: varchar, description: City of residence.}
+      - {name: state, data_type: varchar, description: State or province.}
+      - name: country
+        data_type: varchar
+        description: Country name as published.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['country'] }}"}}
+      - {name: country_code, data_type: varchar, description: ISO 3166-1 alpha-2 (MX, CO, AR).}
+      - name: detected_accent
+        data_type: varchar
+        description: mexican, colombian, argentine, neutral.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['accent'] }}"}}
+      - name: segment
+        data_type: varchar
+        description: Premium, Plus, Basic, Student.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['segment'] }}"}}
+      - {name: registration_ts, data_type: timestamp, description: Registration timestamp (UTC).}
+      - {name: registration_date, data_type: date, description: UTC date of registration_ts.}
+      - name: registration_branch_id
+        data_type: varchar
+        description: Registration branch (documented FK; almost never resolves, see ledger).
+        data_tests:
+          - relationships:
+              arguments: {to: ref('silver_branches'), field: branch_id}
+              config: {severity: warn}
+      - name: customer_status
+        data_type: varchar
+        description: Active, Inactive, Suspended, Closed.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['customer_status'] }}"}}
+      - {name: last_updated_ts, data_type: timestamp, description: Last record update (UTC).}
+      - {name: accepts_marketing, data_type: boolean, description: Accepts marketing.}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_orphan_branch
+      - *dq_out_of_range
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_products
+    description: >
+      One row per product_id (latest last_updated wins). product_number is reduced to
+      card_last4 (last four digits); the full number is never carried.
+    columns:
+      - name: product_id
+        data_type: varchar
+        description: Product ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_type: varchar
+        description: Owner customer.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_customers'), field: customer_id}}
+      - name: product_type
+        data_type: varchar
+        description: Product type (the source publishes Spanish names).
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['product_type'] }}"}}
+      - {name: card_type, data_type: varchar, description: "credit, debit, or NULL for non-card products."}
+      - {name: card_last4, data_type: varchar, description: Last four digits of product_number.}
+      - name: currency
+        data_type: varchar
+        description: MXN, COP, ARS, USD.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['currency'] }}"}}
+      - {name: current_balance, data_type: "decimal(15,2)", description: Current balance.}
+      - {name: credit_limit, data_type: "decimal(15,2)", description: Credit limit.}
+      - {name: interest_rate, data_type: "decimal(5,2)", description: Annual interest rate (%).}
+      - {name: opening_date, data_type: date, description: Opening date.}
+      - {name: expiration_date, data_type: date, description: Expiration date.}
+      - name: opening_branch_id
+        data_type: varchar
+        description: Opening branch.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_branches'), field: branch_id}}
+      - name: product_status
+        data_type: varchar
+        description: Active, Blocked, Closed, Suspended.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['product_status'] }}"}}
+      - name: opening_channel
+        data_type: varchar
+        description: Branch, Web, App, Call Center.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['opening_channel'] }}"}}
+      - {name: has_linked_app, data_type: boolean, description: Linked to the mobile app.}
+      - {name: days_past_due, data_type: integer, description: Days past due (credits).}
+      - {name: last_transaction_ts, data_type: timestamp, description: Last transaction (UTC).}
+      - {name: last_updated_ts, data_type: timestamp, description: Last record update (UTC).}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_orphan_customer
+      - *dq_orphan_branch
+      - *dq_out_of_range
+      - name: dq_product_number_duplicate
+        data_type: boolean
+        description: >
+          product_number (documented UNIQUE) is held by more than one distinct product_id.
+          A duplicated bronze row of the same product does not set it (see dq_duplicate_count).
+        constraints: [{type: not_null}]
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_service_agents
+    description: One row per agent_id. Names, email and phone are not carried.
+    columns:
+      - name: agent_id
+        data_type: varchar
+        description: Agent ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: employee_code
+        data_type: varchar
+        description: Employee code (documented UNIQUE; measured duplicates, see ledger).
+        data_tests:
+          - unique: {config: {severity: warn}}
+      - name: native_accent
+        data_type: varchar
+        description: mexican, colombian, argentine.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['accent'] }}"}}
+      - name: country_of_origin
+        data_type: varchar
+        description: Country of origin.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['country'] }}"}}
+      - {name: country_code, data_type: varchar, description: ISO 3166-1 alpha-2 of country_of_origin.}
+      - name: assigned_branch_id
+        data_type: varchar
+        description: Assigned branch (documented FK; mostly unresolvable, see ledger).
+        data_tests:
+          - relationships:
+              arguments: {to: ref('silver_branches'), field: branch_id}
+              config: {severity: warn}
+      - name: agent_type
+        data_type: varchar
+        description: Phone, In-Person, Digital, Hybrid.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['agent_type'] }}"}}
+      - name: experience_level
+        data_type: varchar
+        description: Junior, Mid-Senior, Senior, Specialist.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['experience_level'] }}"}}
+      - {name: languages, data_type: varchar, description: Comma-separated languages (Spanish names).}
+      - {name: specialty, data_type: varchar, description: Specialty (Spanish).}
+      - {name: hire_date, data_type: date, description: Hire date.}
+      - {name: avg_csat, data_type: "decimal(3,2)", description: Average CSAT (1-5).}
+      - {name: total_monthly_interactions, data_type: integer, description: Interactions last month.}
+      - name: agent_status
+        data_type: varchar
+        description: Active, Vacation, Leave, Inactive.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['agent_status'] }}"}}
+      - name: work_shift
+        data_type: varchar
+        description: Morning, Afternoon, Night, Rotating.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['work_shift'] }}"}}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_orphan_branch
+      - *dq_out_of_range
+      - name: dq_employee_code_duplicate
+        data_type: boolean
+        description: >
+          employee_code (documented UNIQUE) is held by more than one distinct agent_id.
+          A duplicated bronze row of the same agent does not set it (see dq_duplicate_count).
+        constraints: [{type: not_null}]
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_marketing_campaigns
+    description: One row per campaign_id. Free-text description is not carried.
+    columns:
+      - name: campaign_id
+        data_type: varchar
+        description: Campaign ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: campaign_name, data_type: varchar, description: Campaign name.}
+      - name: campaign_type
+        data_type: varchar
+        description: Email, SMS, Push, WhatsApp, Voice, Mix.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['campaign_type'] }}"}}
+      - name: campaign_objective
+        data_type: varchar
+        description: Acquisition, Retention, Cross-sell, Up-sell, Reactivation.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['campaign_objective'] }}"}}
+      - {name: promoted_product, data_type: varchar, description: Promoted product (Spanish).}
+      - name: target_segment
+        data_type: varchar
+        description: Target segment.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['segment'] }}"}}
+      - name: target_country
+        data_type: varchar
+        description: Target country.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['country'] }}"}}
+      - {name: start_date, data_type: date, description: Start date.}
+      - {name: end_date, data_type: date, description: End date.}
+      - {name: budget, data_type: "decimal(12,2)", description: Budget.}
+      - name: campaign_status
+        data_type: varchar
+        description: Planned, Active, Paused, Completed.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['campaign_status'] }}"}}
+      - {name: expected_conversion_rate, data_type: "decimal(5,2)", description: Expected conversion rate (%).}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_out_of_range
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_daily_exchange_rates
+    description: >
+      One row per (rate_date, source_currency, target_currency): 12 ordered pairs of
+      MXN/COP/ARS/USD per day. fx_rate_id is the single-column surrogate key.
+    columns:
+      - name: fx_rate_id
+        data_type: varchar
+        description: "Surrogate key: YYYY-MM-DD|source|target."
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: rate_date, data_type: date, description: Rate date.}
+      - name: source_currency
+        data_type: varchar
+        description: Source currency.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['currency'] }}"}}
+      - name: target_currency
+        data_type: varchar
+        description: Target currency.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['currency'] }}"}}
+      - {name: exchange_rate, data_type: "decimal(12,6)", description: Units of target per unit of source.}
+      - {name: buy_rate, data_type: "decimal(12,6)", description: Bank buy rate.}
+      - {name: sell_rate, data_type: "decimal(12,6)", description: Bank sell rate.}
+      - {name: rate_source, data_type: varchar, description: Rate source (source column `source`).}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_out_of_range
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_transactions
+    description: >
+      One row per transaction_id. Money is DECIMAL straight from the source string. Contains the
+      offline-only fraud label is_fraud (ADR 0003): never select it in gold or serving.
+    columns:
+      - name: transaction_id
+        data_type: varchar
+        description: Transaction ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: transaction_ts, data_type: timestamp, description: Transaction timestamp (UTC).}
+      - *process_date
+      - name: product_id
+        data_type: varchar
+        description: Product (card/account) used.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_products'), field: product_id}}
+      - name: customer_id
+        data_type: varchar
+        description: Customer.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_customers'), field: customer_id}}
+      - name: transaction_type
+        data_type: varchar
+        description: Deposit, Withdrawal, Transfer, Payment, Purchase, Adjustment.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['transaction_type'] }}"}}
+      - name: transaction_category
+        data_type: varchar
+        description: Food, Transport, Services, Entertainment, Health, Other.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['transaction_category'] }}"}}
+      - {name: amount, data_type: "decimal(15,2)", description: Amount in the original currency.}
+      - name: currency
+        data_type: varchar
+        description: MXN, COP, ARS, USD.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['currency'] }}"}}
+      - {name: amount_usd, data_type: "decimal(15,2)", description: "Amount in USD as published by the source (fixed rate per currency; NULL for USD rows and ~5% of ARS/COP rows)."}
+      - {name: fx_rate_to_usd, data_type: "decimal(12,6)", description: "Daily currency->USD rate for process_date, the batch date (1 for USD). Not used by the source amount_usd (fixed rate)."}
+      - name: channel
+        data_type: varchar
+        description: ATM, Branch, Web, App, POS, Transfer.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['transaction_channel'] }}"}}
+      - name: branch_id
+        data_type: varchar
+        description: Branch (if applicable).
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_branches'), field: branch_id}}
+      - {name: merchant_name, data_type: varchar, description: Merchant name (purchases).}
+      - name: merchant_category
+        data_type: varchar
+        description: Merchant category (same values as transaction_category).
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['transaction_category'] }}"}}
+      - {name: transaction_country, data_type: varchar, description: Country name as published (mixed spellings).}
+      - {name: transaction_country_code, data_type: varchar, description: ISO 3166-1 alpha-2 from transaction_country.}
+      - {name: transaction_city, data_type: varchar, description: City.}
+      - name: transaction_status
+        data_type: varchar
+        description: Approved, Declined, Pending, Reversed.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['transaction_status'] }}"}}
+      - {name: response_code, data_type: varchar, description: System response code.}
+      - {name: fraud_score, data_type: "decimal(5,2)", description: Fraud risk score 0-100 (policy-only input, ADR 0003).}
+      - name: is_fraud
+        data_type: boolean
+        description: >
+          Retrospective fraud LABEL. Offline analysis and evaluation only; FORBIDDEN at runtime
+          (ADR 0003). Feeds no dq_* flag (not even dq_cast_failed / dq_missing_required).
+        meta: {offline_only: true, forbidden_in_serving: true}
+        tags: ["offline_only"]
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_orphan_customer
+      - *dq_orphan_product
+      - *dq_orphan_branch
+      - name: dq_product_customer_mismatch
+        data_type: boolean
+        description: The product exists but belongs to a different customer.
+        constraints: [{type: not_null}]
+      - *dq_out_of_range
+      - *dq_late_arrival
+      - name: dq_missing_fx_rate
+        data_type: boolean
+        description: Non-USD transaction with no currency->USD rate on its process_date.
+        constraints: [{type: not_null}]
+      - name: dq_amount_usd_mismatch
+        data_type: boolean
+        description: >
+          Currency in vars.amount_usd_fixed_rate (ARS, COP), amount_usd not NULL and
+          |amount_usd - round(amount / fixed_rate, 2)| > vars.amount_usd_tolerance_usd (absolute
+          USD). The source uses a fixed rate, not the daily FX table.
+        constraints: [{type: not_null}]
+      - name: dq_amount_usd_missing
+        data_type: boolean
+        description: >
+          Currency in vars.amount_usd_fixed_rate (ARS, COP) with NULL amount_usd. USD rows have
+          NULL amount_usd by design (T6 fills them with amount) and are not flagged.
+        constraints: [{type: not_null}]
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_call_center_interactions
+    description: One row per interaction_id (feeds the call-center contact baseline).
+    columns:
+      - name: interaction_id
+        data_type: varchar
+        description: Interaction ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: interaction_ts, data_type: timestamp, description: Interaction timestamp (UTC).}
+      - *process_date
+      - name: customer_id
+        data_type: varchar
+        description: Customer.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_customers'), field: customer_id}}
+      - name: agent_id
+        data_type: varchar
+        description: Agent.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_service_agents'), field: agent_id}}
+      - name: interaction_type
+        data_type: varchar
+        description: Inbound Call, Outbound Call, Chat, Email, Video.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['interaction_type'] }}"}}
+      - name: channel
+        data_type: varchar
+        description: Phone, Web Chat, WhatsApp, Email, App (source also uses Web).
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['interaction_channel'] }}"}}
+      - {name: contact_reason, data_type: varchar, description: Main contact reason (Spanish).}
+      - name: reason_category
+        data_type: varchar
+        description: Reason category (source publishes Spanish labels).
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['reason_category'] }}"}}
+      - {name: duration_seconds, data_type: integer, description: Duration in seconds.}
+      - {name: wait_time_seconds, data_type: integer, description: Wait time in seconds.}
+      - {name: was_resolved, data_type: boolean, description: Resolved on first contact (FCR).}
+      - {name: requires_followup, data_type: boolean, description: Requires follow-up.}
+      - name: detected_sentiment
+        data_type: varchar
+        description: Sentiment label (source publishes Spanish labels).
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['sentiment'] }}"}}
+      - {name: sentiment_score, data_type: "decimal(3,2)", description: Sentiment score (-1 to 1).}
+      - {name: customer_detected_accent, data_type: varchar, description: Customer accent.}
+      - {name: agent_used_accent, data_type: varchar, description: Agent accent.}
+      - {name: was_escalated, data_type: boolean, description: Escalated to supervisor.}
+      - {name: mentioned_products, data_type: varchar, description: Comma-separated product IDs.}
+      - {name: has_transcript, data_type: boolean, description: Has transcript.}
+      - {name: has_recording, data_type: boolean, description: Has recording.}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_orphan_customer
+      - *dq_orphan_agent
+      - *dq_out_of_range
+      - *dq_late_arrival
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_call_transcripts
+    description: One row per transcript_id. mentioned_entities is not carried.
+    columns:
+      - name: transcript_id
+        data_type: varchar
+        description: Transcript ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: interaction_id
+        data_type: varchar
+        description: Related interaction.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_call_center_interactions'), field: interaction_id}}
+      - *process_date
+      - name: customer_id
+        data_type: varchar
+        description: Customer.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_customers'), field: customer_id}}
+      - name: agent_id
+        data_type: varchar
+        description: Agent.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_service_agents'), field: agent_id}}
+      - {name: full_text, data_type: varchar, description: Full transcript (Spanish).}
+      - {name: customer_text, data_type: varchar, description: Customer turns.}
+      - {name: agent_text, data_type: varchar, description: Agent turns.}
+      - {name: detected_language, data_type: varchar, description: Main language.}
+      - name: detected_accent
+        data_type: varchar
+        description: Accent.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['accent'] }}"}}
+      - {name: accent_confidence, data_type: "decimal(3,2)", description: Accent confidence (0-1).}
+      - {name: detected_keywords, data_type: varchar, description: Keywords.}
+      - {name: detected_intents, data_type: varchar, description: Intents.}
+      - {name: main_topics, data_type: varchar, description: Main topics.}
+      - {name: transcription_model, data_type: varchar, description: Speech-to-text model.}
+      - name: audio_quality
+        data_type: varchar
+        description: High, Medium, Low.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['audio_quality'] }}"}}
+      - {name: duration_seconds, data_type: integer, description: Call duration in seconds.}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_orphan_interaction
+      - *dq_orphan_customer
+      - *dq_orphan_agent
+      - *dq_out_of_range
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_satisfaction_surveys
+    description: One row per survey_id. Question texts and open comments are not carried.
+    columns:
+      - name: survey_id
+        data_type: varchar
+        description: Survey ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: survey_ts, data_type: timestamp, description: Response timestamp (UTC).}
+      - *process_date
+      - name: interaction_id
+        data_type: varchar
+        description: Evaluated interaction.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_call_center_interactions'), field: interaction_id}}
+      - name: customer_id
+        data_type: varchar
+        description: Customer.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_customers'), field: customer_id}}
+      - name: agent_id
+        data_type: varchar
+        description: Evaluated agent.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_service_agents'), field: agent_id}}
+      - name: survey_type
+        data_type: varchar
+        description: CSAT, NPS, CES.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['survey_type'] }}"}}
+      - name: send_channel
+        data_type: varchar
+        description: Email, SMS, IVR, App, Web.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['survey_channel'] }}"}}
+      - {name: main_score, data_type: integer, description: 1-5 for CSAT/CES, 0-10 for NPS.}
+      - name: nps_category
+        data_type: varchar
+        description: Promoter, Passive, Detractor.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['nps_category'] }}"}}
+      - {name: question_1_response, data_type: integer, description: Response 1-5.}
+      - {name: question_2_response, data_type: integer, description: Response 1-5.}
+      - {name: question_3_response, data_type: integer, description: Response 1-5.}
+      - name: comment_sentiment
+        data_type: varchar
+        description: Comment sentiment.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['comment_sentiment'] }}"}}
+      - {name: response_time_hours, data_type: "decimal(8,2)", description: Hours between interaction and response.}
+      - {name: campaign_response_rate, data_type: "decimal(5,2)", description: Campaign response rate (%).}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_orphan_interaction
+      - *dq_orphan_customer
+      - *dq_orphan_agent
+      - *dq_out_of_range
+      - *dq_late_arrival
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_digital_events
+    description: One row per event_id. ip_address is not carried.
+    columns:
+      - name: event_id
+        data_type: varchar
+        description: Event ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: event_ts, data_type: timestamp, description: Event timestamp (UTC).}
+      - *process_date
+      - name: customer_id
+        data_type: varchar
+        description: Customer (nullable for anonymous sessions).
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_customers'), field: customer_id}}
+      - {name: session_id, data_type: varchar, description: Session ID.}
+      - name: event_type
+        data_type: varchar
+        description: PageView, Click, FormSubmit, Login, Logout, Error, Purchase.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['event_type'] }}"}}
+      - name: event_category
+        data_type: varchar
+        description: Navigation, Transaction, Authentication, Product.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['event_category'] }}"}}
+      - name: channel
+        data_type: varchar
+        description: Android App, iOS App, Desktop Web, Mobile Web.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['digital_channel'] }}"}}
+      - name: platform
+        data_type: varchar
+        description: Android, iOS, Windows, MacOS, Linux.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['platform'] }}"}}
+      - {name: browser, data_type: varchar, description: Browser.}
+      - {name: app_version, data_type: varchar, description: App version.}
+      - {name: page_url, data_type: varchar, description: Page URL path.}
+      - {name: page_title, data_type: varchar, description: Page title.}
+      - {name: action, data_type: varchar, description: Action.}
+      - {name: element_id, data_type: varchar, description: UI element ID.}
+      - name: product_id
+        data_type: varchar
+        description: Related product.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_products'), field: product_id}}
+      - {name: event_value, data_type: "decimal(15,2)", description: Monetary value.}
+      - {name: duration_seconds, data_type: integer, description: Duration in seconds.}
+      - {name: ip_country, data_type: varchar, description: Country by IP as published.}
+      - {name: ip_country_code, data_type: varchar, description: ISO 3166-1 alpha-2 from ip_country.}
+      - {name: ip_city, data_type: varchar, description: City by IP.}
+      - {name: is_mobile, data_type: boolean, description: From a mobile device.}
+      - {name: referrer, data_type: varchar, description: Referrer URL.}
+      - {name: utm_source, data_type: varchar, description: UTM source.}
+      - {name: utm_medium, data_type: varchar, description: UTM medium.}
+      - {name: utm_campaign, data_type: varchar, description: UTM campaign.}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_orphan_customer
+      - *dq_orphan_product
+      - *dq_out_of_range
+      - *dq_late_arrival
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_complaints
+    description: One row per complaint_id (feeds dispute history and the complaints baseline).
+    columns:
+      - name: complaint_id
+        data_type: varchar
+        description: Complaint/claim ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: creation_ts, data_type: timestamp, description: Creation timestamp (UTC).}
+      - *process_date
+      - name: customer_id
+        data_type: varchar
+        description: Customer.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_customers'), field: customer_id}}
+      - name: case_type
+        data_type: varchar
+        description: Complaint, Claim, Request, Suggestion.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['case_type'] }}"}}
+      - {name: category, data_type: varchar, description: Case category.}
+      - {name: subcategory, data_type: varchar, description: Subcategory (Spanish).}
+      - name: reception_channel
+        data_type: varchar
+        description: Call Center, Email, Web, App, Branch, Regulator.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['reception_channel'] }}"}}
+      - name: affected_product_id
+        data_type: varchar
+        description: Affected product.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_products'), field: product_id}}
+      - name: related_branch_id
+        data_type: varchar
+        description: Related branch.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_branches'), field: branch_id}}
+      - name: origin_interaction_id
+        data_type: varchar
+        description: Originating interaction (always NULL in the published data, see ledger).
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_call_center_interactions'), field: interaction_id}}
+      - {name: description, data_type: varchar, description: Case description (Spanish).}
+      - {name: claimed_amount, data_type: "decimal(15,2)", description: Claimed amount.}
+      - name: currency
+        data_type: varchar
+        description: Currency of claimed_amount.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['currency'] }}"}}
+      - name: priority
+        data_type: varchar
+        description: Low, Medium, High, Critical.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['priority'] }}"}}
+      - name: status
+        data_type: varchar
+        description: Open, In Process, Escalated, Resolved, Closed, Rejected.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['complaint_status'] }}"}}
+      - name: assigned_agent_id
+        data_type: varchar
+        description: Assigned agent.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_service_agents'), field: agent_id}}
+      - {name: assignment_ts, data_type: timestamp, description: Assignment timestamp (UTC).}
+      - {name: first_response_ts, data_type: timestamp, description: First response (UTC).}
+      - {name: resolution_ts, data_type: timestamp, description: Resolution (UTC).}
+      - {name: closing_ts, data_type: timestamp, description: Closing (UTC).}
+      - {name: sla_breached, data_type: boolean, description: SLA breached.}
+      - {name: resolution_days, data_type: integer, description: Days to resolution.}
+      - {name: resolution, data_type: varchar, description: Resolution text (Spanish).}
+      - {name: compensation_granted, data_type: "decimal(15,2)", description: Compensation granted.}
+      - {name: resolution_satisfaction, data_type: integer, description: Satisfaction 1-5.}
+      - {name: is_repeat_complainer, data_type: boolean, description: Previous complaints in the last 90 days.}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_orphan_customer
+      - *dq_orphan_product
+      - *dq_orphan_branch
+      - *dq_orphan_interaction
+      - *dq_orphan_agent
+      - *dq_out_of_range
+      - *dq_late_arrival
+      - *dq_duplicate_count
+      - *dq_any
+
+  - name: silver_campaign_sends
+    description: One row per send_id.
+    columns:
+      - name: send_id
+        data_type: varchar
+        description: Send ID (business key).
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: send_ts, data_type: timestamp, description: Send timestamp (UTC).}
+      - *process_date
+      - name: campaign_id
+        data_type: varchar
+        description: Campaign.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_marketing_campaigns'), field: campaign_id}}
+      - name: customer_id
+        data_type: varchar
+        description: Recipient.
+        data_tests:
+          - relationships: {arguments: {to: ref('silver_customers'), field: customer_id}}
+      - name: send_channel
+        data_type: varchar
+        description: Email, SMS, Push, WhatsApp, Voice.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['send_channel'] }}"}}
+      - {name: template_used, data_type: varchar, description: Template.}
+      - {name: subject, data_type: varchar, description: Subject (Spanish).}
+      - name: send_status
+        data_type: varchar
+        description: Sent, Failed, Bounced, Blocked.
+        data_tests:
+          - accepted_values: {arguments: {values: "{{ var('enums')['send_status'] }}"}}
+      - {name: was_delivered, data_type: boolean, description: Delivered.}
+      - {name: was_opened, data_type: boolean, description: Opened.}
+      - {name: open_ts, data_type: timestamp, description: Open timestamp (UTC).}
+      - {name: was_clicked, data_type: boolean, description: Clicked.}
+      - {name: click_ts, data_type: timestamp, description: First click (UTC).}
+      - {name: click_count, data_type: integer, description: Click count.}
+      - {name: had_conversion, data_type: boolean, description: Converted.}
+      - {name: conversion_ts, data_type: timestamp, description: Conversion timestamp (UTC).}
+      - {name: conversion_value, data_type: "decimal(15,2)", description: Conversion value.}
+      - {name: open_device, data_type: varchar, description: Device.}
+      - {name: open_country, data_type: varchar, description: Country where opened.}
+      - {name: failure_reason, data_type: varchar, description: Failure reason.}
+      - {name: send_cost, data_type: "decimal(10,4)", description: Send cost.}
+      - *dq_cast_failed
+      - *dq_missing_required
+      - *dq_invalid_enum
+      - *dq_orphan_campaign
+      - *dq_orphan_customer
+      - *dq_out_of_range
+      - *dq_late_arrival
+      - *dq_duplicate_count
+      - *dq_any
