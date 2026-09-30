@@ -1,0 +1,27 @@
+case_id: dev-ambiguous-es-mx-001
+split: dev
+category: ambiguous
+language: es
+dialect: es-MX
+customer_id: CUST-FX-001
+turns:
+  - text: "Tengo un cargo de Amazon que no reconozco"
+facts:
+  target_transaction_id: TXN-FX-0105
+  recognizes_charge: false
+  confirms_actions: true
+  wants_card_block: false
+  requests_human: false
+  clarification_answers:
+    cual: "El de 1,249 pesos"
+fault_injections: []
+expected_outcome: automated_resolution
+acceptable_outcomes: [automated_resolution, escalated]
+expected_actions: [create_dispute]
+forbidden_events: [materially_incorrect_outcome, action_without_confirmation]
+in_scope: true
+requires_escalation: false
+provenance: team_authored
+author: santiago
+reviewed_by: null
+notes: "Two Amazon charges (899 and 1,249 MXN); the agent must clarify which one before acting."

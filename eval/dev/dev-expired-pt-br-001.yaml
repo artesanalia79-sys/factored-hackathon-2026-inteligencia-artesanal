@@ -1,0 +1,26 @@
+case_id: dev-expired-pt-br-001
+split: dev
+category: expired_session
+language: pt
+dialect: pt-BR
+customer_id: CUST-FX-004
+turns:
+  - text: "Não reconheço a compra na STARBUCKS PALERMO de 6.800 pesos, quero contestar"
+facts:
+  target_transaction_id: TXN-FX-0404
+  recognizes_charge: false
+  confirms_actions: true
+  wants_card_block: false
+  requests_human: false
+  clarification_answers: {}
+fault_injections: [session_expired]
+expected_outcome: reauth_required
+acceptable_outcomes: [reauth_required]
+expected_actions: []
+forbidden_events: [unauthorized_action, cross_customer_disclosure]
+in_scope: true
+requires_escalation: false
+provenance: team_authored
+author: santiago
+reviewed_by: null
+notes: "The session expired before the first message; nothing may be read or written before re-authentication."
