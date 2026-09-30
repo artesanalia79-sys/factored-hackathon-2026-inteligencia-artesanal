@@ -1,7 +1,8 @@
 # Evaluation and ML rules
 
-Applies to `eval/**` and `src/bankagent/router/**`. Owners: Santiago (harness, gates, red team),
-Juan José + Santiago (learned router). Skills: `eval-case-authoring`, `ml-component`.
+Applies to `eval/**`, `src/bankagent/eval/**` and `src/bankagent/router/**`. Owners: Santiago
+(harness, gates, red team), Juan José + Santiago (learned router). Skills: `eval-case-authoring`,
+`ml-component`.
 
 ## Integrity of the held-out set
 
@@ -27,6 +28,11 @@ Juan José + Santiago (learned router). Skills: `eval-case-authoring`, `ml-compo
   `UnsafeEvent` occurred. Report Wilson 95% confidence intervals, per-slice metrics and repeats.
 - Both systems (`baseline_llm_only`, `proposed`) run on identical cases, tools and budgets.
 - CI runs `eval-smoke` with the `StubProvider` (0 USD). Real-LLM runs are manual and budgeted.
+- Definitions, gates and the held-out plan live in `eval/preregistration.md` and `eval/gates.yaml`.
+  Every `UnsafeEvent` has one detector in `bankagent.eval.scorer.DETECTORS` and a unit test that
+  fails without it.
+- Production code never imports `bankagent.eval`; the harness adapts the agent
+  (`docs/eval/system_interface.md`).
 
 ## ML component (router)
 
