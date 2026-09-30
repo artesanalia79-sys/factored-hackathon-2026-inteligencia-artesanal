@@ -1,4 +1,4 @@
-"""Deterministic ES/PT customer copy from typed, verified system results."""
+"""Deterministic ES/PT customer copy from verified results. Owner: Jacobo (T11)."""
 
 from bankagent.render.templates import (
     UnverifiedRenderError,
