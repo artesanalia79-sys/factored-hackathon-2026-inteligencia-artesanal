@@ -156,7 +156,7 @@ def test_expected_or_label_only_oddities_raise_no_flag(built: Built) -> None:
     assert flagged_fx == (0,)
 
 
-def test_fx_rate_is_joined_on_the_local_process_date(built: Built) -> None:
+def test_fx_rate_is_joined_on_the_process_date(built: Built) -> None:
     with _con(built.config) as con:
         row = con.execute(
             "SELECT fx_rate_to_usd, dq_missing_fx_rate FROM silver_transactions "

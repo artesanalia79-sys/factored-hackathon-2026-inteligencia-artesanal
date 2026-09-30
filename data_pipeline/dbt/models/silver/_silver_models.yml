@@ -36,7 +36,7 @@ x-dq:
     data_type: boolean
     description: >
       process_date is after the UTC calendar date of the event. Source timestamps are UTC and
-      process_date is the local business date, which is never later than the UTC date.
+      process_date is the batch date of a fixed UTC cutoff, which is never later than the UTC date.
     constraints: [{type: not_null}]
   orphan_customer: &dq_orphan_customer
     name: dq_orphan_customer
@@ -84,7 +84,7 @@ x-dq:
   process_date: &process_date
     name: process_date
     data_type: date
-    description: Source process (partition) date, local business date.
+    description: Source process (partition) date. Batch date of a fixed UTC cutoff (06:00 UTC; 08:00 for call center and complaints; surveys lag up to 2 days), close to local midnight in MX/CO/AR. Not the local business date (docs/evidence/data_audit.md A1).
 
 models:
   - name: silver_branches
@@ -452,7 +452,7 @@ models:
         data_tests:
           - accepted_values: {arguments: {values: "{{ var('enums')['currency'] }}"}}
       - {name: amount_usd, data_type: "decimal(15,2)", description: "Amount in USD as published by the source (fixed rate per currency; NULL for USD rows and ~5% of ARS/COP rows)."}
-      - {name: fx_rate_to_usd, data_type: "decimal(12,6)", description: "Daily currency->USD rate for process_date, the local business date (1 for USD). Not used by the source amount_usd (fixed rate)."}
+      - {name: fx_rate_to_usd, data_type: "decimal(12,6)", description: "Daily currency->USD rate for process_date, the batch date (1 for USD). Not used by the source amount_usd (fixed rate)."}
       - name: channel
         data_type: varchar
         description: ATM, Branch, Web, App, POS, Transfer.

@@ -120,8 +120,9 @@ flagged as (
         from {{ ref('silver_daily_exchange_rates') }}
         where target_currency = 'USD'
     ) as fx
-        -- process_date is the local business date, the calendar the FX table is published in
-        -- (25% of transactions have a UTC date one day later).
+        -- process_date is the batch date of a fixed 06:00 UTC cutoff (local midnight to 03:00 in
+        -- MX/CO/AR), not the local business date; 25% of transactions have a UTC date one day
+        -- later. Joining on it leaves no transaction without a rate (data_audit.md A1).
         on fx.rate_date = t.process_date
         and fx.source_currency = t.currency
 ),

@@ -1,6 +1,6 @@
 -- process_date minus the UTC date of the event, per fact table. Aggregates only.
--- A lag of -1 is the local-vs-UTC day boundary (source timestamps are UTC, process_date is the
--- local business date); a lag > 0 would be a late arrival.
+-- A lag of -1 is the batch cutoff (source timestamps are UTC, process_date is the batch date of a
+-- fixed UTC cutoff, see process_date_cutoff.sql); a lag > 0 would be a late arrival.
 select 'transactions' as source_table, datediff('day', cast(transaction_ts as date), process_date) as lag_days, count(*) as rows
 from {{ ref('silver_transactions') }} group by 1, 2
 union all
