@@ -43,7 +43,7 @@ loads them through `.kiro/steering/`, Claude Code through nested `CLAUDE.md` imp
 |---|---|---|
 | Data pipeline | `data_pipeline/**`, `src/bankagent/fixtures/**`, `tests/fixtures/**` | `docs/rules/data-pipeline.md` |
 | Backend / agent | `src/bankagent/**`, `policy/**`, `config/**` | `docs/rules/backend.md` |
-| Evaluation / ML | `eval/**`, `src/bankagent/router/**` | `docs/rules/eval.md` |
+| Evaluation / ML | `eval/**`, `src/bankagent/eval/**`, `src/bankagent/router/**` | `docs/rules/eval.md` |
 | Web UI | `web/**` | `docs/rules/web.md` |
 
 ## Repository map
@@ -57,6 +57,7 @@ src/bankagent/            Python package
   contracts/              shared Pydantic contracts + JSON Schema export (Task 3)
   fixtures/               deterministic fixture-bank builder (Task 3)
   interpret/              LLM interpreter + StubProvider/keyword baseline (Tasks 3, 10)
+  eval/                   evaluation harness: simulator, runners, scorer, metrics, gates (Task 12)
   api/ auth/ orchestrator/ policy/ tools/ store/ render/ router/ obs/
 data_pipeline/            ingest (Task 4) + dbt project (Tasks 5-6)
 eval/                     harness, dev cases, pre-registration, gates (Tasks 12, 17, 27)
