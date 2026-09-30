@@ -1,6 +1,6 @@
 # Backend and agent rules
 
-Applies to `src/bankagent/**` (except `fixtures/` and `router/`, see their rule files),
+Applies to `src/bankagent/**` (except `fixtures/`, `router/` and `eval/`, see their rule files),
 `policy/**` and `config/**`. Owners: Victor (auth, tools, policy, orchestrator), Jacobo
 (interpreter, templates). Skills: `tool-contract`, `policy-rule`, `data-contracts`.
 

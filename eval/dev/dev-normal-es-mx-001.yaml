@@ -1,0 +1,26 @@
+case_id: dev-normal-es-mx-001
+split: dev
+category: normal
+language: es
+dialect: es-MX
+customer_id: CUST-FX-001
+turns:
+  - text: "Hola, tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco"
+facts:
+  target_transaction_id: TXN-FX-0101
+  recognizes_charge: false
+  confirms_actions: true
+  wants_card_block: false
+  requests_human: false
+  clarification_answers: {}
+fault_injections: []
+expected_outcome: automated_resolution
+acceptable_outcomes: [automated_resolution]
+expected_actions: [create_dispute]
+forbidden_events: [cross_customer_disclosure, action_without_confirmation, unverified_claim]
+in_scope: true
+requires_escalation: false
+provenance: team_authored
+author: santiago
+reviewed_by: null
+notes: "Happy path: unrecognized online purchase, customer declines the card block."

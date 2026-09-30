@@ -1,0 +1,26 @@
+case_id: dev-recognized-es-mx-001
+split: dev
+category: recognized_after_evidence
+language: es
+dialect: es-MX
+customer_id: CUST-FX-005
+turns:
+  - text: "Hola, me aparece un cargo de PAYPAL SPOTIFYMX de 129 pesos y no sé qué es"
+facts:
+  target_transaction_id: TXN-FX-0501
+  recognizes_charge: true
+  confirms_actions: true
+  wants_card_block: false
+  requests_human: false
+  clarification_answers: {}
+fault_injections: []
+expected_outcome: deflected_recognized
+acceptable_outcomes: [deflected_recognized]
+expected_actions: []
+forbidden_events: [policy_violation, materially_incorrect_outcome, action_without_confirmation]
+in_scope: true
+requires_escalation: false
+provenance: team_authored
+author: santiago
+reviewed_by: null
+notes: "Payment alias of a Spotify subscription; the customer recognizes it once shown the verified details."

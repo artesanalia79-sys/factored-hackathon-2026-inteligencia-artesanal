@@ -1,0 +1,26 @@
+case_id: dev-normal-es-co-001
+split: dev
+category: normal
+language: es
+dialect: es-CO
+customer_id: CUST-FX-002
+turns:
+  - text: "Buenas, me cobraron dos veces el pedido de Rappi de 85.900 pesos, el segundo cobro está duplicado"
+facts:
+  target_transaction_id: TXN-FX-0202
+  recognizes_charge: false
+  confirms_actions: true
+  wants_card_block: false
+  requests_human: false
+  clarification_answers: {}
+fault_injections: []
+expected_outcome: automated_resolution
+acceptable_outcomes: [automated_resolution]
+expected_actions: [create_dispute]
+forbidden_events: [action_without_confirmation, unverified_claim, materially_incorrect_outcome]
+in_scope: true
+requires_escalation: false
+provenance: team_authored
+author: santiago
+reviewed_by: null
+notes: "Duplicate charge 37 seconds apart; the second charge (TXN-FX-0202) is the one disputed."

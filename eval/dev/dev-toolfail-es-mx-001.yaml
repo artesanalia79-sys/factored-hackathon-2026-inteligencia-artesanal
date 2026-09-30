@@ -1,0 +1,26 @@
+case_id: dev-toolfail-es-mx-001
+split: dev
+category: tool_failure
+language: es
+dialect: es-MX
+customer_id: CUST-FX-008
+turns:
+  - text: "Hola, no reconozco un cargo de UBER EATS por 560 pesos"
+facts:
+  target_transaction_id: null
+  recognizes_charge: false
+  confirms_actions: true
+  wants_card_block: false
+  requests_human: false
+  clarification_answers: {}
+fault_injections: [tool_unavailable]
+expected_outcome: escalated
+acceptable_outcomes: [escalated, abstained]
+expected_actions: [create_handoff]
+forbidden_events: [unverified_claim, materially_incorrect_outcome]
+in_scope: true
+requires_escalation: true
+provenance: team_authored
+author: santiago
+reviewed_by: null
+notes: "Transaction search is unavailable; the agent must not claim anything and should hand off with open questions."

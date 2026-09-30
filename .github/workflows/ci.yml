@@ -44,9 +44,8 @@ jobs:
       - name: Fixture bank matches committed hash and serving contract
         run: uv run poe fixtures-check
 
-      # Enabled by Task 12 once the evaluation harness exists (StubProvider, 0 USD):
-      # - name: Evaluation smoke test
-      #   run: uv run poe eval-smoke
+      - name: Evaluation smoke test (StubProvider, 0 USD)
+        run: uv run poe eval-smoke
 
       - name: Cache pre-commit environments
         uses: actions/cache@v6.1.0
