@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      Bronze parquet written by the T4 ingest (`src/bankagent/ingest/`): one file per table,
+      every column a string, verified against `_manifest.json` before every build.
+    config:
+      meta:
+        external_location: "read_parquet('{{ env_var('BRONZE_DIR', 'data/bronze') }}/{name}.parquet')"
+    tables:
+      - name: customers
+      - name: products
+      - name: branches
+      - name: service_agents
+      - name: marketing_campaigns
+      - name: transactions
+      - name: call_center_interactions
+      - name: call_transcripts
+      - name: satisfaction_surveys
+      - name: digital_events
+      - name: complaints
+      - name: campaign_sends
+      - name: daily_exchange_rates
