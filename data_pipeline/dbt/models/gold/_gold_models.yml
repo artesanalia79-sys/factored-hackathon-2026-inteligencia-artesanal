@@ -1,0 +1,209 @@
+version: 2
+
+# Gold contracts (T6). The six serving models match src/bankagent/contracts/serving.py exactly
+# (names without the `gold_` prefix, column order, types, NOT NULL, primary key); the serving
+# build (src/bankagent/gold/build.py) copies them into the serving DB and runs
+# validate_serving_db(). The two baselines feed T16 and never reach the serving DB.
+# No model selects a FORBIDDEN_COLUMN (is_fraud, contact data, document number, ...);
+# tests/gold asserts it on every gold and serving table.
+
+models:
+  - name: gold_customer_profile_min
+    description: Serving customer_profile_min. Minimal profile for session and language.
+    columns:
+      - name: customer_id
+        data_type: varchar
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: document_hash
+        data_type: varchar
+        description: sha256 of the trimmed identity document (from silver).
+        constraints: [{type: not_null}]
+      - {name: first_name, data_type: varchar, constraints: [{type: not_null}]}
+      - name: country
+        data_type: varchar
+        description: ISO 3166-1 alpha-2 of the customer country (silver country_code).
+        constraints: [{type: not_null}]
+        data_tests:
+          - accepted_values: {arguments: {values: ["MX", "CO", "AR"]}}
+      - {name: segment, data_type: varchar, constraints: [{type: not_null}]}
+      - {name: customer_status, data_type: varchar, constraints: [{type: not_null}]}
+      - name: preferred_language
+        data_type: varchar
+        description: Constant `vars.gold_default_preferred_language` (the source has no language).
+        constraints: [{type: not_null}]
+        data_tests:
+          - accepted_values: {arguments: {values: ["es", "pt"]}}
+      - {name: registration_date, data_type: date, constraints: [{type: not_null}]}
+
+  - name: gold_customer_cards
+    description: Serving customer_cards. Credit and debit cards of served customers.
+    columns:
+      - name: product_id
+        data_type: varchar
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_type: varchar
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships: {arguments: {to: ref('gold_customer_profile_min'), field: customer_id}}
+      - name: card_type
+        data_type: varchar
+        constraints: [{type: not_null}]
+        data_tests:
+          - accepted_values: {arguments: {values: ["credit", "debit"]}}
+      - name: card_last4
+        data_type: varchar
+        description: Last four digits only; the full product_number never leaves silver.
+        constraints: [{type: not_null}]
+      - {name: currency, data_type: varchar, constraints: [{type: not_null}]}
+      - {name: product_status, data_type: varchar, constraints: [{type: not_null}]}
+      - {name: opening_date, data_type: date, constraints: [{type: not_null}]}
+      - {name: expiration_date, data_type: date}
+
+  - name: gold_transactions_enriched
+    description: >
+      Serving transactions_enriched. Card transactions on served cards by the card owner.
+      Incremental with a `vars.gold_lookback_days` window for late arrivals.
+    columns:
+      - name: transaction_id
+        data_type: varchar
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_type: varchar
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships: {arguments: {to: ref('gold_customer_profile_min'), field: customer_id}}
+      - name: product_id
+        data_type: varchar
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships: {arguments: {to: ref('gold_customer_cards'), field: product_id}}
+      - {name: transaction_ts, data_type: timestamp, description: UTC., constraints: [{type: not_null}]}
+      - {name: process_date, data_type: date, description: Source batch date., constraints: [{type: not_null}]}
+      - {name: transaction_type, data_type: varchar, constraints: [{type: not_null}]}
+      - {name: transaction_category, data_type: varchar}
+      - {name: amount, data_type: "decimal(15,2)", description: Original currency., constraints: [{type: not_null}]}
+      - {name: currency, data_type: varchar, constraints: [{type: not_null}]}
+      - name: amount_usd
+        data_type: "decimal(15,2)"
+        description: >
+          Source amount_usd; when NULL, amount for USD and round(amount / fixed rate, 2) for
+          ARS/COP (`vars.amount_usd_fixed_rate`, the rate the source itself uses).
+      - {name: channel, data_type: varchar, constraints: [{type: not_null}]}
+      - {name: merchant_name, data_type: varchar}
+      - {name: merchant_category, data_type: varchar}
+      - name: transaction_country
+        data_type: varchar
+        description: ISO 3166-1 alpha-2 (silver transaction_country_code).
+        constraints: [{type: not_null}]
+      - {name: transaction_city, data_type: varchar}
+      - {name: transaction_status, data_type: varchar, constraints: [{type: not_null}]}
+      - name: fraud_score
+        data_type: double
+        description: Policy-only input (ADR 0003). Never shown to the model or the customer.
+      - name: is_foreign
+        data_type: boolean
+        description: transaction_country differs from the customer's country (residence).
+        constraints: [{type: not_null}]
+      - name: dq_flags
+        data_type: "varchar[]"
+        description: >
+          Sorted names of the true silver dq_* flags (without dq_any and dq_duplicate_count)
+          plus the dispute flags computed in gold with the fixture-bank names:
+          dq_txn_before_product_opening, dq_txn_after_card_expiry, dq_missing_merchant,
+          dq_possible_duplicate. Empty list if none.
+        constraints: [{type: not_null}]
+
+  - name: gold_dispute_history
+    description: Serving dispute_history. Prior complaints and claims of served customers.
+    columns:
+      - name: complaint_id
+        data_type: varchar
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_type: varchar
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships: {arguments: {to: ref('gold_customer_profile_min'), field: customer_id}}
+      - {name: created_at, data_type: timestamp, description: UTC., constraints: [{type: not_null}]}
+      - {name: case_type, data_type: varchar, constraints: [{type: not_null}]}
+      - {name: category, data_type: varchar, constraints: [{type: not_null}]}
+      - {name: subcategory, data_type: varchar}
+      - {name: status, data_type: varchar, constraints: [{type: not_null}]}
+      - {name: claimed_amount, data_type: "decimal(15,2)"}
+      - {name: currency, data_type: varchar}
+      - name: related_transaction_id
+        data_type: varchar
+        description: Always NULL; the source does not link complaints to transactions.
+      - {name: resolution_days, data_type: integer}
+
+  - name: gold_agents_routing
+    description: Serving agents_routing. Every agent; inactive ones have is_active false.
+    columns:
+      - name: agent_id
+        data_type: varchar
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: languages
+        data_type: "varchar[]"
+        description: ISO 639-1 codes (`vars.gold_agent_language`).
+        constraints: [{type: not_null}]
+      - name: specialty
+        data_type: varchar
+        description: Mapped through `vars.gold_agent_specialty`; unmapped and NULL are general.
+        constraints: [{type: not_null}]
+        data_tests:
+          - accepted_values: {arguments: {values: ["disputes", "fraud", "cards", "general"]}}
+      - {name: agent_type, data_type: varchar, constraints: [{type: not_null}]}
+      - {name: country_of_origin, data_type: varchar, description: ISO 3166-1 alpha-2., constraints: [{type: not_null}]}
+      - {name: is_active, data_type: boolean, description: agent_status = Active., constraints: [{type: not_null}]}
+
+  - name: gold_serving_metadata
+    description: Serving _serving_metadata (data_mode, as_of_date, built_at, source, contract_version).
+    columns:
+      - name: key
+        data_type: varchar
+        constraints: [{type: not_null}, {type: primary_key}]
+        data_tests: [unique, not_null]
+      - {name: value, data_type: varchar, constraints: [{type: not_null}]}
+
+  - name: gold_cc_contact_baseline
+    description: T16 call-center baseline per (month, country). Not served.
+    data_tests:
+      - unique: {arguments: {column_name: "month || '|' || coalesce(country, '')"}}
+    columns:
+      - {name: month, data_type: date, description: First day of the process_date month., constraints: [{type: not_null}]}
+      - {name: country, data_type: varchar, description: Customer country (ISO alpha-2).}
+      - {name: days_with_data, data_type: integer, description: Distinct process_dates in the month (partial first/last months).}
+      - {name: contacts, data_type: bigint}
+      - {name: resolved_contacts, data_type: bigint, description: was_resolved.}
+      - {name: escalated_contacts, data_type: bigint, description: was_escalated.}
+      - {name: contacts_with_duration, data_type: bigint, description: Non-NULL duration_seconds (~14% are NULL).}
+      - {name: total_duration_seconds, data_type: bigint}
+      - {name: avg_duration_seconds, data_type: double, description: Over contacts_with_duration.}
+      - {name: resolution_rate, data_type: double, description: resolved_contacts / contacts.}
+      - {name: escalation_rate, data_type: double, description: escalated_contacts / contacts.}
+
+  - name: gold_complaints_baseline
+    description: T16 complaints baseline per (month, country, case_type, category). Not served.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "month || '|' || coalesce(country, '') || '|' || coalesce(case_type, '') || '|' || coalesce(category, '')"
+    columns:
+      - {name: month, data_type: date, description: First day of the process_date month., constraints: [{type: not_null}]}
+      - {name: country, data_type: varchar, description: Customer country (ISO alpha-2).}
+      - {name: case_type, data_type: varchar}
+      - {name: category, data_type: varchar}
+      - {name: days_with_data, data_type: integer}
+      - {name: complaints, data_type: bigint}
+      - {name: resolved_complaints, data_type: bigint, description: status Resolved or Closed.}
+      - {name: complaints_with_resolution_days, data_type: bigint}
+      - {name: avg_resolution_days, data_type: double, description: Over complaints_with_resolution_days.}
+      - {name: sla_breached_complaints, data_type: bigint}
+      - {name: complaints_with_sla, data_type: bigint, description: Non-NULL sla_breached.}
+      - {name: sla_breach_rate, data_type: double, description: sla_breached_complaints / complaints_with_sla.}
