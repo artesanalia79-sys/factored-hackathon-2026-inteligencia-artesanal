@@ -31,7 +31,12 @@ Owners: Santiago (Tasks 4, 5), Juan José (Tasks 6, 16, 19). Skills: `dbt-modeli
   date of birth, full product number, geo coordinates, income, credit score, IP) never reach the
   serving DB. `is_fraud` may only be used offline for analysis and evaluation labels.
 - Timestamps in the serving DB are DuckDB `TIMESTAMP` (naive) in **UTC by convention**. Money is
-  `DECIMAL(15,2)` in the original currency plus `amount_usd` from a documented FX table.
+  `DECIMAL(15,2)` in the original currency plus `amount_usd` from a **fixed rate per currency**,
+  never the daily FX table. Curated follows the source's own convention
+  (`vars.amount_usd_fixed_rate` in `data_pipeline/dbt/dbt_project.yml`: ARS 350, COP 4000; USD is
+  `amount`); synthetic uses `fx_rates_per_usd` in `tests/fixtures/bank/fixture.yaml`. The daily FX
+  table is exposed only as silver's `fx_rate_to_usd`, for sensitivity. Do not switch `amount_usd`
+  to daily rates: it would mix two conventions in one column (decision ledger, 2026-09-29).
 - `_serving_metadata` must record `data_mode`, `as_of_date`, `built_at`, `source` and
   `contract_version`. Dispute windows are computed against `as_of_date`, not the wall clock.
 - Findings that change a business number (duplicates, incoherent codes, late arrivals) go to
