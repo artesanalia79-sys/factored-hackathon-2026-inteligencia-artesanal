@@ -1,8 +1,9 @@
 """Skip test directories that need the optional `data` dependency group when it is not installed.
 
-Locally, `uv sync` installs only the default groups, so `tests/ingest` and `tests/silver` are
-skipped with a reason naming `uv sync --group data`. In CI (env `CI` truthy) nothing is skipped:
-CI installs the data group, so a missing or broken module must fail collection there.
+Locally, `uv sync` installs only the default groups, so `tests/ingest`, `tests/silver` and
+`tests/gold` are skipped with a reason naming `uv sync --group data`. In CI (env `CI` truthy)
+nothing is skipped: CI installs the data group, so a missing or broken module must fail
+collection there.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import pytest
 _DATA_GROUP_DIRS: dict[str, tuple[str, ...]] = {
     "ingest": ("boto3", "pyarrow"),
     "silver": ("dbt.cli.main", "pyarrow"),
+    "gold": ("dbt.cli.main", "pyarrow"),
 }
 
 

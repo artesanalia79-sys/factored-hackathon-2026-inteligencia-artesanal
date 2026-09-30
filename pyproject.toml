@@ -66,6 +66,7 @@ ingest-check = { cmd = "python -m bankagent.ingest.cli --check", help = "[Task 4
 
 dbt-build = { cmd = "python -m bankagent.silver.cli", help = "[Task 5] Verify bronze manifest, then dbt build silver (needs: uv sync --group data)" }
 dq-report = { cmd = "python -m bankagent.silver.report", help = "[Task 5] Regenerate docs/evidence/dq_report.md + fraud_score_thresholds.md from the warehouse" }
+serving-build = { cmd = "python -m bankagent.gold.cli", help = "[Task 6] dbt build gold on verified silver, write data/serving/bank_curated.duckdb and validate it (needs: uv sync --group data)" }
 
 # Placeholders owned by later tasks (they fail loudly until implemented).
 analysis = { cmd = "python scripts/todo_task.py 16 'Problem evidence and ROI' 'Juan Jose'", help = "[Task 16] Regenerate problem evidence + ROI" }

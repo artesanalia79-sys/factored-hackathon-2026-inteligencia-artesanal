@@ -82,9 +82,35 @@ vars:
   amount_usd_fixed_rate: {ARS: 350, COP: 4000}
   amount_usd_tolerance_usd: 0.01
 
+  # --- Gold (T6). Every value below is recorded in docs/decision_ledger.md. ---
+  # Late-arrival window of the incremental gold_transactions_enriched: each run reprocesses the
+  # last N process_dates already loaded. Measured source lag is at most 1 day for transactions
+  # (2 for surveys), so 3 days covers it with margin.
+  gold_lookback_days: 3
+  # dq_possible_duplicate: same card, merchant and amount within this many seconds of the
+  # previous transaction (mirrors DUPLICATE_WINDOW in src/bankagent/fixtures/builder.py).
+  gold_duplicate_window_seconds: 120
+  # The source has no language field and all its text is Spanish; placeholder until a source
+  # carries a real preference. The contract allows es or pt.
+  gold_default_preferred_language: "es"
+  # Source agent specialty (Spanish) -> serving Specialty enum. Anything else (including NULL)
+  # routes to general; no source specialty maps to cards.
+  gold_agent_specialty: {"Fraudes": "fraud", "Quejas y Reclamos": "disputes"}
+  # Source agent languages (comma-separated Spanish names) -> ISO 639-1.
+  gold_agent_language: {"español": "es", "inglés": "en", "portugués": "pt"}
+  # Set by the serving build (src/bankagent/gold/build.py); these defaults fail validation on
+  # purpose so a hand-run `dbt build` cannot produce a serving DB that looks valid.
+  serving_contract_version: "unset"
+  serving_data_mode: "unset"
+  serving_source: "unset"
+
 models:
   bankagent:
     silver:
       +materialized: table
       +contract: {enforced: true}
       +tags: ["silver"]
+    gold:
+      +materialized: table
+      +contract: {enforced: true}
+      +tags: ["gold"]

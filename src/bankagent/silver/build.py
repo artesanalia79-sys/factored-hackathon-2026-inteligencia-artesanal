@@ -24,6 +24,8 @@ METADATA_TABLE = "_silver_build_metadata"
 BUILD_SCOPE_FULL = "full"
 BUILD_SCOPE_PARTIAL = "partial"
 BRONZE_ROWS_PREFIX = "bronze_rows."
+SILVER_SELECTOR = "tag:silver"
+GOLD_SELECTOR = "tag:gold"
 
 
 class DbtBuildError(RuntimeError):
@@ -173,7 +175,9 @@ def build_silver(config: BuildConfig, select: str | None = None) -> DbtRun:
     """
     manifest = verify_bronze(config.bronze_dir)
     drop_build_metadata(config.warehouse)
-    args = ["build", *(["--select", select] if select else [])]
+    # Silver only: gold (T6) is built afterwards by `poe serving-build` with the vars it needs,
+    # so it is excluded even when a selector such as `silver_transactions+` reaches it.
+    args = ["build", "--select", select or SILVER_SELECTOR, "--exclude", GOLD_SELECTOR]
     run = run_dbt(config, args)
     if not run.success:
         failed = ", ".join(f"{n.unique_id} ({n.status})" for n in run.failed()) or "see dbt log"
