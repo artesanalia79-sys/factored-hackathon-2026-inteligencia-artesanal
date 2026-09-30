@@ -1,0 +1,240 @@
+# T16 ROI assumptions (`uv run poe analysis`). Every value that is NOT measured from the
+# organizer data lives here, with a range and its source. Measured inputs (dispute volume,
+# country weights, intake channel mix, call-center handle time, volume-scale factor) come from
+# data_pipeline/dbt/analyses/t16_*.sql at run time and are never typed in here.
+#
+# Labels (they are printed next to every number in docs/evidence/roi.md):
+#   market        public LATAM salary, labour-law and FX data, checked 2026-09-30
+#   industry      published dispute-operations studies (US/EU; no public LATAM figures found)
+#   team          team estimate without an external source
+#   pending_eval  provisional until the T27 evaluation measures it (`--eval-results`)
+#
+# Ranges: `low`/`central`/`high` are values of the parameter. The tornado swings each one from
+# low to high with every other parameter at central. Decisions: docs/decision_ledger.md (T16).
+version: 1
+as_of: "2026-09-30"
+
+labor:
+  description: >-
+    Fully loaded monthly cost of an outsourced bank contact-center agent, divided by the paid
+    minutes of the legal working week and by the productive share (time actually handling
+    contacts). Scenarios move salary, employer load and productive share together; overhead
+    (supervision, facilities, IT) is a separate parameter, excluded from the central value so
+    the savings are not inflated. Colombia is the reference market of the team; MX and AR use
+    the same method. Weighted by the measured dispute share per country.
+  label: market
+  productive_share:
+    # (1 - shrinkage) x occupancy. Banking shrinkage 30-35 % (25 % best case), occupancy
+    # 75-85 %: cheap = 0.75 x 0.85, central = 0.675 x 0.80, expensive = 0.65 x 0.75.
+    cheap: 0.6375
+    central: 0.54
+    expensive: 0.4875
+  sources:
+    - title: CallForce, call center occupancy and shrinkage benchmarks (2026)
+      url: https://callforce.global/blog/call-center-occupancy-rate-shrinkage/
+    - title: Voiso, shrinkage by sector (banking 30-35 %)
+      url: https://voiso.com/articles/call-center-shrinkage-reducing/
+  countries:
+    MX:
+      currency: MXN
+      fx_per_usd: 18.071 # Banxico FIX, 2026-09-30
+      weekly_hours: 48 # legal maximum in 2026; the 40 h reform starts reducing it in 2027
+      cheap: {monthly_salary: 9577, employer_load: 0.40, monthly_extra: 0} # 2026 minimum wage
+      central: {monthly_salary: 12000, employer_load: 0.45, monthly_extra: 0}
+      expensive: {monthly_salary: 18000, employer_load: 0.50, monthly_extra: 0}
+      note: >-
+        Basic call-center pay is 8,000-12,000 MXN (STPS observatory); bank or specialised roles
+        14,000-18,000. Employer load (IMSS, INFONAVIT, SAR, state payroll tax, aguinaldo,
+        vacation premium) is 40-50 % per the sources; not itemised.
+      sources:
+        - title: El Imparcial, call-center pay in Mexico (STPS data)
+          url: https://www.elimparcial.com/mexico/2025/12/14/cuanto-ganan-realmente-los-trabajadores-de-call-center-en-mexico-en-comparacion-con-estados-unidos-espana-y-otros-paises-de-la-ocde-guia-2025-con-datos-oficiales-sobre-salarios-jornadas-y-condiciones-laborales/
+        - title: Computrabajo, contact-center agent salary Mexico 2026
+          url: https://mx.computrabajo.com/salarios/agente-de-contact-center
+        - title: Alegra, Mexico minimum wage 2026
+          url: https://blog.alegra.com/mexico/salario-minimo-en-mexico-2026/
+        - title: iLoveCFDI, real cost of an employee in Mexico 2026
+          url: https://ilovecfdi.com.mx/guias/costo-real-contratar-empleado-mexico
+        - title: Expansion, 40-hour week reform timeline
+          url: https://politica.expansion.mx/mexico/2026/03/04/jornada-laboral-40-horas-publicada-dof-entra-en-vigor
+        - title: El Imparcial, FIX exchange rate 2026-09-30
+          url: https://www.elimparcial.com/mexico/2026/09/30/precio-del-dolar-sube-y-el-peso-mexicano-pierde-terreno-asi-cotiza-el-tipo-de-cambio-este-miercoles-30-de-septiembre/
+    CO:
+      currency: COP
+      fx_per_usd: 3341.23 # TRM, 2026-09-30
+      weekly_hours: 42 # Ley 2101 final step, in force since 2026-07-15
+      # employer_load: pension 12 %, ARL risk I 0.522 %, family fund 4 %, cesantias 8.33 %,
+      # interest on cesantias 1 %, prima 8.33 %, vacations 4.17 % = 38.35 %. Health, SENA and
+      # ICBF (13.5 %) are exempt below 10 minimum wages (ET art. 114-1); `expensive` adds them.
+      # monthly_extra: transport allowance 249,095 plus cesantias, interest and prima on it
+      # (x 1.1766) = 293,085; it applies up to 2 minimum wages (all three scenarios).
+      cheap: {monthly_salary: 1750905, employer_load: 0.3835, monthly_extra: 293085} # 2026 SMMLV
+      central: {monthly_salary: 1850000, employer_load: 0.3835, monthly_extra: 293085}
+      expensive: {monthly_salary: 2800000, employer_load: 0.5185, monthly_extra: 293085}
+      note: >-
+        Bank call-center offers cluster at 1.75-2.05 M COP (one bank role at 1,849,900);
+        `expensive` is 2.5 M plus ~0.3 M average commissions.
+      sources:
+        - title: elempleo, bank call-center job offers (Sep 2026)
+          url: https://www.elempleo.com/co/ofertas-empleo/trabajo-call-center-bancos
+        - title: Computrabajo, call-center salary Colombia
+          url: https://co.computrabajo.com/salarios/call-center
+        - title: Holland & Knight, 2026 minimum wage and transport allowance decrees
+          url: https://www.hklaw.com/en/insights/publications/2025/12/colombia-decreta-aumento-del-salario-minimo-y-auxilio-de-transporte
+        - title: Aleluya, cost of an employee in Colombia 2026
+          url: https://aleluya.com/blog/nomina/costo-de-un-empleado-en-colombia-2026/
+        - title: Alegra, 42-hour week from 2026-07-15
+          url: https://blog.alegra.com/colombia/cambios-jornada-laboral-colombia/
+        - title: TRM 2026-09-30
+          url: https://dolar.wilkinsonpc.com.co/2026-09-30
+    AR:
+      currency: ARS
+      fx_per_usd: 1518 # BCRA wholesale close, 2026-09-30
+      weekly_hours: 35 # call-center collective agreement, full-time operator
+      # central salary: category 3 "Operacion A", 35 h, Aug 2026 (964,665) + 8.33 % attendance
+      # bonus (presentismo) = 1,045,032. expensive: +20 % plus the 120,000 non-remunerative sum.
+      # employer_load: contributions (18-20.4 %), health (6 %), ART, SAC and vacations: 30-45 %.
+      cheap: {monthly_salary: 964665, employer_load: 0.30, monthly_extra: 0}
+      central: {monthly_salary: 1045032, employer_load: 0.40, monthly_extra: 0}
+      expensive: {monthly_salary: 1254038, employer_load: 0.45, monthly_extra: 120000}
+      note: >-
+        Outsourced contact-center pay (Comercio agreement). Staff employed directly by a bank
+        (Bancaria agreement) earn much more; the `expensive` scenario and the overhead parameter
+        cover part of that. ARS inflation and FX are volatile.
+      sources:
+        - title: iProfesional, call-center pay scale Aug 2026 (FAECYS-CACC)
+          url: https://www.iprofesional.com/management/461950-paritaria-empleados-de-comercio-uno-a-uno-cuanto-cobran-los-trabajadores-de-call-centers
+        - title: Yo Facturo, employer social charges Argentina 2026
+          url: https://yo-facturo.com/blog/cargas-sociales-en-argentina-2026/
+        - title: Hace Cuentas, total labour cost Argentina 2026
+          url: https://hacecuentas.com/calculadora-costo-laboral-empleado
+        - title: Ambito, official dollar close 2026-09-30
+          url: https://www.ambito.com/finanzas/dolar-hoy-cuanto-cerro-este-miercoles-30-septiembre-n6328571
+
+parameters:
+  overhead_multiplier:
+    description: Supervision, facilities and IT on top of the loaded labour cost.
+    unit: multiplier
+    label: team
+    low: 1.0
+    central: 1.0
+    high: 1.3
+    note: Central 1.0 on purpose (conservative); only the high end includes overhead.
+  investigation_minutes:
+    description: >-
+      Back-office analyst time to investigate and resolve one dispute (case review, evidence,
+      decision, chargeback filing, customer notice). The agent does not do this work.
+    unit: minutes per dispute
+    label: industry
+    low: 20
+    central: 40
+    high: 60
+    note: >-
+      Vendor sources give 20-40 min at best and 30-60 min typical. Cross-check only: 40 min at US
+      wages is about the 37 USD per chargeback that US issuers report; that USD figure is never
+      used as a cost here.
+    sources:
+      - title: Resolve, manual vs automated dispute resolution costs
+        url: https://resolvepay.com/blog/statistics-comparing-manual-vs-automated-dispute-resolution-costs
+      - title: Rivero, automating the issuer dispute process
+        url: https://rivero.tech/blog/automate-70-percent-of-dispute-process
+      - title: Jumpcap, issuer cost per chargeback (cross-check)
+        url: https://jumpcap.com/insights/how-issuers-can-win-in-the-lose-lose-of-chargebacks/
+  deflection_share:
+    description: >-
+      Share of disputes that end without a dispute because the customer recognizes the charge
+      once the agent shows the verified merchant, date, channel and card (RECOGNIZE step).
+    unit: share of disputes
+    label: industry
+    low: 0.05
+    central: 0.09
+    high: 0.25
+    note: >-
+      Central = 19 % of disputes are first-party / legitimate purchases (Javelin issuer survey,
+      2025) x ~45 % of those deflected when purchase details are shown (Visa Order Insight).
+      Our agent shows less detail than Order Insight, hence the conservative central. High end:
+      24 % of questioned charges stem from unrecognized statement details.
+    sources:
+      - title: The Paypers, The many faces of friendly fraud (Javelin 17 % to 19 %)
+        url: https://thepaypers.com/payments/expert-views/the-many-faces-of-friendly-fraud
+      - title: Chargeback.io, Verifi Order Insight (40-45 % deflected)
+        url: https://www.chargeback.io/blog/order-insight
+      - title: Chargeback.io, chargeback statistics 2026 (24 % unrecognized details)
+        url: https://www.chargeback.io/blog/chargeback-statistics
+      - title: Mastercard, preventing first-party fraud (Datos Insights survey)
+        url: https://www.mastercard.com/us/en/news-and-trends/Insights/2026/how-ethoca-helps-prevent-first-party-fraud-and-reduce-chargebacks.html
+  handoff_time_reduction:
+    description: >-
+      Investigation time saved on disputes the agent files, because the case arrives with the
+      customer verified, the transaction identified, the recognition answer and the card-block
+      status (HandoffPacket and verified ExecutionRecords).
+    unit: share of investigation minutes
+    label: industry
+    low: 0.0
+    central: 0.15
+    high: 0.30
+    note: >-
+      Vendors report ~30 % lower handle time with AI dispute tooling that also gathers merchant
+      evidence; our agent only prepares the case, so the central value is half of that.
+    sources:
+      - title: Quavo, AI in fraud and dispute management
+        url: https://www.quavo.com/insight/how-ai-is-transforming-fraud-and-dispute-management-for-financial-institutions/
+  escalation_share:
+    description: >-
+      Share of disputes the agent hands to a human (escalated, abstained, incomplete or failed).
+      Those cases pay today's full intake and investigation.
+    unit: share of disputes
+    label: pending_eval
+    low: 0.10
+    central: 0.20
+    high: 0.40
+    note: Provisional; `--eval-results` replaces the central value with the T27 measurement.
+  registration_minutes:
+    description: After-contact work to register a dispute received by phone, on top of the measured talk time.
+    unit: minutes per dispute
+    label: team
+    low: 2
+    central: 3
+    high: 5
+  written_intake_minutes:
+    description: Reading, answering and registering a dispute received by Email, Web or App.
+    unit: minutes per dispute
+    label: team
+    low: 4
+    central: 6
+    high: 10
+  branch_intake_minutes:
+    description: Attending and registering a dispute at a branch.
+    unit: minutes per dispute
+    label: team
+    low: 8
+    central: 12
+    high: 20
+
+llm:
+  description: >-
+    LLM cost per dispute conversation = tokens x the list price of the default model in
+    config/pricing.yaml. Provisional; `--eval-results` replaces the central value with the mean
+    measured cost per case.
+  label: pending_eval
+  model: gpt-6-luna
+  input_tokens: {low: 8000, central: 20000, high: 100000}
+  output_tokens: {low: 800, central: 2000, high: 10000}
+
+intake:
+  # Reception channel (silver_complaints.reception_channel) -> intake-minutes group. Channels
+  # listed under `excluded` stay out of the agent's scope (regulator complaints do not come
+  # through the customer chat) and out of the per-dispute economics.
+  channel_groups:
+    Call Center: call_center
+    Email: written
+    Web: written
+    App: written
+    Branch: branch
+  excluded: [Regulator]
+
+scale:
+  # Adoption = share of eligible disputes that start in the agent channel. Not assumed: the
+  # annual table shows each value side by side.
+  adoption_shares: [0.25, 0.5, 1.0]
+  per_customers: 1000000

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="480" viewBox="0 0 900 480" font-family="Helvetica, Arial, sans-serif" role="img" aria-label="Savings per dispute (USD): one input at a time, others central">
+<title>Savings per dispute (USD): one input at a time, others central</title>
+<rect width="900" height="480" fill="#ffffff"/>
+<text x="16" y="28" font-size="17" font-weight="bold" fill="#1a202c">Savings per dispute (USD): one input at a time, others central</text>
+<rect x="16" y="42" width="12" height="12" fill="#2b6cb0"/><text x="34" y="52" font-size="12" fill="#4a5568">input at its low value</text><rect x="190" y="42" width="12" height="12" fill="#dd6b20"/><text x="208" y="52" font-size="12" fill="#4a5568">input at its high value</text>
+<line x1="400.0" y1="64" x2="400.0" y2="410" stroke="#e2e8f0"/><text x="400.0" y="428" font-size="11" fill="#4a5568" text-anchor="middle">1.00</text>
+<line x1="492.0" y1="64" x2="492.0" y2="410" stroke="#e2e8f0"/><text x="492.0" y="428" font-size="11" fill="#4a5568" text-anchor="middle">1.50</text>
+<line x1="584.0" y1="64" x2="584.0" y2="410" stroke="#e2e8f0"/><text x="584.0" y="428" font-size="11" fill="#4a5568" text-anchor="middle">2.00</text>
+<line x1="676.0" y1="64" x2="676.0" y2="410" stroke="#e2e8f0"/><text x="676.0" y="428" font-size="11" fill="#4a5568" text-anchor="middle">2.50</text>
+<line x1="768.0" y1="64" x2="768.0" y2="410" stroke="#e2e8f0"/><text x="768.0" y="428" font-size="11" fill="#4a5568" text-anchor="middle">3.00</text>
+<line x1="860.0" y1="64" x2="860.0" y2="410" stroke="#e2e8f0"/><text x="860.0" y="428" font-size="11" fill="#4a5568" text-anchor="middle">3.50</text>
+<text x="390" y="91.0" font-size="12" fill="#1a202c" text-anchor="end">Labour cost per handled minute ($0.110 to $0.257)</text>
+<rect x="587.2" y="77.0" width="248.7" height="20" fill="#dd6b20"/>
+<rect x="481.2" y="77.0" width="106.0" height="20" fill="#2b6cb0"/>
+<text x="390" y="125.0" font-size="12" fill="#1a202c" text-anchor="end">Investigation time saved by the handoff (0% to 30%)</text>
+<rect x="587.2" y="111.0" width="120.7" height="20" fill="#dd6b20"/>
+<rect x="466.5" y="111.0" width="120.7" height="20" fill="#2b6cb0"/>
+<text x="390" y="159.0" font-size="12" fill="#1a202c" text-anchor="end">Investigation minutes per dispute (20 min to 60 min)</text>
+<rect x="475.9" y="145.0" width="111.3" height="20" fill="#2b6cb0"/>
+<rect x="587.2" y="145.0" width="111.3" height="20" fill="#dd6b20"/>
+<text x="390" y="193.0" font-size="12" fill="#1a202c" text-anchor="end">Deflected at RECOGNIZE (5% to 25%)</text>
+<rect x="587.2" y="179.0" width="154.1" height="20" fill="#dd6b20"/>
+<rect x="548.7" y="179.0" width="38.5" height="20" fill="#2b6cb0"/>
+<text x="390" y="227.0" font-size="12" fill="#1a202c" text-anchor="end">Overhead multiplier (x1 to x1.3)</text>
+<rect x="587.2" y="213.0" width="111.5" height="20" fill="#dd6b20"/>
+<rect x="587.2" y="213.0" width="1.0" height="20" fill="#2b6cb0"/>
+<text x="390" y="261.0" font-size="12" fill="#1a202c" text-anchor="end">Escalated to a human (10% to 40%)</text>
+<rect x="515.9" y="247.0" width="71.3" height="20" fill="#dd6b20"/>
+<rect x="587.2" y="247.0" width="35.6" height="20" fill="#2b6cb0"/>
+<text x="390" y="295.0" font-size="12" fill="#1a202c" text-anchor="end">Email/Web/App intake minutes (4 min to 10 min)</text>
+<rect x="587.2" y="281.0" width="41.0" height="20" fill="#dd6b20"/>
+<rect x="566.7" y="281.0" width="20.5" height="20" fill="#2b6cb0"/>
+<text x="390" y="329.0" font-size="12" fill="#1a202c" text-anchor="end">Phone registration minutes (2 min to 5 min)</text>
+<rect x="587.2" y="315.0" width="23.1" height="20" fill="#dd6b20"/>
+<rect x="575.6" y="315.0" width="11.5" height="20" fill="#2b6cb0"/>
+<text x="390" y="363.0" font-size="12" fill="#1a202c" text-anchor="end">Branch intake minutes (8 min to 20 min)</text>
+<rect x="587.2" y="349.0" width="7.1" height="20" fill="#dd6b20"/>
+<rect x="583.6" y="349.0" width="3.5" height="20" fill="#2b6cb0"/>
+<text x="390" y="397.0" font-size="12" fill="#1a202c" text-anchor="end">LLM cost per case ($0.0012 to $0.015)</text>
+<rect x="585.0" y="383.0" width="2.2" height="20" fill="#dd6b20"/>
+<rect x="587.2" y="383.0" width="1.0" height="20" fill="#2b6cb0"/>
+<line x1="587.2" y1="60" x2="587.2" y2="410" stroke="#1a202c" stroke-width="1.5"/>
+<text x="587.2" y="56" font-size="11" fill="#1a202c" text-anchor="middle">central 2.02</text>
+<text x="630.0" y="450" font-size="12" fill="#4a5568" text-anchor="middle">Savings per eligible dispute routed to the agent (USD)</text>
+</svg>
