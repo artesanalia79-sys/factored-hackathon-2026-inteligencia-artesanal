@@ -1,6 +1,6 @@
 # data_pipeline
 
-Owner: Juan José. Rules: `docs/rules/data-pipeline.md`. Skill: `dbt-modeling`.
+Owners: Santiago (T4), Juan José (T5, T6). Rules: `docs/rules/data-pipeline.md`. Skill: `dbt-modeling`.
 
 | Step | Task | Command | Output (gitignored) |
 |---|---|---|---|

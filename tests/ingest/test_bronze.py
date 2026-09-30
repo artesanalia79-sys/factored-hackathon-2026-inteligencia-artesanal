@@ -29,6 +29,37 @@ def test_csv_is_read_as_all_strings(tmp_path: Path) -> None:
     assert table.column("customer_id").to_pylist() == ["CUST-1", "CUST-2"]
 
 
+def test_csv_values_are_kept_byte_for_byte(tmp_path: Path) -> None:
+    """Regression: types used to be inferred and then cast to string, which turned
+    response_code '00' into '0', 'True' into 'true' and '450.0' into '450'."""
+    path = tmp_path / "transactions.csv"
+    path.write_text(
+        "response_code,is_fraud,amount,fraud_score,product_number,note\n"
+        '00,True,450.0,11.0,0042,"a, b"\n'
+        "05,False,1027.50,,0001,NA\n",
+        encoding="utf-8",
+    )
+
+    table = read_source_table(path)
+    assert {field.type for field in table.schema} == {"string"}
+    assert table.to_pydict() == {
+        "response_code": ["00", "05"],
+        "is_fraud": ["True", "False"],
+        "amount": ["450.0", "1027.50"],
+        "fraud_score": ["11.0", None],
+        "product_number": ["0042", "0001"],
+        "note": ["a, b", None],
+    }
+
+
+def test_csv_header_with_bom_keeps_string_types(tmp_path: Path) -> None:
+    path = tmp_path / "codes.csv"
+    path.write_bytes(b"\xef\xbb\xbfresponse_code,amount\n00,1.0\n")
+
+    table = read_source_table(path)
+    assert table.to_pydict() == {"response_code": ["00"], "amount": ["1.0"]}
+
+
 def test_ndjson_is_read_as_all_strings(tmp_path: Path) -> None:
     path = tmp_path / "events.jsonl"
     path.write_text(

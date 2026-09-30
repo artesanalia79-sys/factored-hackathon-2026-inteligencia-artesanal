@@ -8,11 +8,18 @@ The default CLI (`cli.py`) wires the real `bankagent.ingest.s3_source` implement
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from bankagent.ingest.bronze import concat_tables, read_source_table, write_bronze_table
+from bankagent.ingest.bronze import (
+    concat_tables,
+    parquet_row_count,
+    read_source_table,
+    write_bronze_table,
+)
 from bankagent.ingest.catalog import TABLES, SourceObject
 from bankagent.ingest.manifest import (
     FileEntry,
@@ -79,8 +86,18 @@ def resolve_config(*, root: Path, allow_drift: bool = False) -> IngestConfig:
     )
 
 
+def staging_dir(config: IngestConfig) -> Path:
+    """Sibling of the bronze dir (same filesystem, so moving a file into bronze is atomic)."""
+    return config.bronze_dir.with_name(f"{config.bronze_dir.name}.staging")
+
+
 def _ingest_table(
-    table: str, objects: list[SourceObject], *, config: IngestConfig, download_fn: DownloadFn
+    table: str,
+    objects: list[SourceObject],
+    *,
+    config: IngestConfig,
+    download_fn: DownloadFn,
+    out_dir: Path,
 ) -> FileEntry:
     from bankagent.ingest.s3_source import resolve_table_keys
 
@@ -88,7 +105,7 @@ def _ingest_table(
     raw_paths = download_fn(matches, config.raw_dir)
     arrow_table = concat_tables([read_source_table(path) for path in raw_paths])
 
-    bronze_path = config.bronze_dir / f"{table}.parquet"
+    bronze_path = out_dir / f"{table}.parquet"
     write_bronze_table(arrow_table, bronze_path)
 
     return FileEntry(
@@ -96,7 +113,7 @@ def _ingest_table(
         source_key=matches[0].key
         if len(matches) == 1
         else f"{len(matches)} objects (see raw/{table}*)",
-        relative_path=bronze_path.relative_to(config.bronze_dir).as_posix(),
+        relative_path=bronze_path.relative_to(out_dir).as_posix(),
         row_count=arrow_table.num_rows,
         byte_size=bronze_path.stat().st_size,
         sha256=sha256_file(bronze_path),
@@ -109,28 +126,52 @@ def run_ingest(
 ) -> tuple[Manifest, list[str]]:
     """Run the full ingest. Returns (new manifest, drift problems vs. the previous manifest).
 
+    Parquet files are written to a staging dir first and only moved into bronze once the drift
+    check passes, so a blocked run leaves bronze and its manifest exactly as they were.
     Raises `IngestDriftError` if drift is found and `config.allow_drift` is False.
     """
     started_at = utc_now()
     objects = list_objects_fn()
     logger.info("listed %d objects in s3://%s", len(objects), config.s3_bucket)
 
-    entries = [
-        _ingest_table(table, objects, config=config, download_fn=download_fn)
-        for table in config.tables
-    ]
-    manifest = Manifest(
-        aws_profile=config.aws_profile,
-        s3_bucket=config.s3_bucket,
-        started_at=started_at,
-        finished_at=utc_now(),
-        files=tuple(entries),
-    )
+    staging = staging_dir(config)
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        entries = [
+            _ingest_table(table, objects, config=config, download_fn=download_fn, out_dir=staging)
+            for table in config.tables
+        ]
+        manifest = Manifest(
+            aws_profile=config.aws_profile,
+            s3_bucket=config.s3_bucket,
+            started_at=started_at,
+            finished_at=utc_now(),
+            files=tuple(entries),
+        )
 
-    previous = load_manifest(config.manifest_path)
-    problems = diff_manifests(previous, manifest) if previous is not None else []
-    if problems and not config.allow_drift:
-        raise IngestDriftError(problems)
+        previous = load_manifest(config.manifest_path)
+        problems = diff_manifests(previous, manifest) if previous is not None else []
+        if problems and not config.allow_drift:
+            raise IngestDriftError(problems)
 
-    write_manifest(manifest, config.manifest_path)
+        config.bronze_dir.mkdir(parents=True, exist_ok=True)
+        for entry in entries:
+            os.replace(staging / entry.relative_path, config.bronze_dir / entry.relative_path)
+        write_manifest(manifest, config.manifest_path)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     return manifest, problems
+
+
+def check_bronze(bronze_dir: Path, manifest: Manifest) -> list[str]:
+    """One line per bronze file that is missing or differs from the manifest (sha256, rows)."""
+    problems: list[str] = []
+    for entry in manifest.files:
+        path = bronze_dir / entry.relative_path
+        if not path.is_file():
+            problems.append(f"{entry.table}: {entry.relative_path} is missing")
+        elif sha256_file(path) != entry.sha256:
+            problems.append(f"{entry.table}: sha256 differs from the manifest")
+        elif (rows := parquet_row_count(path)) != entry.row_count:
+            problems.append(f"{entry.table}: {rows} rows, manifest says {entry.row_count}")
+    return problems

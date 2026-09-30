@@ -9,7 +9,14 @@ import pytest
 
 from bankagent.ingest.catalog import SourceObject, SourceTableNotFound
 from bankagent.ingest.manifest import load_manifest
-from bankagent.ingest.pipeline import IngestConfig, IngestDriftError, resolve_config, run_ingest
+from bankagent.ingest.pipeline import (
+    IngestConfig,
+    IngestDriftError,
+    check_bronze,
+    resolve_config,
+    run_ingest,
+    staging_dir,
+)
 
 TWO_TABLES = ("customers", "products")
 
@@ -109,6 +116,43 @@ def test_changed_row_count_is_detected_and_blocked(tmp_path: Path) -> None:
     reloaded = load_manifest(config.manifest_path)
     assert reloaded is not None
     assert reloaded.by_table["customers"].row_count == 2
+
+
+def test_blocked_drift_leaves_bronze_files_untouched(tmp_path: Path) -> None:
+    """Regression: bronze parquet used to be overwritten before the drift check, so a blocked
+    run left new bronze files next to the old manifest."""
+    config = _config(tmp_path)
+    run_ingest(
+        config,
+        list_objects_fn=_fixture_bucket().list_objects,
+        download_fn=_fixture_bucket().download,
+    )
+    before = {p.name: p.read_bytes() for p in config.bronze_dir.iterdir()}
+
+    changed = FakeBucket(
+        {
+            "customers.csv": "customer_id,segment\nCUST-FX-001,Basic\nCUST-FX-002,Plus\n",
+            "products.csv": "product_id,customer_id\nCARD-FX-011,CUST-FX-001\n",
+        }
+    )
+    with pytest.raises(IngestDriftError, match="content differs"):
+        run_ingest(config, list_objects_fn=changed.list_objects, download_fn=changed.download)
+
+    assert {p.name: p.read_bytes() for p in config.bronze_dir.iterdir()} == before
+    assert check_bronze(config.bronze_dir, load_manifest(config.manifest_path)) == []  # type: ignore[arg-type]
+    assert not staging_dir(config).exists()
+
+
+def test_accepted_run_matches_its_manifest_and_cleans_staging(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    manifest, _ = run_ingest(
+        config,
+        list_objects_fn=_fixture_bucket().list_objects,
+        download_fn=_fixture_bucket().download,
+    )
+
+    assert check_bronze(config.bronze_dir, manifest) == []
+    assert not staging_dir(config).exists()
 
 
 def test_allow_drift_accepts_and_records_the_change(tmp_path: Path) -> None:

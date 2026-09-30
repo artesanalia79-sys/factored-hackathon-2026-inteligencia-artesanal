@@ -1,7 +1,7 @@
 # Data pipeline rules
 
 Applies to `data_pipeline/**`, `src/bankagent/fixtures/**` and `tests/fixtures/**`.
-Owner: Juan José (Tasks 4, 5, 6, 16, 19). Skills: `dbt-modeling`, `data-contracts`.
+Owners: Santiago (Task 4), Juan José (Tasks 5, 6, 16, 19). Skills: `dbt-modeling`, `data-contracts`.
 
 ## Sources and secrets
 
