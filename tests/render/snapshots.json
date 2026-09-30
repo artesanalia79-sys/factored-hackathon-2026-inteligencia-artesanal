@@ -54,24 +54,24 @@
     }
   },
   "recognition": {
-    "es": "Encontré este movimiento: comercio Mercado Sol, fecha 17/06/2026, canal comercio, tarjeta terminada en 1234, importe 42,50 USD. ¿Reconoces este movimiento?",
-    "pt": "Encontrei esta transação: estabelecimento Mercado Sol, data 17/06/2026, canal estabelecimento, cartão com final 1234, valor 42,50 USD. Você reconhece esta transação?"
+    "es": "Encontré este movimiento: comercio Mercado Sol, fecha 17/06/2026, canal compra presencial, tarjeta terminada en 1234, importe 42,50 USD. ¿Reconoces este movimiento?",
+    "pt": "Encontrei esta transação: estabelecimento Mercado Sol, data 17/06/2026, canal compra presencial, cartão com final 1234, valor 42,50 USD. Você reconhece esta transação?"
   },
   "confirm_dispute": {
-    "es": "¿Confirmas crear un reclamo por movimiento no reconocido para este movimiento: comercio Mercado Sol, fecha 17/06/2026, canal comercio, tarjeta terminada en 1234, importe 42,50 USD?",
-    "pt": "Você confirma a abertura de uma contestação por transação não reconhecida para esta transação: estabelecimento Mercado Sol, data 17/06/2026, canal estabelecimento, cartão com final 1234, valor 42,50 USD?"
+    "es": "¿Confirmas crear un reclamo por movimiento no reconocido para este movimiento: comercio Mercado Sol, fecha 17/06/2026, canal compra presencial, tarjeta terminada en 1234, importe 42,50 USD?",
+    "pt": "Você confirma a abertura de uma contestação por transação não reconhecida para esta transação: estabelecimento Mercado Sol, data 17/06/2026, canal compra presencial, cartão com final 1234, valor 42,50 USD?"
   },
   "confirm_block": {
     "es": "¿Confirmas bloquear la tarjeta terminada en 1234?",
     "pt": "Você confirma o bloqueio do cartão com final 1234?"
   },
   "created_dispute": {
-    "es": "Creé el reclamo dispute-1 para la transacción txn-1.",
-    "pt": "Abri a contestação dispute-1 para a transação txn-1."
+    "es": "Creé el reclamo dispute-1 para el movimiento que confirmaste.",
+    "pt": "Abri a contestação dispute-1 para a transação que você confirmou."
   },
   "existing_dispute": {
-    "es": "El reclamo dispute-1 está registrado para la transacción txn-1.",
-    "pt": "A contestação dispute-1 está registrada para a transação txn-1."
+    "es": "El reclamo dispute-1 ya está registrado para ese movimiento.",
+    "pt": "A contestação dispute-1 já está registrada para essa transação."
   },
   "blocked_card": {
     "es": "Bloqueé la tarjeta terminada en 1234.",

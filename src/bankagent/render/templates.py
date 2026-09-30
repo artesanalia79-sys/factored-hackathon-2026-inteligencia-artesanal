@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import unicodedata
+from datetime import UTC
 from zoneinfo import ZoneInfo
 
 from bankagent.contracts.base import args_hash
@@ -142,7 +144,7 @@ CHANNELS: dict[Channel, dict[Language, str]] = {
     Channel.BRANCH: {Language.ES: "sucursal", Language.PT: "agência"},
     Channel.WEB: {Language.ES: "sitio web", Language.PT: "site"},
     Channel.APP: {Language.ES: "aplicación", Language.PT: "aplicativo"},
-    Channel.POS: {Language.ES: "comercio", Language.PT: "estabelecimento"},
+    Channel.POS: {Language.ES: "compra presencial", Language.PT: "compra presencial"},
     Channel.TRANSFER: {Language.ES: "transferencia", Language.PT: "transferência"},
 }
 
@@ -155,29 +157,34 @@ COUNTRY_ZONES = {
 
 def _clean(value: str) -> str:
     """Keep bank-sourced names on one line and short enough for customer copy."""
-    cleaned = "".join(" " if ord(char) < 32 or ord(char) == 127 else char for char in value).split()
+    cleaned = "".join(
+        " " if unicodedata.category(char).startswith("C") else char for char in value
+    ).split()
     text = " ".join(cleaned)
     return text[:59] + "…" if len(text) > 60 else text
 
 
 def _transaction_facts(txn: TransactionView, language: Language) -> str:
-    if not txn.merchant_name or not txn.card_last4 or not _clean(txn.merchant_name):
-        raise UnverifiedRenderError("transaction display requires merchant and card facts")
+    if not txn.card_last4:
+        raise UnverifiedRenderError("transaction display requires card facts")
+    merchant = _clean(txn.merchant_name or "")
+    if not merchant:
+        merchant = "no disponible" if language == Language.ES else "não disponível"
     zone = COUNTRY_ZONES.get(txn.transaction_country)
+    date = txn.transaction_ts.astimezone(zone or UTC).strftime("%d/%m/%Y")
     if zone is None:
-        raise UnverifiedRenderError("transaction country has no display timezone")
-    date = txn.transaction_ts.astimezone(zone).strftime("%d/%m/%Y")
+        date += " (UTC)"
     amount = f"{txn.amount:,.2f}"
     if txn.transaction_country in {"AR", "CO"}:
         amount = amount.replace(",", "_").replace(".", ",").replace("_", ".")
     channel = CHANNELS[txn.channel][language]
     if language == Language.ES:
         return (
-            f"comercio {_clean(txn.merchant_name)}, fecha {date}, canal {channel}, "
+            f"comercio {merchant}, fecha {date}, canal {channel}, "
             f"tarjeta terminada en {txn.card_last4}, importe {amount} {txn.currency}"
         )
     return (
-        f"estabelecimento {_clean(txn.merchant_name)}, data {date}, canal {channel}, "
+        f"estabelecimento {merchant}, data {date}, canal {channel}, "
         f"cartão com final {txn.card_last4}, valor {amount} {txn.currency}"
     )
 
@@ -214,8 +221,8 @@ def render_recognition(
     """Ask a neutral recognition question using an authenticated transaction read."""
     _require_verified(record, ToolName.GET_TRANSACTION, expected_args_hash=args_hash(args))
     txn = result.transaction
-    if txn.transaction_id != args.transaction_id or not txn.merchant_name or not txn.card_last4:
-        raise UnverifiedRenderError("recognition requires matching merchant and card facts")
+    if txn.transaction_id != args.transaction_id:
+        raise UnverifiedRenderError("recognition requires a matching transaction")
     facts = _transaction_facts(txn, language)
     if language == Language.ES:
         return f"Encontré este movimiento: {facts}. ¿Reconoces este movimiento?"
@@ -278,20 +285,11 @@ def render_created_dispute(
         raise UnverifiedRenderError("verified dispute result does not match the requested action")
     if language == Language.ES:
         if result.created:
-            return (
-                f"Creé el reclamo {dispute.dispute_id} "
-                f"para la transacción {dispute.transaction_id}."
-            )
-        return (
-            f"El reclamo {dispute.dispute_id} está registrado "
-            f"para la transacción {dispute.transaction_id}."
-        )
+            return f"Creé el reclamo {dispute.dispute_id} para el movimiento que confirmaste."
+        return f"El reclamo {dispute.dispute_id} ya está registrado para ese movimiento."
     if result.created:
-        return f"Abri a contestação {dispute.dispute_id} para a transação {dispute.transaction_id}."
-    return (
-        f"A contestação {dispute.dispute_id} está registrada "
-        f"para a transação {dispute.transaction_id}."
-    )
+        return f"Abri a contestação {dispute.dispute_id} para a transação que você confirmou."
+    return f"A contestação {dispute.dispute_id} já está registrada para essa transação."
 
 
 def render_blocked_card(

@@ -188,6 +188,50 @@ def test_near_midnight_uses_transaction_country_date(transaction: TransactionVie
     assert "16/06/2026" in rendered
 
 
+@pytest.mark.parametrize("country", ["BR", "US"])
+@pytest.mark.parametrize("language", list(Language))
+def test_foreign_transaction_uses_labeled_utc_date(
+    country: str, language: Language, transaction: TransactionView
+) -> None:
+    txn = transaction.model_copy(
+        update={
+            "transaction_country": country,
+            "transaction_ts": datetime(2026, 6, 17, 2, 30, tzinfo=UTC),
+            "is_foreign": True,
+        }
+    )
+    read_args = GetTransactionArgs(transaction_id="txn-1")
+    read_result = GetTransactionResult(transaction=txn)
+    record = _record(ToolName.GET_TRANSACTION, read_args)
+    dispute_args = CreateDisputeArgs(
+        transaction_id="txn-1", reason=DisputeReason.UNRECOGNIZED, idempotency_key="request-1"
+    )
+    recognition = render_recognition(language, read_args, read_result, record)
+    confirmation = render_confirmation(language, dispute_args, read_args, read_result, record)
+    assert "17/06/2026 (UTC)" in recognition
+    assert "17/06/2026 (UTC)" in confirmation
+    assert "Mercado Sol" in recognition
+    assert "Mercado Sol" in confirmation
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_missing_merchant_uses_neutral_label(
+    language: Language, transaction: TransactionView
+) -> None:
+    txn = transaction.model_copy(update={"merchant_name": None})
+    read_args = GetTransactionArgs(transaction_id="txn-1")
+    read_result = GetTransactionResult(transaction=txn)
+    record = _record(ToolName.GET_TRANSACTION, read_args)
+    dispute_args = CreateDisputeArgs(
+        transaction_id="txn-1", reason=DisputeReason.UNRECOGNIZED, idempotency_key="request-1"
+    )
+    label = (
+        "comercio no disponible" if language == Language.ES else "estabelecimento não disponível"
+    )
+    assert label in render_recognition(language, read_args, read_result, record)
+    assert label in render_confirmation(language, dispute_args, read_args, read_result, record)
+
+
 @pytest.mark.parametrize("language", list(Language))
 def test_confirmation_hides_internal_ids_and_free_text(
     language: Language, transaction: TransactionView
@@ -281,6 +325,16 @@ def test_merchant_name_is_single_line_and_bounded(transaction: TransactionView) 
     assert "A" * 100 not in rendered
     assert "…" in rendered
 
+    bidi_txn = transaction.model_copy(update={"merchant_name": "SHOP \u202eOTPIRC"})
+    bidi_copy = render_recognition(
+        Language.ES,
+        args,
+        GetTransactionResult(transaction=bidi_txn),
+        _record(ToolName.GET_TRANSACTION, args),
+    )
+    assert "\u202e" not in bidi_copy
+    assert "SHOP OTPIRC" in bidi_copy
+
 
 def test_large_amount_uses_country_separators(transaction: TransactionView) -> None:
     args = GetTransactionArgs(transaction_id="txn-1")
@@ -328,6 +382,8 @@ def test_verified_action_snapshots(language: Language) -> None:
         )
         == SNAPSHOT["existing_dispute"][language.value]
     )
+    assert "txn-1" not in SNAPSHOT["created_dispute"][language.value]
+    assert "txn-1" not in SNAPSHOT["existing_dispute"][language.value]
 
     block_args = BlockCardArgs(
         product_id="card-1", reason="customer request", idempotency_key="request-2"
@@ -413,9 +469,7 @@ def test_recognition_rejects_unverified_or_unmatched_read(transaction: Transacti
         render_recognition(
             Language.ES,
             args,
-            GetTransactionResult(
-                transaction=transaction.model_copy(update={"merchant_name": None})
-            ),
+            GetTransactionResult(transaction=transaction.model_copy(update={"card_last4": None})),
             _record(ToolName.GET_TRANSACTION, args),
         )
 
