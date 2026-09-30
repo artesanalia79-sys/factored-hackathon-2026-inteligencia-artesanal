@@ -1,0 +1,126 @@
+{
+  "states": {
+    "auth": {
+      "es": "Inicia sesión para que pueda ayudarte con tu solicitud.",
+      "pt": "Entre na sua conta para que eu possa ajudar com sua solicitação."
+    },
+    "understand": {
+      "es": "Cuéntame qué pasó con el movimiento que quieres revisar.",
+      "pt": "Conte o que aconteceu com a transação que você quer analisar."
+    },
+    "identify_txn": {
+      "es": "Indícame el comercio, la fecha o el importe para encontrar el movimiento.",
+      "pt": "Informe o estabelecimento, a data ou o valor para localizar a transação."
+    },
+    "recognize": {
+      "es": "Voy a mostrarte los datos del movimiento para que me digas si lo reconoces.",
+      "pt": "Vou mostrar os dados da transação para você me dizer se a reconhece."
+    },
+    "check_policy": {
+      "es": "Estoy revisando las condiciones aplicables a tu solicitud.",
+      "pt": "Estou verificando as condições aplicáveis à sua solicitação."
+    },
+    "confirm": {
+      "es": "Revisa la acción antes de confirmarla.",
+      "pt": "Confira a ação antes de confirmá-la."
+    },
+    "act": {
+      "es": "Estoy procesando la solicitud.",
+      "pt": "Estou processando a solicitação."
+    },
+    "verify": {
+      "es": "Estoy comprobando el resultado de la acción.",
+      "pt": "Estou verificando o resultado da ação."
+    },
+    "respond": {
+      "es": "Estoy preparando la respuesta a tu solicitud.",
+      "pt": "Estou preparando a resposta à sua solicitação."
+    },
+    "clarify": {
+      "es": "Necesito un dato más para continuar. ¿Puedes darme más detalles?",
+      "pt": "Preciso de mais uma informação para continuar. Você pode dar mais detalhes?"
+    },
+    "abstain": {
+      "es": "No tengo información suficiente para continuar con seguridad.",
+      "pt": "Não tenho informações suficientes para continuar com segurança."
+    },
+    "escalate": {
+      "es": "Este caso necesita revisión de una persona del equipo.",
+      "pt": "Este caso precisa da análise de uma pessoa da equipe."
+    },
+    "done": {
+      "es": "Gracias por contactarnos.",
+      "pt": "Agradecemos seu contato."
+    }
+  },
+  "recognition": {
+    "es": "Encontré este movimiento: comercio Mercado Sol, fecha 17/06/2026, canal POS, tarjeta terminada en 1234, importe 42.50 USD. ¿Reconoces este movimiento?",
+    "pt": "Encontrei esta transação: estabelecimento Mercado Sol, data 17/06/2026, canal POS, cartão com final 1234, valor 42.50 USD. Você reconhece esta transação?"
+  },
+  "confirm_dispute": {
+    "es": "¿Confirmas crear un reclamo para la transacción txn-1 por este motivo: movimiento no reconocido? Clave de solicitud: request-1.",
+    "pt": "Você confirma a abertura de uma contestação para a transação txn-1 pelo seguinte motivo: transação não reconhecida? Chave da solicitação: request-1."
+  },
+  "confirm_block": {
+    "es": "¿Confirmas bloquear la tarjeta con identificador de producto card-1 por este motivo: customer request? Clave de solicitud: request-2.",
+    "pt": "Você confirma o bloqueio do cartão com identificador de produto card-1 pelo seguinte motivo: customer request? Chave da solicitação: request-2."
+  },
+  "created_dispute": {
+    "es": "Creé el reclamo dispute-1 para la transacción txn-1.",
+    "pt": "Abri a contestação dispute-1 para a transação txn-1."
+  },
+  "existing_dispute": {
+    "es": "El reclamo dispute-1 está registrado para la transacción txn-1.",
+    "pt": "A contestação dispute-1 está registrada para a transação txn-1."
+  },
+  "blocked_card": {
+    "es": "Bloqueé la tarjeta terminada en 1234.",
+    "pt": "Bloqueei o cartão com final 1234."
+  },
+  "existing_block": {
+    "es": "La tarjeta terminada en 1234 está bloqueada.",
+    "pt": "O cartão com final 1234 está bloqueado."
+  },
+  "created_handoff": {
+    "es": "Registré tu solicitud para revisión humana con referencia handoff-1.",
+    "pt": "Registrei sua solicitação para análise humana sob a referência handoff-1."
+  },
+  "existing_handoff": {
+    "es": "Tu solicitud de revisión humana está registrada con referencia handoff-1.",
+    "pt": "Sua solicitação de análise humana está registrada sob a referência handoff-1."
+  },
+  "outcomes": {
+    "automated_resolution": {
+      "es": "Ya terminé de revisar tu solicitud.",
+      "pt": "Concluí a análise da sua solicitação."
+    },
+    "deflected_recognized": {
+      "es": "Gracias por confirmar que reconoces el movimiento.",
+      "pt": "Agradeço por confirmar que reconhece a transação."
+    },
+    "abstained": {
+      "es": "No tengo información suficiente para continuar con seguridad.",
+      "pt": "Não tenho informações suficientes para continuar com segurança."
+    },
+    "escalated": {
+      "es": "Este caso necesita revisión de una persona del equipo.",
+      "pt": "Este caso precisa da análise de uma pessoa da equipe."
+    },
+    "denied": {
+      "es": "No puedo continuar con esta solicitud.",
+      "pt": "Não posso continuar com esta solicitação."
+    },
+    "reauth_required": {
+      "es": "Tu sesión terminó. Inicia sesión de nuevo para continuar.",
+      "pt": "Sua sessão terminou. Entre novamente na sua conta para continuar."
+    },
+    "incomplete": {
+      "es": "La solicitud aún no está completa. Puedes continuar cuando quieras.",
+      "pt": "A solicitação ainda não está completa. Você pode continuar quando quiser."
+    },
+    "failed": {
+      "es": "No pude comprobar el resultado. Inténtalo más tarde o solicita ayuda.",
+      "pt": "Não consegui verificar o resultado. Tente mais tarde ou peça ajuda."
+    }
+  }
+}
