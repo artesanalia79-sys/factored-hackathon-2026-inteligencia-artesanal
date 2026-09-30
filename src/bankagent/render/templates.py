@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from zoneinfo import ZoneInfo
+
 from bankagent.contracts.base import args_hash
+from bankagent.contracts.domain import TransactionView
 from bankagent.contracts.enums import (
+    Channel,
     ConversationState,
     DisputeReason,
     Language,
@@ -22,6 +26,8 @@ from bankagent.contracts.tools import (
     CreateHandoffResult,
     GetTransactionArgs,
     GetTransactionResult,
+    ListCardsArgs,
+    ListCardsResult,
 )
 
 
@@ -131,6 +137,50 @@ REASONS: dict[DisputeReason, dict[Language, str]] = {
     },
 }
 
+CHANNELS: dict[Channel, dict[Language, str]] = {
+    Channel.ATM: {Language.ES: "cajero automático", Language.PT: "caixa eletrônico"},
+    Channel.BRANCH: {Language.ES: "sucursal", Language.PT: "agência"},
+    Channel.WEB: {Language.ES: "sitio web", Language.PT: "site"},
+    Channel.APP: {Language.ES: "aplicación", Language.PT: "aplicativo"},
+    Channel.POS: {Language.ES: "comercio", Language.PT: "estabelecimento"},
+    Channel.TRANSFER: {Language.ES: "transferencia", Language.PT: "transferência"},
+}
+
+COUNTRY_ZONES = {
+    "AR": ZoneInfo("America/Argentina/Buenos_Aires"),
+    "CO": ZoneInfo("America/Bogota"),
+    "MX": ZoneInfo("America/Mexico_City"),
+}
+
+
+def _clean(value: str) -> str:
+    """Keep bank-sourced names on one line and short enough for customer copy."""
+    cleaned = "".join(" " if ord(char) < 32 or ord(char) == 127 else char for char in value).split()
+    text = " ".join(cleaned)
+    return text[:59] + "…" if len(text) > 60 else text
+
+
+def _transaction_facts(txn: TransactionView, language: Language) -> str:
+    if not txn.merchant_name or not txn.card_last4 or not _clean(txn.merchant_name):
+        raise UnverifiedRenderError("transaction display requires merchant and card facts")
+    zone = COUNTRY_ZONES.get(txn.transaction_country)
+    if zone is None:
+        raise UnverifiedRenderError("transaction country has no display timezone")
+    date = txn.transaction_ts.astimezone(zone).strftime("%d/%m/%Y")
+    amount = f"{txn.amount:,.2f}"
+    if txn.transaction_country in {"AR", "CO"}:
+        amount = amount.replace(",", "_").replace(".", ",").replace("_", ".")
+    channel = CHANNELS[txn.channel][language]
+    if language == Language.ES:
+        return (
+            f"comercio {_clean(txn.merchant_name)}, fecha {date}, canal {channel}, "
+            f"tarjeta terminada en {txn.card_last4}, importe {amount} {txn.currency}"
+        )
+    return (
+        f"estabelecimento {_clean(txn.merchant_name)}, data {date}, canal {channel}, "
+        f"cartão com final {txn.card_last4}, valor {amount} {txn.currency}"
+    )
+
 
 def _require_verified(
     record: ExecutionRecord, tool: ToolName, *, expected_args_hash: str | None = None
@@ -166,45 +216,48 @@ def render_recognition(
     txn = result.transaction
     if txn.transaction_id != args.transaction_id or not txn.merchant_name or not txn.card_last4:
         raise UnverifiedRenderError("recognition requires matching merchant and card facts")
-    date = txn.transaction_ts.strftime("%d/%m/%Y")
-    amount = f"{txn.amount:.2f} {txn.currency}"
+    facts = _transaction_facts(txn, language)
     if language == Language.ES:
-        return (
-            f"Encontré este movimiento: comercio {txn.merchant_name}, fecha {date}, "
-            f"canal {txn.channel.value}, tarjeta terminada en {txn.card_last4}, "
-            f"importe {amount}. ¿Reconoces este movimiento?"
-        )
-    return (
-        f"Encontrei esta transação: estabelecimento {txn.merchant_name}, data {date}, "
-        f"canal {txn.channel.value}, cartão com final {txn.card_last4}, "
-        f"valor {amount}. Você reconhece esta transação?"
-    )
+        return f"Encontré este movimiento: {facts}. ¿Reconoces este movimiento?"
+    return f"Encontrei esta transação: {facts}. Você reconhece esta transação?"
 
 
-def render_confirmation(language: Language, args: CreateDisputeArgs | BlockCardArgs) -> str:
-    """Show the exact pending write arguments before the customer confirms."""
+def render_confirmation(
+    language: Language,
+    args: CreateDisputeArgs | BlockCardArgs,
+    read_args: GetTransactionArgs | ListCardsArgs,
+    read_result: GetTransactionResult | ListCardsResult,
+    record: ExecutionRecord,
+) -> str:
+    """Show recognizable facts from a matching authenticated read before confirmation."""
     if isinstance(args, CreateDisputeArgs):
+        if not isinstance(read_args, GetTransactionArgs) or not isinstance(
+            read_result, GetTransactionResult
+        ):
+            raise UnverifiedRenderError("dispute confirmation requires a transaction read")
+        _require_verified(record, ToolName.GET_TRANSACTION, expected_args_hash=args_hash(read_args))
+        if (
+            read_args.transaction_id != args.transaction_id
+            or read_result.transaction.transaction_id != args.transaction_id
+        ):
+            raise UnverifiedRenderError("transaction read does not match pending dispute")
+        facts = _transaction_facts(read_result.transaction, language)
         reason = REASONS[args.reason][language]
         if language == Language.ES:
-            return (
-                f"¿Confirmas crear un reclamo para la transacción {args.transaction_id} "
-                f"por este motivo: {reason}? Clave de solicitud: {args.idempotency_key}."
-            )
+            return f"¿Confirmas crear un reclamo por {reason} para este movimiento: {facts}?"
         return (
-            f"Você confirma a abertura de uma contestação para a transação "
-            f"{args.transaction_id} pelo seguinte motivo: {reason}? "
-            f"Chave da solicitação: {args.idempotency_key}."
+            f"Você confirma a abertura de uma contestação por {reason} "
+            f"para esta transação: {facts}?"
         )
+    if not isinstance(read_args, ListCardsArgs) or not isinstance(read_result, ListCardsResult):
+        raise UnverifiedRenderError("card confirmation requires a card read")
+    _require_verified(record, ToolName.LIST_CARDS, expected_args_hash=args_hash(read_args))
+    card = next((item for item in read_result.cards if item.product_id == args.product_id), None)
+    if card is None:
+        raise UnverifiedRenderError("card read does not match pending block")
     if language == Language.ES:
-        return (
-            f"¿Confirmas bloquear la tarjeta con identificador de producto {args.product_id} "
-            f"por este motivo: {args.reason}? Clave de solicitud: {args.idempotency_key}."
-        )
-    return (
-        f"Você confirma o bloqueio do cartão com identificador de produto "
-        f"{args.product_id} pelo seguinte motivo: {args.reason}? "
-        f"Chave da solicitação: {args.idempotency_key}."
-    )
+        return f"¿Confirmas bloquear la tarjeta terminada en {card.card_last4}?"
+    return f"Você confirma o bloqueio do cartão com final {card.card_last4}?"
 
 
 def render_created_dispute(

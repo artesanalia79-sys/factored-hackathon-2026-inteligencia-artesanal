@@ -54,16 +54,16 @@
     }
   },
   "recognition": {
-    "es": "Encontré este movimiento: comercio Mercado Sol, fecha 17/06/2026, canal POS, tarjeta terminada en 1234, importe 42.50 USD. ¿Reconoces este movimiento?",
-    "pt": "Encontrei esta transação: estabelecimento Mercado Sol, data 17/06/2026, canal POS, cartão com final 1234, valor 42.50 USD. Você reconhece esta transação?"
+    "es": "Encontré este movimiento: comercio Mercado Sol, fecha 17/06/2026, canal comercio, tarjeta terminada en 1234, importe 42,50 USD. ¿Reconoces este movimiento?",
+    "pt": "Encontrei esta transação: estabelecimento Mercado Sol, data 17/06/2026, canal estabelecimento, cartão com final 1234, valor 42,50 USD. Você reconhece esta transação?"
   },
   "confirm_dispute": {
-    "es": "¿Confirmas crear un reclamo para la transacción txn-1 por este motivo: movimiento no reconocido? Clave de solicitud: request-1.",
-    "pt": "Você confirma a abertura de uma contestação para a transação txn-1 pelo seguinte motivo: transação não reconhecida? Chave da solicitação: request-1."
+    "es": "¿Confirmas crear un reclamo por movimiento no reconocido para este movimiento: comercio Mercado Sol, fecha 17/06/2026, canal comercio, tarjeta terminada en 1234, importe 42,50 USD?",
+    "pt": "Você confirma a abertura de uma contestação por transação não reconhecida para esta transação: estabelecimento Mercado Sol, data 17/06/2026, canal estabelecimento, cartão com final 1234, valor 42,50 USD?"
   },
   "confirm_block": {
-    "es": "¿Confirmas bloquear la tarjeta con identificador de producto card-1 por este motivo: customer request? Clave de solicitud: request-2.",
-    "pt": "Você confirma o bloqueio do cartão com identificador de produto card-1 pelo seguinte motivo: customer request? Chave da solicitação: request-2."
+    "es": "¿Confirmas bloquear la tarjeta terminada en 1234?",
+    "pt": "Você confirma o bloqueio do cartão com final 1234?"
   },
   "created_dispute": {
     "es": "Creé el reclamo dispute-1 para la transacción txn-1.",

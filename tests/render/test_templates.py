@@ -11,8 +11,9 @@ import pytest
 from pydantic import BaseModel
 
 from bankagent.contracts.base import args_hash
-from bankagent.contracts.domain import CardBlockEvent, DisputeCase, TransactionView
+from bankagent.contracts.domain import CardBlockEvent, CardView, DisputeCase, TransactionView
 from bankagent.contracts.enums import (
+    CardType,
     Channel,
     ConversationState,
     DisputeReason,
@@ -21,6 +22,7 @@ from bankagent.contracts.enums import (
     Language,
     Outcome,
     Priority,
+    ProductStatus,
     Specialty,
     StepKind,
     StepOutcome,
@@ -39,6 +41,8 @@ from bankagent.contracts.tools import (
     CreateHandoffResult,
     GetTransactionArgs,
     GetTransactionResult,
+    ListCardsArgs,
+    ListCardsResult,
 )
 from bankagent.render import (
     UnverifiedRenderError,
@@ -113,17 +117,181 @@ def test_recognition_snapshot(language: Language, transaction: TransactionView) 
 
 
 @pytest.mark.parametrize("language", list(Language))
-def test_confirmation_snapshots(language: Language) -> None:
+def test_confirmation_snapshots(language: Language, transaction: TransactionView) -> None:
     dispute_args = CreateDisputeArgs(
         transaction_id="txn-1", reason=DisputeReason.UNRECOGNIZED, idempotency_key="request-1"
     )
     block_args = BlockCardArgs(
         product_id="card-1", reason="customer request", idempotency_key="request-2"
     )
-    assert (
-        render_confirmation(language, dispute_args) == SNAPSHOT["confirm_dispute"][language.value]
+    txn_args = GetTransactionArgs(transaction_id="txn-1")
+    card_args = ListCardsArgs()
+    cards = ListCardsResult(
+        cards=(
+            CardView(
+                product_id="card-1",
+                card_type=CardType.CREDIT,
+                card_last4="1234",
+                currency="USD",
+                product_status=ProductStatus.ACTIVE,
+            ),
+        )
     )
-    assert render_confirmation(language, block_args) == SNAPSHOT["confirm_block"][language.value]
+    assert (
+        render_confirmation(
+            language,
+            dispute_args,
+            txn_args,
+            GetTransactionResult(transaction=transaction),
+            _record(ToolName.GET_TRANSACTION, txn_args),
+        )
+        == SNAPSHOT["confirm_dispute"][language.value]
+    )
+    assert (
+        render_confirmation(
+            language,
+            block_args,
+            card_args,
+            cards,
+            _record(ToolName.LIST_CARDS, card_args),
+        )
+        == SNAPSHOT["confirm_block"][language.value]
+    )
+
+
+@pytest.mark.parametrize("language", list(Language))
+@pytest.mark.parametrize("channel", list(Channel))
+def test_every_channel_is_localized(
+    language: Language, channel: Channel, transaction: TransactionView
+) -> None:
+    args = GetTransactionArgs(transaction_id="txn-1")
+    rendered = render_recognition(
+        language,
+        args,
+        GetTransactionResult(transaction=transaction.model_copy(update={"channel": channel})),
+        _record(ToolName.GET_TRANSACTION, args),
+    )
+    assert f"canal {channel.value}" not in rendered
+
+
+def test_near_midnight_uses_transaction_country_date(transaction: TransactionView) -> None:
+    args = GetTransactionArgs(transaction_id="txn-1")
+    txn = transaction.model_copy(
+        update={"transaction_ts": datetime(2026, 6, 17, 2, 30, tzinfo=UTC)}
+    )
+    rendered = render_recognition(
+        Language.ES,
+        args,
+        GetTransactionResult(transaction=txn),
+        _record(ToolName.GET_TRANSACTION, args),
+    )
+    assert "16/06/2026" in rendered
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_confirmation_hides_internal_ids_and_free_text(
+    language: Language, transaction: TransactionView
+) -> None:
+    txn_args = GetTransactionArgs(transaction_id="txn-1")
+    args = CreateDisputeArgs(
+        transaction_id="txn-1", reason=DisputeReason.UNRECOGNIZED, idempotency_key="request-1"
+    )
+    rendered = render_confirmation(
+        language,
+        args,
+        txn_args,
+        GetTransactionResult(transaction=transaction),
+        _record(ToolName.GET_TRANSACTION, txn_args),
+    )
+    assert all(value not in rendered for value in ("txn-1", "card-1", "request-1"))
+    assert "Mercado Sol" in rendered
+    assert "1234" in rendered
+    assert "42,50" in rendered
+
+    card_args = ListCardsArgs()
+    block_args = BlockCardArgs(
+        product_id="card-1",
+        reason="ya quedó bloqueada y te reembolsamos todo",
+        idempotency_key="request-2",
+    )
+    cards = ListCardsResult(
+        cards=(
+            CardView(
+                product_id="card-1",
+                card_type=CardType.CREDIT,
+                card_last4="1234",
+                currency="USD",
+                product_status=ProductStatus.ACTIVE,
+            ),
+        )
+    )
+    block_copy = render_confirmation(
+        language,
+        block_args,
+        card_args,
+        cards,
+        _record(ToolName.LIST_CARDS, card_args),
+    )
+    assert all(
+        value not in block_copy
+        for value in (
+            "card-1",
+            "request-2",
+            "ya quedó bloqueada y te reembolsamos todo",
+        )
+    )
+    assert "1234" in block_copy
+
+
+def test_confirmation_rejects_unverified_or_mismatched_read(transaction: TransactionView) -> None:
+    txn_args = GetTransactionArgs(transaction_id="txn-1")
+    args = CreateDisputeArgs(
+        transaction_id="txn-1", reason=DisputeReason.DUPLICATE, idempotency_key="request-1"
+    )
+    with pytest.raises(UnverifiedRenderError):
+        render_confirmation(
+            Language.ES,
+            args,
+            txn_args,
+            GetTransactionResult(transaction=transaction),
+            _record(ToolName.GET_TRANSACTION, txn_args, verified=False),
+        )
+    with pytest.raises(UnverifiedRenderError):
+        render_confirmation(
+            Language.ES,
+            args,
+            txn_args,
+            GetTransactionResult(
+                transaction=transaction.model_copy(update={"transaction_id": "other"})
+            ),
+            _record(ToolName.GET_TRANSACTION, txn_args),
+        )
+
+
+def test_merchant_name_is_single_line_and_bounded(transaction: TransactionView) -> None:
+    args = GetTransactionArgs(transaction_id="txn-1")
+    txn = transaction.model_copy(update={"merchant_name": "Mercado\n" + "A" * 300})
+    rendered = render_recognition(
+        Language.ES,
+        args,
+        GetTransactionResult(transaction=txn),
+        _record(ToolName.GET_TRANSACTION, args),
+    )
+    assert "\n" not in rendered
+    assert "A" * 100 not in rendered
+    assert "…" in rendered
+
+
+def test_large_amount_uses_country_separators(transaction: TransactionView) -> None:
+    args = GetTransactionArgs(transaction_id="txn-1")
+    txn = transaction.model_copy(update={"amount": Decimal("150000.00")})
+    rendered = render_recognition(
+        Language.ES,
+        args,
+        GetTransactionResult(transaction=txn),
+        _record(ToolName.GET_TRANSACTION, args),
+    )
+    assert "150.000,00 USD" in rendered
 
 
 @pytest.mark.parametrize("language", list(Language))
