@@ -8,22 +8,28 @@ gold baselines), feeds the measured inputs and `config/roi_assumptions.yaml` int
 - `roi.md` and `roi_tornado.svg`: cost per dispute today vs. with the agent, FTE, annual
   scenarios and the tornado sensitivity, every number labelled with its provenance.
 
-`--eval-results eval/runs/<suite>/results.jsonl` (T27) replaces the provisional escalation share
-and LLM cost with the proposed system's measurements. Refuses to run unless the warehouse comes
-from a full silver build whose manifest matches `data/bronze/_manifest.json` (when present).
+`--eval-results eval/runs/<suite>/results.jsonl --eval-cases <case dir>` (after T27) replaces the
+provisional escalation share and LLM cost with the proposed system's measurements on dispute
+traffic only. Refuses to run unless the warehouse comes from a full silver build whose manifest
+matches `data/bronze/_manifest.json` (when present).
+
+Owner: Juan José (Task 16).
 """
 
 from __future__ import annotations
 
 import argparse
+import math
+import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import fmean
 from typing import Any
 
 import duckdb
+import yaml
 
 from bankagent.analysis.assumptions import (
     DEFAULT_ASSUMPTIONS,
@@ -41,6 +47,7 @@ from bankagent.analysis.model import (
     central_point,
     cost_per_minute_usd,
     eligible_share,
+    joint_point,
     monthly_cost_local,
     productive_hours_per_fte_year,
     swings,
@@ -48,8 +55,8 @@ from bankagent.analysis.model import (
     unit_economics,
 )
 from bankagent.analysis.svg import tornado_svg
-from bankagent.contracts.enums import Outcome, SystemVariant
-from bankagent.contracts.evaluation import EvalResult
+from bankagent.contracts.enums import EvalCategory, Outcome, SystemVariant
+from bankagent.contracts.evaluation import EvalCase, EvalResult
 from bankagent.ingest.manifest import sha256_file
 from bankagent.silver.build import DEFAULT_WAREHOUSE, ROOT
 from bankagent.silver.report import (
@@ -65,6 +72,10 @@ DEFAULT_MANIFEST = ROOT / "data" / "bronze" / MANIFEST_NAME
 REQUIRED_GOLD = ("gold_cc_contact_baseline", "gold_complaints_baseline")
 HUMAN_OUTCOMES = frozenset(
     {Outcome.ESCALATED, Outcome.ABSTAINED, Outcome.INCOMPLETE, Outcome.FAILED}
+)
+# Evaluation categories that are not dispute traffic: attacks and out-of-scope requests.
+NON_DISPUTE_CATEGORIES = frozenset(
+    {EvalCategory.UNAUTHORIZED_ACCESS, EvalCategory.PROMPT_INJECTION, EvalCategory.UNSUPPORTED}
 )
 TORNADO_FILE = "roi_tornado.svg"
 
@@ -184,29 +195,119 @@ def measured_inputs(tables: Mapping[str, Table]) -> Measured:
     )
 
 
-def eval_overrides(path: Path, swing_map: Mapping[str, Swing]) -> tuple[dict[str, Swing], int]:
-    """Escalation share and mean LLM cost of the proposed system from an evaluation run."""
+def is_heldout_path(path: Path) -> bool:
+    """Same rule as the evaluation harness (which production code may not import)."""
+    resolved = path.resolve()
+    if "heldout" in (part.lower() for part in resolved.parts):
+        return True
+    sealed = os.environ.get("HELDOUT_DIR")
+    if sealed:
+        sealed_path = Path(sealed).resolve()
+        return resolved == sealed_path or sealed_path in resolved.parents
+    return False
+
+
+def load_eval_cases(directory: Path, *, allow_heldout: bool = False) -> tuple[EvalCase, ...]:
+    """Case metadata (ids, categories, scope) of an evaluated suite.
+
+    The sealed held-out set is refused unless `allow_heldout` is set, which `main` only does
+    with an explicit `--allow-heldout` from a human after the T27 unsealing.
+    """
+    if is_heldout_path(directory) and not allow_heldout:
+        raise EvidenceError(
+            f"refusing to read sealed held-out cases from {directory}; after T27 pass "
+            "--allow-heldout"
+        )
+    cases = tuple(
+        EvalCase.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+        for path in sorted(directory.glob("*.yaml"))
+    )
+    if not cases:
+        raise EvidenceError(f"no *.yaml cases in {directory}")
+    return cases
+
+
+def wilson(successes: int, n: int, z: float = 1.959964) -> tuple[float, float]:
+    """Wilson score 95 % interval (n > 0)."""
+    p = successes / n
+    denom = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+@dataclass(frozen=True, slots=True)
+class EvalInputs:
+    """Evaluation measurements on dispute traffic, unit = case (majority of its repeats)."""
+
+    overrides: dict[str, Swing]
+    cases: int
+    deflected_cases: int
+    escalated_cases: int
+
+
+def eval_overrides(
+    results_path: Path, cases: Sequence[EvalCase], swing_map: Mapping[str, Swing]
+) -> EvalInputs:
+    """Escalation share and mean LLM cost of the proposed system on dispute traffic.
+
+    Population: proposed-system results of in-scope cases outside the attack and unsupported
+    categories (`NON_DISPUTE_CATEGORIES`). Unit = case, as in the pre-registration: a case is
+    escalated when a strict majority of its repeats hands it to a human (`HUMAN_OUTCOMES` or
+    `escalated`). Cases deflected at RECOGNIZE (majority `deflected_recognized`) leave the
+    escalation denominator, because the model applies the industry deflection separately; their
+    count is reported with a case-mix caveat. The range is the Wilson 95 % interval. LLM cost is
+    the mean over every run of the population, deflected cases included.
+    """
+    by_case = {c.case_id: c for c in cases}
     results = [
         EvalResult.model_validate_json(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
+        for line in results_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     proposed = [r for r in results if r.system == SystemVariant.PROPOSED]
     if not proposed:
-        raise EvidenceError(f"{path} has no results for the proposed system")
-    measured = {
-        "escalation_share": fmean(
-            float(r.escalated or r.final_outcome in HUMAN_OUTCOMES) for r in proposed
-        ),
-        "llm_cost_per_case_usd": fmean(float(r.cost_usd_total) for r in proposed),
+        raise EvidenceError(f"{results_path} has no results for the proposed system")
+    unknown = sorted({r.case_id for r in proposed} - by_case.keys())
+    if unknown:
+        raise EvidenceError(f"results reference cases missing from the case set: {unknown[:5]}")
+    runs: dict[str, list[EvalResult]] = {}
+    for r in proposed:
+        case = by_case[r.case_id]
+        if case.in_scope and case.category not in NON_DISPUTE_CATEGORIES:
+            runs.setdefault(r.case_id, []).append(r)
+    if not runs:
+        raise EvidenceError("no proposed results on dispute-traffic cases")
+
+    def majority(case_runs: list[EvalResult], predicate: Callable[[EvalResult], bool]) -> bool:
+        return 2 * sum(1 for r in case_runs if predicate(r)) > len(case_runs)
+
+    deflected = {
+        cid
+        for cid, case_runs in runs.items()
+        if majority(case_runs, lambda r: r.final_outcome == Outcome.DEFLECTED_RECOGNIZED)
     }
-    overrides = {}
-    for name, value in measured.items():
-        s = swing_map[name]
-        overrides[name] = Swing(
-            name, Label.OFFLINE_EVAL, min(s.low, value), value, max(s.high, value)
+    remaining = {cid: case_runs for cid, case_runs in runs.items() if cid not in deflected}
+    escalated = sum(
+        majority(case_runs, lambda r: r.escalated or r.final_outcome in HUMAN_OUTCOMES)
+        for case_runs in remaining.values()
+    )
+    overrides: dict[str, Swing] = {}
+    if remaining:
+        interval = wilson(escalated, len(remaining))
+        overrides["escalation_share"] = Swing(
+            "escalation_share",
+            Label.OFFLINE_EVAL,
+            interval[0],
+            escalated / len(remaining),
+            interval[1],
         )
-    return overrides, len(proposed)
+    llm = swing_map["llm_cost_per_case_usd"]
+    cost = fmean(float(r.cost_usd_total) for case_runs in runs.values() for r in case_runs)
+    overrides["llm_cost_per_case_usd"] = Swing(
+        "llm_cost_per_case_usd", Label.OFFLINE_EVAL, min(llm.low, cost), cost, max(llm.high, cost)
+    )
+    return EvalInputs(overrides, len(runs), len(deflected), escalated)
 
 
 # ---------------------------------------------------------------------------
@@ -214,8 +315,21 @@ def eval_overrides(path: Path, swing_map: Mapping[str, Swing]) -> tuple[dict[str
 # ---------------------------------------------------------------------------
 
 
+def _display_path(path: Path) -> str:
+    """Repo-relative when possible, so no local absolute path lands in the evidence."""
+    try:
+        return path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.name
+
+
 def usd(value: float) -> str:
-    return f"${value:,.2f}" if abs(value) >= 1 else f"${value:,.3f}"
+    sign = "-" if value < 0 else ""
+    return f"{sign}${abs(value):,.2f}" if abs(value) >= 1 else f"{sign}${abs(value):,.3f}"
+
+
+def pct_change(value: float) -> str:
+    return f"{value:+.1%}" if abs(value) < 0.01 else f"{value:+.0%}"
 
 
 def show(name: str, value: float) -> str:
@@ -294,10 +408,12 @@ def call_center_report(
         "and unresolved contacts repeat at the same rate within 7 days.",
         f"- Agents declare {int(capacity['declared_monthly_interactions']):,} interactions per "
         f"month; the interactions table holds {float(capacity['observed_monthly_contacts']):,.0f}"
-        f" per month (x{measured.capacity_ratio:.1f}). The table looks like a sample of the "
-        "bank's volume, so `roi.md` reports both volume scenarios.",
-        "- Complaints cannot be linked to contacts, not even by customer and date "
-        "(`complaints_baseline.md`), so contacts per dispute is not measurable.",
+        f" per month (x{measured.capacity_ratio:.1f}). The interactions table may be a sample, "
+        "but nothing shows that complaints are sampled the same way, so `roi.md` does not scale "
+        "disputes by this factor.",
+        "- The placebo test finds no detectable link between complaints and contacts, not even "
+        "by customer and date (`complaints_baseline.md`), so contacts per dispute is not "
+        "measurable.",
     ]
     for title, name, note in (
         ("By contact reason", "t16_cc_by_reason", ""),
@@ -339,7 +455,11 @@ def complaints_report(
         bool(r["is_dispute"]): r for r in tables["t16_dispute_vs_other_complaints"].records()
     }
     linkage = tables["t16_call_complaint_linkage"].records()
-    gap_7d = max(abs(float(r["contact_prior_7d"]) - float(r["placebo_7d"])) for r in linkage)
+    gap_7d = max(
+        abs(float(r[window]) - float(r["placebo_7d"]))
+        for r in linkage
+        for window in ("contact_prior_7d", "contact_after_7d")
+    )
     money = tables["t16_complaint_money_fields"].records()
     no_currency = sum(int(r["disputes"]) for r in money if r["currency"] == "(null)")
     fraud = tables["t16_fraud_repeat_on_card"].one()
@@ -401,17 +521,19 @@ def complaints_report(
         f"{float(vs_other[True]['sla_breach_rate']):.1%} vs "
         f"{float(vs_other[False]['sla_breach_rate']):.1%}. The source does not model "
         "dispute-specific handling, so handling effort comes from `config/roi_assumptions.yaml`.",
-        "- Complaints and call-center contacts look independent: the share of complaints with a "
-        "contact from the same customer in the 7 days before differs from a placebo window 90 "
-        f"days earlier by at most {gap_7d * 100:.1f} percentage points, even for complaints "
-        "received by the call center. Contacts per dispute cannot be measured.",
+        "- No detectable link between complaints and call-center contacts (placebo test): the "
+        "share of complaints with a contact from the same customer in the 7 days before or "
+        "after differs from a placebo window 90 days earlier by at most "
+        f"{gap_7d * 100:.1f} percentage points, even for complaints received by the call center. "
+        "Contacts per dispute cannot be measured.",
         "- `claimed_amount` cannot size the money at stake: "
         f"{no_currency / measured.disputes_central:.0%} of central disputes have no currency, "
         "and the median amount is about the same in MXN, "
         "COP, ARS and USD although their values differ by orders of magnitude.",
-        f"- Fraud does not repeat on a card: {int(fraud['later_fraud_transactions']):,} of "
-        f"{int(fraud['fraud_transactions']):,} fraud transactions follow an earlier fraud on the "
-        f"same card, {int(fraud['later_fraud_within_37h']):,} within 37 h. A faster card block "
+        f"- Fraud hardly repeats on a card: {int(fraud['later_fraud_transactions']):,} of "
+        f"{int(fraud['fraud_transactions']):,} fraud transactions on credit and debit cards "
+        "follow an earlier fraud on the same card, "
+        f"{int(fraud['later_fraud_within_37h']):,} within 37 h. A faster card block "
         "has no measurable loss avoided in this data (offline `is_fraud`, ADR 0003).",
     ]
     for title, name, note in (
@@ -431,7 +553,9 @@ def complaints_report(
             "Complaints vs. call-center contacts (placebo test)",
             "t16_call_complaint_linkage",
             "`contact_prior_*`: share of complaints whose customer had a contact in the 1 or 7 "
-            "days before the complaint; `placebo_*`: same window length 90 days earlier.",
+            "days before the complaint; `contact_after_7d`: in the 7 days after it; `placebo_*`: "
+            "same window length 90 days earlier. Only complaints at least 97 days after the first "
+            "contact, so every placebo window is fully covered.",
         ),
         ("Money fields", "t16_complaint_money_fields", ""),
         ("Repeat fraud on a card (offline label)", "t16_fraud_repeat_on_card", ""),
@@ -458,6 +582,10 @@ def roi_report(
     bars = tornado(swing_map, lambda p: unit_economics(p, measured, intake).savings_usd)
     hours = productive_hours_per_fte_year(assumptions.labor, measured.country_shares)
     annual = annual_scenarios(unit, measured, assumptions, hours)
+    pessimistic, optimistic = (
+        unit_economics(joint_point(swing_map, bars, worst=worst), measured, intake)
+        for worst in (True, False)
+    )
     labor = assumptions.labor
     esc = point["escalation_share"]
     defl = min(point["deflection_share"], 1 - esc)
@@ -491,27 +619,35 @@ def roi_report(
                     "human minutes per dispute",
                     f"{unit.today_minutes:.1f}",
                     f"{unit.agent_human_minutes:.1f}",
-                    f"{-unit.human_minutes_saved / unit.today_minutes:+.0%}",
+                    pct_change(-unit.human_minutes_saved / unit.today_minutes),
                 ],
                 [
                     "cost per dispute (USD)",
                     usd(unit.today_usd),
                     usd(unit.agent_usd),
-                    f"{-unit.savings_share:+.0%}",
+                    pct_change(-unit.savings_share),
                 ],
                 ["of which LLM (USD)", "-", show("llm_cost_per_case_usd", unit.llm_usd), ""],
             ],
         ),
         "",
-        f"Savings: **{usd(unit.savings_usd)} per dispute ({unit.savings_share:.0%})**. Where "
-        "they come from, per dispute:",
+        f"Projected savings: **{usd(unit.savings_usd)} per dispute "
+        f"({pct_change(unit.savings_share).lstrip('+')})**. Where they come from, per dispute:",
         "",
-        f"- intake: {unit.intake_minutes:.1f} human minutes today (channel-weighted); with the "
-        f"agent only the {esc:.0%} escalated cases need a human;",
-        f"- deflection: {defl:.0%} of disputes end at RECOGNIZE and skip the "
-        f"{unit.investigation_minutes:g}-minute investigation;",
+        f"- intake: {unit.intake_minutes:.1f} human minutes today (channel-weighted, `measured` "
+        f"talk time + `team` estimates); with the agent only the {esc:.0%} escalated cases need "
+        f"a human (`{swing_map['escalation_share'].label.value}`);",
+        f"- deflection: {defl:.1%} of disputes end at RECOGNIZE and skip the "
+        f"{unit.investigation_minutes:g}-minute investigation "
+        f"(`{swing_map['deflection_share'].label.value}` for both numbers);",
         f"- handoff: filed disputes arrive prepared, saving "
-        f"{point['handoff_time_reduction']:.0%} of the investigation time.",
+        f"{point['handoff_time_reduction']:.0%} of the investigation time "
+        f"(`{swing_map['handoff_time_reduction'].label.value}`).",
+        "",
+        f"Of the {unit.human_minutes_saved:.1f} human minutes saved, "
+        f"{unit.intake_minutes_saved:.1f} come from intake, which the agent does itself, and "
+        f"{unit.investigation_minutes_saved:.1f} from investigation, which rests on the "
+        "industry assumptions (deflection, handoff).",
         "",
         "## Model",
         "",
@@ -526,6 +662,14 @@ def roi_report(
         "                  / (paid minutes per month x productive_share) / FX,",
         "                  weighted by the measured dispute share per country",
         "```",
+        "",
+        "- **Counterfactual:** today's human intake deflects nothing, i.e. every dispute "
+        "received today is investigated. The complaints table counts disputes after intake, and "
+        "the 19 % first-party share behind the deflection assumption is measured on disputes "
+        "already filed, so both are consistent with it. There is no source for a separate "
+        "parameter, so none is added.",
+        "- **Investigation is priced at the contact-center cost per minute.** Back-office "
+        "analysts usually cost more, so this understates the USD saving (conservative).",
         "",
         "Code: `src/bankagent/analysis/model.py` (unit-tested in `tests/analysis/`).",
         "",
@@ -554,11 +698,6 @@ def roi_report(
                     "phone talk time of a Transactional contact",
                     f"{measured.call_center_talk_minutes:.2f} min",
                     "t16_cc_intake_aht.sql",
-                ],
-                [
-                    "declared / observed contact volume",
-                    f"x{measured.capacity_ratio:.1f}",
-                    "t16_agent_capacity.sql",
                 ],
             ],
         ),
@@ -659,7 +798,10 @@ def roi_report(
     ]
     for name, p in assumptions.parameters.items():
         parts.append(f"- **{NAMES.get(name, name)}**: {p.description.strip()}")
-        if p.note:
+        s_now = swing_map.get(name)
+        if s_now is not None and s_now.label == Label.OFFLINE_EVAL:
+            parts.append(f"  Measured by the evaluation harness: {eval_note}")
+        elif p.note:
             parts.append(f"  {p.note.strip()}")
         parts += _sources(p.sources)
     parts += [
@@ -669,6 +811,11 @@ def roi_report(
         "input and "
         f"{assumptions.llm.output_tokens.low:,.0f} / {assumptions.llm.output_tokens.central:,.0f}"
         f" / {assumptions.llm.output_tokens.high:,.0f} output (low / central / high).",
+        *(
+            [f"  Measured by the evaluation harness: {eval_note}"]
+            if swing_map["llm_cost_per_case_usd"].label == Label.OFFLINE_EVAL
+            else []
+        ),
         "",
         "## Sensitivity (tornado)",
         "",
@@ -691,40 +838,84 @@ def roi_report(
             ],
         ),
         "",
+        "## Joint sensitivity (`projection`)",
+        "",
+        "The tornado moves one input at a time. Here every swinging input moves at once to the "
+        "end that lowers (pessimistic) or raises (optimistic) the savings.",
+        "",
+        markdown_table(
+            ["case", "cost today", "cost with the agent", "savings per dispute", "change"],
+            [
+                [
+                    name,
+                    usd(u.today_usd),
+                    usd(u.agent_usd),
+                    usd(u.savings_usd),
+                    pct_change(-u.savings_share),
+                ]
+                for name, u in (
+                    ("pessimistic", pessimistic),
+                    ("central", unit),
+                    ("optimistic", optimistic),
+                )
+            ],
+        ),
+        "",
         "## Annual effect (`projection`)",
         "",
         "Adoption is the share of eligible disputes that start in the agent channel; it is not "
         "assumed, each value is shown. The observed volume is small because the bank is small "
-        f"({measured.customers:,} customers); the per-customer row lets any bank size apply it. "
-        "The declared-capacity row scales the observed volume by what the agents declare "
-        "(`call_center_baseline.md`).",
+        f"({measured.customers:,} customers); the per-customer rows let any bank size apply it. "
+        "Each scale is shown for the three dispute definitions (`complaints_baseline.md`): the "
+        "per-dispute economics barely depend on the definition, only the volume does. The "
+        "central definition keeps the `Request` and `Suggestion` case types because they carry "
+        "the same unrecognized-charge subcategory and reach the same intake desk; the strict "
+        "row drops them.",
+        "",
+        "No row scales disputes by the agents' declared capacity (x"
+        f"{measured.capacity_ratio:.1f} the contacts in the interactions table, "
+        "`call_center_baseline.md`): nothing shows that complaints are sampled like contacts, "
+        "and the placebo test finds no extra contact around call-center complaints.",
+        "",
+        "FTE are split into intake (what the agent does itself) and investigation (industry "
+        "assumptions).",
         "",
     ]
     adoptions = assumptions.scale.adoption_shares
+    full = max(adoptions)
     parts += [
         markdown_table(
             [
-                "volume scenario",
+                "scale",
+                "definition",
                 "disputes / year",
                 "eligible / year",
-                "FTE on disputes today",
-                *(f"FTE saved @ {a:.0%}" for a in adoptions),
+                "FTE today: intake",
+                "FTE today: investigation",
+                f"FTE saved @ {full:.0%}: intake",
+                f"FTE saved @ {full:.0%}: investigation",
             ],
             [
                 [
-                    s.name,
+                    s.scale,
+                    s.definition,
                     f"{s.disputes_per_year:,.0f}",
                     f"{s.eligible_per_year:,.0f}",
-                    f"{s.fte_today:,.1f}",
-                    *(f"{s.fte_saved[a]:,.1f}" for a in adoptions),
+                    f"{s.fte_today_intake:,.1f}",
+                    f"{s.fte_today_investigation:,.1f}",
+                    f"{s.fte_saved_intake[full]:,.1f}",
+                    f"{s.fte_saved_investigation[full]:,.1f}",
                 ]
                 for s in annual
             ],
         ),
         "",
         markdown_table(
-            ["volume scenario", *(f"USD saved / year @ {a:.0%}" for a in adoptions)],
-            [[s.name, *(f"{s.savings_usd[a]:,.0f}" for a in adoptions)] for s in annual],
+            ["scale", "definition", *(f"USD saved / year @ {a:.0%}" for a in adoptions)],
+            [
+                [s.scale, s.definition, *(f"{s.savings_usd[a]:,.0f}" for a in adoptions)]
+                for s in annual
+            ],
         ),
         "",
         "## What this does not claim",
@@ -734,11 +925,11 @@ def roi_report(
         "case and per safe automated resolution separately.",
         "- The agent does not investigate disputes; investigation effort only drops through "
         "deflection and the prepared handoff.",
-        "- Contacts per dispute are not modelled: complaints and contacts are independent in the "
-        "source (`complaints_baseline.md`), so repeat calls about a dispute are left out, which "
-        "understates today's cost.",
-        "- No fraud loss avoided by a faster card block: fraud does not repeat on a card in this "
-        "data (`t16_fraud_repeat_on_card.sql`).",
+        "- Contacts per dispute are not modelled: the placebo test finds no detectable link "
+        "between complaints and contacts (`complaints_baseline.md`), so repeat calls about a "
+        "dispute are left out, which understates today's cost.",
+        "- No fraud loss avoided by a faster card block: fraud does not repeat on a card within "
+        "37 h in this data (`t16_fraud_repeat_on_card.sql`).",
         "- Not counted: platform hosting, build and maintenance, change management, card-network "
         "fees and chargeback outcomes, and the money at stake (`claimed_amount` is unusable).",
         "- Labour costs are for outsourced contact centers; bank staff cost more. Industry "
@@ -748,7 +939,8 @@ def roi_report(
         "",
         "```",
         "uv run poe analysis                                   # provisional evaluation inputs",
-        "uv run poe analysis --eval-results eval/runs/<suite>/results.jsonl   # after T27",
+        "uv run poe analysis --eval-results eval/runs/<suite>/results.jsonl \\",
+        "                    --eval-cases <evaluated case dir>        # after T27 only",
         "```",
     ]
     svg = tornado_svg(
@@ -768,6 +960,7 @@ def generate(
     prices: tuple[float, float],
     manifest: Path,
     eval_results: Path | None = None,
+    eval_cases: Sequence[EvalCase] = (),
 ) -> dict[str, str]:
     """All evidence files as {filename: text}."""
     metadata = check_snapshot(con, manifest)
@@ -776,9 +969,14 @@ def generate(
     swing_map = swings(assumptions, measured, prices)
     eval_note = "provisional (`pending_eval`); the final evaluation (T27) has not run"
     if eval_results is not None:
-        overrides, n = eval_overrides(eval_results, swing_map)
-        swing_map = {**swing_map, **overrides}
-        eval_note = f"`{eval_results.name}` from `{eval_results.parent}` ({n:,} proposed runs)"
+        inputs = eval_overrides(eval_results, eval_cases, swing_map)
+        swing_map = {**swing_map, **inputs.overrides}
+        eval_note = (
+            f"`{_display_path(eval_results)}`, proposed system on {inputs.cases:,} "
+            f"dispute-traffic cases ({inputs.escalated_cases:,} escalated; "
+            f"{inputs.deflected_cases:,} deflected at RECOGNIZE and left out of the escalation "
+            "denominator). Held-out case mix, not production traffic."
+        )
     roi, svg = roi_report(tables, metadata, measured, assumptions, swing_map, eval_note)
     return {
         "call_center_baseline.md": call_center_report(tables, metadata, measured),
@@ -796,7 +994,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pricing", type=Path, default=DEFAULT_PRICING)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--eval-results", type=Path, default=None)
+    parser.add_argument(
+        "--eval-cases",
+        type=Path,
+        default=None,
+        help="case directory of the evaluated suite; needed with --eval-results (after T27 only)",
+    )
+    parser.add_argument(
+        "--allow-heldout",
+        action="store_true",
+        help="allow --eval-cases to point at the sealed held-out set (only after T27 unsealing)",
+    )
     args = parser.parse_args(argv)
+    if (args.eval_results is None) != (args.eval_cases is None):
+        print("ERROR: pass --eval-results and --eval-cases together.", file=sys.stderr)
+        return 2
     if not args.warehouse.exists():
         print(
             f"ERROR: {args.warehouse} not found; run `uv run poe dbt-build` and "
@@ -808,7 +1020,12 @@ def main(argv: list[str] | None = None) -> int:
     prices = load_prices(assumptions.llm.model, args.pricing)
     con = duckdb.connect(str(args.warehouse), read_only=True)
     try:
-        outputs = generate(con, assumptions, prices, args.manifest, args.eval_results)
+        cases = (
+            load_eval_cases(args.eval_cases, allow_heldout=args.allow_heldout)
+            if args.eval_cases
+            else ()
+        )
+        outputs = generate(con, assumptions, prices, args.manifest, args.eval_results, cases)
     except (IncompleteBuildError, EvidenceError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

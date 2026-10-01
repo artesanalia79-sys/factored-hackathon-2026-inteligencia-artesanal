@@ -91,12 +91,16 @@ labor:
       currency: ARS
       fx_per_usd: 1518 # BCRA wholesale close, 2026-09-30
       weekly_hours: 35 # call-center collective agreement, full-time operator
-      # central salary: category 3 "Operacion A", 35 h, Aug 2026 (964,665) + 8.33 % attendance
-      # bonus (presentismo) = 1,045,032. expensive: +20 % plus the 120,000 non-remunerative sum.
+      # Category 3 "Operacion A", 35 h, Aug 2026: gross total 964,665, which already includes
+      # the basic salary, the accumulated non-remunerative increase (120,000) and the
+      # extraordinary instalment (25,000). The employer load applies to the remunerative part
+      # only (819,665); the 145,000 non-remunerative sums go to `monthly_extra` without load.
+      # central adds the 8.33 % attendance bonus (presentismo): 819,665 x 1.0833 = 887,943;
+      # expensive is central + 20 %.
       # employer_load: contributions (18-20.4 %), health (6 %), ART, SAC and vacations: 30-45 %.
-      cheap: {monthly_salary: 964665, employer_load: 0.30, monthly_extra: 0}
-      central: {monthly_salary: 1045032, employer_load: 0.40, monthly_extra: 0}
-      expensive: {monthly_salary: 1254038, employer_load: 0.45, monthly_extra: 120000}
+      cheap: {monthly_salary: 819665, employer_load: 0.30, monthly_extra: 145000}
+      central: {monthly_salary: 887943, employer_load: 0.40, monthly_extra: 145000}
+      expensive: {monthly_salary: 1065532, employer_load: 0.45, monthly_extra: 145000}
       note: >-
         Outsourced contact-center pay (Comercio agreement). Staff employed directly by a bank
         (Bancaria agreement) earn much more; the `expensive` scenario and the overhead parameter
@@ -126,20 +130,20 @@ parameters:
       decision, chargeback filing, customer notice). The agent does not do this work.
     unit: minutes per dispute
     label: industry
-    low: 20
-    central: 40
-    high: 60
+    low: 15
+    central: 30
+    high: 45
     note: >-
-      Vendor sources give 20-40 min at best and 30-60 min typical. Cross-check only: 40 min at US
-      wages is about the 37 USD per chargeback that US issuers report; that USD figure is never
-      used as a cost here.
+      Low: "each dispute also costs a bank $9.08 to $10.32 in staffing alone" (Mastercard, via
+      Chargeback.io), roughly 15-20 min at US loaded wages. High: "manual case preparation alone
+      can take up to 45 minutes per dispute" (Rivero). Central is the midpoint, 30 min. Priced
+      at the contact-center cost per minute although back-office analysts usually cost more: a
+      conservative choice that understates the USD saving.
     sources:
-      - title: Resolve, manual vs automated dispute resolution costs
-        url: https://resolvepay.com/blog/statistics-comparing-manual-vs-automated-dispute-resolution-costs
-      - title: Rivero, automating the issuer dispute process
+      - title: Chargeback.io, chargeback statistics 2026 (issuer staffing cost per dispute)
+        url: https://www.chargeback.io/blog/chargeback-statistics
+      - title: Rivero, automating the issuer dispute process (case preparation time)
         url: https://rivero.tech/blog/automate-70-percent-of-dispute-process
-      - title: Jumpcap, issuer cost per chargeback (cross-check)
-        url: https://jumpcap.com/insights/how-issuers-can-win-in-the-lose-lose-of-chargebacks/
   deflection_share:
     description: >-
       Share of disputes that end without a dispute because the customer recognizes the charge
@@ -147,20 +151,20 @@ parameters:
     unit: share of disputes
     label: industry
     low: 0.05
-    central: 0.09
+    central: 0.085
     high: 0.25
     note: >-
-      Central = 19 % of disputes are first-party / legitimate purchases (Javelin issuer survey,
-      2025) x ~45 % of those deflected when purchase details are shown (Visa Order Insight).
-      Our agent shows less detail than Order Insight, hence the conservative central. High end:
-      24 % of questioned charges stem from unrecognized statement details.
+      Central = 19 % of disputes are first-party / legitimate purchases (issuer estimate, 2025)
+      x 45 % of those deflected when purchase details are shown (Visa Order Insight, upper end
+      of 40-45 %) = 8.55 %, rounded down. Not discounted further although our agent shows less
+      detail than Order Insight. High end: "24 % of consumers questioned a purchase because they
+      didn't recognize the details" (Mastercard); that is a share of questions, not a measured
+      deflection rate, so it only bounds the range.
     sources:
-      - title: The Paypers, The many faces of friendly fraud (Javelin 17 % to 19 %)
-        url: https://thepaypers.com/payments/expert-views/the-many-faces-of-friendly-fraud
+      - title: Chargeback.io, chargeback statistics 2026 (issuers 19 %, 24 % unrecognized details)
+        url: https://www.chargeback.io/blog/chargeback-statistics
       - title: Chargeback.io, Verifi Order Insight (40-45 % deflected)
         url: https://www.chargeback.io/blog/order-insight
-      - title: Chargeback.io, chargeback statistics 2026 (24 % unrecognized details)
-        url: https://www.chargeback.io/blog/chargeback-statistics
       - title: Mastercard, preventing first-party fraud (Datos Insights survey)
         url: https://www.mastercard.com/us/en/news-and-trends/Insights/2026/how-ethoca-helps-prevent-first-party-fraud-and-reduce-chargebacks.html
   handoff_time_reduction:

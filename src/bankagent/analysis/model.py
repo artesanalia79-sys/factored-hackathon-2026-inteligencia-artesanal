@@ -1,5 +1,7 @@
 """Pure T16 cost model: no I/O. The report feeds it measured inputs and the assumptions.
 
+Owner: Juan José (Task 16).
+
 Per dispute routed to the agent (Regulator-channel disputes are out of scope):
 
 - today:  every dispute pays human intake (by reception channel) + investigation.
@@ -8,13 +10,21 @@ Per dispute routed to the agent (Regulator-channel disputes are out of scope):
           the rest is filed by the agent and pays investigation reduced by
           `handoff_time_reduction`. Every case pays the LLM cost.
 
-Money = human minutes x the weighted, fully loaded labour cost per minute (USD).
+Counterfactual: today's human intake deflects nothing, i.e. every dispute received today is
+investigated. The complaints table counts disputes after intake and the 19 % first-party share
+behind the deflection assumption is measured on disputes already filed, so this is consistent
+with both; there is no source for a separate parameter.
+
+Money = human minutes x the weighted, fully loaded labour cost per minute (USD). This is
+projection arithmetic in float (inputs are ranges, not ledger amounts), rounded only for display;
+recorded as an exception to the Decimal-for-money rule in `docs/decision_ledger.md`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import Literal
 
 from bankagent.analysis.assumptions import (
     Assumptions,
@@ -25,6 +35,8 @@ from bankagent.analysis.assumptions import (
     Scenario,
 )
 
+Definition = Literal["strict", "central", "broad"]
+DEFINITIONS: tuple[Definition, ...] = ("strict", "central", "broad")
 MINUTES_PER_HOUR = 60
 WEEKS_PER_YEAR = 52
 DAYS_PER_YEAR = 365
@@ -46,6 +58,13 @@ class Measured:
 
     def per_year(self, count: float) -> float:
         return count * DAYS_PER_YEAR / self.days
+
+    def disputes(self, definition: Definition) -> int:
+        return {
+            "strict": self.disputes_strict,
+            "central": self.disputes_central,
+            "broad": self.disputes_broad,
+        }[definition]
 
     @property
     def annual_disputes(self) -> float:
@@ -132,11 +151,36 @@ class UnitEconomics:
 
     intake_minutes: float
     investigation_minutes: float
-    today_minutes: float
-    agent_human_minutes: float
-    today_usd: float
-    agent_usd: float
+    agent_intake_minutes: float
+    agent_investigation_minutes: float
+    cost_per_minute_usd: float
     llm_usd: float
+
+    @property
+    def today_minutes(self) -> float:
+        return self.intake_minutes + self.investigation_minutes
+
+    @property
+    def agent_human_minutes(self) -> float:
+        return self.agent_intake_minutes + self.agent_investigation_minutes
+
+    @property
+    def today_usd(self) -> float:
+        return self.today_minutes * self.cost_per_minute_usd
+
+    @property
+    def agent_usd(self) -> float:
+        return self.agent_human_minutes * self.cost_per_minute_usd + self.llm_usd
+
+    @property
+    def intake_minutes_saved(self) -> float:
+        """Rests on what the agent does itself (intake), given the escalation share."""
+        return self.intake_minutes - self.agent_intake_minutes
+
+    @property
+    def investigation_minutes_saved(self) -> float:
+        """Rests on the industry assumptions (deflection, handoff time reduction)."""
+        return self.investigation_minutes - self.agent_investigation_minutes
 
     @property
     def savings_usd(self) -> float:
@@ -157,19 +201,19 @@ def unit_economics(point: Mapping[str, float], measured: Measured, intake: Intak
     defl = min(point["deflection_share"], 1 - esc)
     intake_min = intake_minutes(point, measured, intake)
     investigation = point["investigation_minutes"]
-    today_min = intake_min + investigation
     filed = 1 - esc - defl
-    agent_min = esc * today_min + filed * investigation * (1 - point["handoff_time_reduction"])
     cpm = point["cost_per_minute_usd"] * point["overhead_multiplier"]
-    llm = point["llm_cost_per_case_usd"]
+    if (intake_min + investigation) * cpm <= 0:
+        raise ValueError("today's cost per dispute must be positive")
     return UnitEconomics(
         intake_minutes=intake_min,
         investigation_minutes=investigation,
-        today_minutes=today_min,
-        agent_human_minutes=agent_min,
-        today_usd=today_min * cpm,
-        agent_usd=agent_min * cpm + llm,
-        llm_usd=llm,
+        agent_intake_minutes=esc * intake_min,
+        agent_investigation_minutes=(
+            esc * investigation + filed * investigation * (1 - point["handoff_time_reduction"])
+        ),
+        cost_per_minute_usd=cpm,
+        llm_usd=point["llm_cost_per_case_usd"],
     )
 
 
@@ -250,15 +294,36 @@ def tornado(
     return sorted(bars, key=lambda b: (-b.span, b.swing.name))
 
 
+def joint_point(
+    swing_map: Mapping[str, Swing], bars: list[Bar], *, worst: bool
+) -> dict[str, float]:
+    """Every swinging input at once at the end that lowers (worst) or raises the savings.
+
+    A one-at-a-time tornado hides the joint case; this is its pessimistic/optimistic bound.
+    """
+    point = central_point(swing_map)
+    for bar in bars:
+        low_lowers = bar.savings_at_low < bar.savings_at_high
+        point[bar.swing.name] = bar.swing.low if low_lowers == worst else bar.swing.high
+    return point
+
+
 @dataclass(frozen=True, slots=True)
 class AnnualScenario:
-    """Volume scenario: disputes per year and the human effort / money at each adoption share."""
+    """One volume (scale x dispute definition): human effort and money at each adoption share.
 
-    name: str
+    FTE are split into intake (what the agent does itself) and investigation (industry
+    assumptions), so a reader can see which part of the saving is more solid.
+    """
+
+    scale: str
+    definition: Definition
     disputes_per_year: float
     eligible_per_year: float
-    fte_today: float
-    fte_saved: dict[float, float]
+    fte_today_intake: float
+    fte_today_investigation: float
+    fte_saved_intake: dict[float, float]
+    fte_saved_investigation: dict[float, float]
     savings_usd: dict[float, float]
 
 
@@ -268,36 +333,41 @@ def annual_scenarios(
     assumptions: Assumptions,
     hours_per_fte: float,
 ) -> list[AnnualScenario]:
-    """Observed volume, declared-capacity volume and a per-N-customers normalisation."""
+    """Observed volume and a per-N-customers normalisation, for each dispute definition.
+
+    No scenario scales disputes by the agents' declared capacity: nothing shows that complaints
+    are sampled like contacts (decision ledger, T16 review).
+    """
     share = eligible_share(measured, assumptions.intake)
     per_n = assumptions.scale.per_customers
-    volumes = [
-        ("This bank, observed volume", measured.annual_disputes),
-        (
-            f"This bank, declared agent capacity (x{measured.capacity_ratio:.1f})",
-            measured.annual_disputes * measured.capacity_ratio,
-        ),
-        (
-            f"Per {per_n:,} customers",
-            measured.annual_disputes / measured.customers * per_n,
-        ),
-    ]
+    adoptions = assumptions.scale.adoption_shares
+
+    def fte(per_year: float, minutes: float) -> float:
+        return per_year * minutes / MINUTES_PER_HOUR / hours_per_fte
+
     scenarios = []
-    for name, per_year in volumes:
-        eligible = per_year * share
-        scenarios.append(
-            AnnualScenario(
-                name=name,
-                disputes_per_year=per_year,
-                eligible_per_year=eligible,
-                fte_today=eligible * unit.today_minutes / MINUTES_PER_HOUR / hours_per_fte,
-                fte_saved={
-                    a: a * eligible * unit.human_minutes_saved / MINUTES_PER_HOUR / hours_per_fte
-                    for a in assumptions.scale.adoption_shares
-                },
-                savings_usd={
-                    a: a * eligible * unit.savings_usd for a in assumptions.scale.adoption_shares
-                },
+    for scale, factor in (
+        ("This bank, observed volume", 1.0),
+        (f"Per {per_n:,} customers", per_n / measured.customers),
+    ):
+        for definition in DEFINITIONS:
+            per_year = measured.per_year(measured.disputes(definition)) * factor
+            eligible = per_year * share
+            scenarios.append(
+                AnnualScenario(
+                    scale=scale,
+                    definition=definition,
+                    disputes_per_year=per_year,
+                    eligible_per_year=eligible,
+                    fte_today_intake=fte(eligible, unit.intake_minutes),
+                    fte_today_investigation=fte(eligible, unit.investigation_minutes),
+                    fte_saved_intake={
+                        a: fte(a * eligible, unit.intake_minutes_saved) for a in adoptions
+                    },
+                    fte_saved_investigation={
+                        a: fte(a * eligible, unit.investigation_minutes_saved) for a in adoptions
+                    },
+                    savings_usd={a: a * eligible * unit.savings_usd for a in adoptions},
+                )
             )
-        )
     return scenarios

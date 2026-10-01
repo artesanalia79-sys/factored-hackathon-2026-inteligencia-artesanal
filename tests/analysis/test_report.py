@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import duckdb
@@ -15,8 +16,15 @@ import pytest
 
 from bankagent.analysis.assumptions import Label, load_assumptions, load_prices
 from bankagent.analysis.model import Swing
-from bankagent.analysis.report import ANALYSES, EvidenceError, eval_overrides, generate, main
-from bankagent.contracts.enums import Outcome, SystemVariant
+from bankagent.analysis.report import (
+    ANALYSES,
+    EvidenceError,
+    eval_overrides,
+    generate,
+    load_eval_cases,
+    main,
+)
+from bankagent.contracts.enums import EvalCategory, Outcome, SystemVariant
 from bankagent.contracts.evaluation import EvalResult
 from bankagent.silver.report import IncompleteBuildError
 
@@ -129,6 +137,15 @@ def _rest(con: duckdb.DuckDBPyConnection) -> None:
             ("PRD-T16-3", datetime(2025, 3, 3, 10), 10, False),
         ],
     )
+    con.execute("CREATE TABLE silver_products (product_id VARCHAR, product_type VARCHAR)")
+    con.executemany(
+        "INSERT INTO silver_products VALUES (?, ?)",
+        [
+            ("PRD-T16-1", "Tarjeta Crédito"),
+            ("PRD-T16-2", "Cuenta Ahorro"),
+            ("PRD-T16-3", "Tarjeta Débito"),
+        ],
+    )
     con.execute(
         "CREATE TABLE gold_cc_contact_baseline AS SELECT c.country_code AS country, "
         "count(*) AS contacts, count(*) FILTER (WHERE was_resolved) AS resolved_contacts, "
@@ -180,10 +197,10 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _generate(warehouse: Path, manifest: Path, eval_results: Path | None = None) -> dict[str, str]:
+def _generate(warehouse: Path, manifest: Path) -> dict[str, str]:
     a = load_assumptions()
     with duckdb.connect(str(warehouse), read_only=True) as con:
-        return generate(con, a, load_prices(a.llm.model), manifest, eval_results)
+        return generate(con, a, load_prices(a.llm.model), manifest)
 
 
 def test_generates_all_evidence_aggregate_only(tmp_path: Path, manifest: Path) -> None:
@@ -237,51 +254,112 @@ def test_refuses_without_gold_baselines(tmp_path: Path, manifest: Path) -> None:
         _generate(warehouse, manifest)
 
 
-def _result(i: int, system: SystemVariant, outcome: Outcome, cost: str) -> str:
+CASES = load_eval_cases(
+    Path(__file__).resolve().parents[2] / "eval" / "dev"
+)  # public dev cases; only their ids and categories are used here
+NORMAL = [c.case_id for c in CASES if c.category == EvalCategory.NORMAL]
+ATTACK = next(c.case_id for c in CASES if c.category == EvalCategory.PROMPT_INJECTION)
+HUMAN = next(c.case_id for c in CASES if c.category == EvalCategory.HUMAN_REQUIRED)
+RECOGNIZED = next(c.case_id for c in CASES if c.category == EvalCategory.RECOGNIZED_AFTER_EVIDENCE)
+BASE = {
+    "escalation_share": Swing("escalation_share", Label.PENDING_EVAL, 0.1, 0.2, 0.4),
+    "llm_cost_per_case_usd": Swing("llm_cost_per_case_usd", Label.PENDING_EVAL, 0, 0.003, 1),
+}
+
+
+def _result(
+    case_id: str, outcome: Outcome, cost: str, system: SystemVariant = SystemVariant.PROPOSED
+) -> str:
     return EvalResult(
-        case_id=f"case-{i:03d}",
+        case_id=case_id,
         system=system,
         run_id="run-1",
         repeat_index=0,
         final_outcome=outcome,
         escalated=outcome == Outcome.ESCALATED,
         turns_used=3,
-        cost_usd_total=cost,  # type: ignore[arg-type]
+        cost_usd_total=Decimal(cost),
         correct=True,
         safe_automated_resolution=outcome == Outcome.AUTOMATED_RESOLUTION,
         automation_attempted=True,
     ).model_dump_json()
 
 
+def _write(tmp_path: Path, lines: list[str]) -> Path:
+    path = tmp_path / "results.jsonl"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+DISPUTE_RUNS = [
+    _result(NORMAL[0], Outcome.AUTOMATED_RESOLUTION, "0.004"),
+    _result(NORMAL[1], Outcome.AUTOMATED_RESOLUTION, "0.002"),
+    _result(NORMAL[2], Outcome.ABSTAINED, "0.003"),
+    _result(HUMAN, Outcome.ESCALATED, "0.002"),
+    _result(RECOGNIZED, Outcome.DEFLECTED_RECOGNIZED, "0.004"),
+    _result(NORMAL[0], Outcome.ESCALATED, "0.1", SystemVariant.BASELINE_LLM_ONLY),
+]
+
+
 def test_eval_results_replace_the_provisional_inputs(tmp_path: Path, manifest: Path) -> None:
-    results = tmp_path / "results.jsonl"
-    lines = [
-        _result(0, SystemVariant.PROPOSED, Outcome.AUTOMATED_RESOLUTION, "0.004"),
-        _result(1, SystemVariant.PROPOSED, Outcome.ESCALATED, "0.002"),
-        _result(2, SystemVariant.PROPOSED, Outcome.ABSTAINED, "0.003"),
-        _result(3, SystemVariant.PROPOSED, Outcome.DEFLECTED_RECOGNIZED, "0.003"),
-        _result(4, SystemVariant.BASELINE_LLM_ONLY, Outcome.ESCALATED, "0.5"),
+    results = _write(tmp_path, DISPUTE_RUNS)
+    a = load_assumptions()
+    with duckdb.connect(str(_warehouse(tmp_path, _sha(manifest))), read_only=True) as con:
+        out = generate(con, a, load_prices(a.llm.model), manifest, results, CASES)
+    roi = out["roi.md"]
+    assert "5 dispute-traffic cases" in roi
+    assert "offline_eval" in roi
+    assert str(tmp_path) not in roi  # no local absolute path in the evidence
+    assert "Measured by the evaluation harness" in roi
+    inputs = eval_overrides(results, CASES, BASE)
+    # Deflected case leaves the denominator: 2 escalated (abstained + escalated) of 4.
+    assert (inputs.cases, inputs.deflected_cases, inputs.escalated_cases) == (5, 1, 2)
+    esc = inputs.overrides["escalation_share"]
+    assert esc.central == pytest.approx(0.5)
+    assert esc.label == Label.OFFLINE_EVAL
+    assert esc.low < 0.5 < esc.high  # Wilson 95 % interval
+    assert inputs.overrides["llm_cost_per_case_usd"].central == pytest.approx(0.003)
+
+
+def test_attack_results_do_not_change_the_escalation_share(tmp_path: Path) -> None:
+    before = eval_overrides(_write(tmp_path, DISPUTE_RUNS), CASES, BASE)
+    with_attack = [*DISPUTE_RUNS, _result(ATTACK, Outcome.DENIED, "0.002")]
+    after = eval_overrides(_write(tmp_path, with_attack), CASES, BASE)
+    assert after.overrides["escalation_share"] == before.overrides["escalation_share"]
+    assert after.cases == before.cases
+
+
+def test_escalation_uses_the_majority_of_repeats(tmp_path: Path) -> None:
+    runs = [
+        _result(NORMAL[0], Outcome.ESCALATED, "0.001"),
+        _result(NORMAL[0], Outcome.AUTOMATED_RESOLUTION, "0.001"),
+        _result(NORMAL[0], Outcome.AUTOMATED_RESOLUTION, "0.001"),
+        _result(NORMAL[1], Outcome.ESCALATED, "0.001"),
+        _result(NORMAL[1], Outcome.ESCALATED, "0.001"),
+        _result(NORMAL[1], Outcome.AUTOMATED_RESOLUTION, "0.001"),
     ]
-    results.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    out = _generate(_warehouse(tmp_path, _sha(manifest)), manifest, results)
-    assert "4 proposed runs" in out["roi.md"]
-    assert "offline_eval" in out["roi.md"]
-    base = {
-        "escalation_share": Swing("escalation_share", Label.PENDING_EVAL, 0.1, 0.2, 0.4),
-        "llm_cost_per_case_usd": Swing("llm_cost_per_case_usd", Label.PENDING_EVAL, 0, 0.003, 1),
-    }
-    overrides, n = eval_overrides(results, base)
-    assert n == 4
-    assert overrides["escalation_share"].central == pytest.approx(0.5)
-    assert overrides["llm_cost_per_case_usd"].central == pytest.approx(0.003)
-    assert overrides["escalation_share"].label == Label.OFFLINE_EVAL
+    inputs = eval_overrides(_write(tmp_path, runs), CASES, BASE)
+    assert inputs.overrides["escalation_share"].central == pytest.approx(0.5)
 
 
-def test_eval_results_without_the_proposed_system_are_rejected(tmp_path: Path) -> None:
-    results = tmp_path / "results.jsonl"
-    results.write_text(
-        _result(0, SystemVariant.BASELINE_LLM_ONLY, Outcome.ESCALATED, "0.1") + "\n",
-        encoding="utf-8",
-    )
+def test_eval_results_need_the_proposed_system_and_known_cases(tmp_path: Path) -> None:
+    baseline_only = [_result(NORMAL[0], Outcome.ESCALATED, "0.1", SystemVariant.BASELINE_LLM_ONLY)]
     with pytest.raises(EvidenceError, match="proposed"):
-        eval_overrides(results, {})
+        eval_overrides(_write(tmp_path, baseline_only), CASES, BASE)
+    with pytest.raises(EvidenceError, match="missing from the case set"):
+        eval_overrides(
+            _write(tmp_path, [_result("case-unknown", Outcome.ESCALATED, "0")]), CASES, BASE
+        )
+
+
+def test_main_requires_eval_cases_with_eval_results(tmp_path: Path) -> None:
+    assert main(["--eval-results", str(tmp_path / "r.jsonl")]) == 2
+
+
+def test_heldout_cases_need_an_explicit_flag(tmp_path: Path) -> None:
+    sealed = tmp_path / "heldout"
+    sealed.mkdir()
+    with pytest.raises(EvidenceError, match="held-out"):
+        load_eval_cases(sealed)
+    with pytest.raises(EvidenceError, match=r"no \*\.yaml"):
+        load_eval_cases(sealed, allow_heldout=True)

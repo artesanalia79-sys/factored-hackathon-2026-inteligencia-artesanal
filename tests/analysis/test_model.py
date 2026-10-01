@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -28,12 +29,13 @@ from bankagent.analysis.model import (
     cost_per_minute_usd,
     eligible_share,
     intake_minutes,
+    joint_point,
     llm_cost_usd,
     tornado,
     unit_economics,
     weighted_cost_per_minute_usd,
 )
-from bankagent.analysis.svg import tornado_svg
+from bankagent.analysis.svg import BAR_H, tornado_svg
 
 INTAKE = Intake(
     channel_groups={"Call Center": "call_center", "Email": "written", "Branch": "branch"},
@@ -183,16 +185,97 @@ def test_tornado_is_sorted_by_span_and_skips_fixed_inputs() -> None:
     assert "T &lt;&amp;&gt;" in svg
 
 
-def test_annual_effect_scales_with_adoption_and_volume() -> None:
+def test_svg_bar_lengths_are_proportional_to_the_savings_swing() -> None:
+    swing_map = {name: Swing(name, Label.TEAM, v, v, v) for name, v in POINT.items()}
+    swing_map["deflection_share"] = Swing("deflection_share", Label.INDUSTRY, 0.05, 0.1, 0.25)
+    swing_map["investigation_minutes"] = Swing("investigation_minutes", Label.INDUSTRY, 20, 40, 60)
+    bars = tornado(swing_map, lambda p: unit_economics(p, MEASURED, INTAKE).savings_usd)
+    base = unit_economics(POINT, MEASURED, INTAKE).savings_usd
+    root = ElementTree.fromstring(  # noqa: S314 - our own generated markup
+        tornado_svg(bars, base, "t", "axis", lambda _n, v: f"{v:g}", {})
+    )
+    ns = "{http://www.w3.org/2000/svg}"
+    rects = [r for r in root.iter(f"{ns}rect") if r.get("height") == str(BAR_H)]
+    swings_drawn = [
+        abs(value - base) for bar in bars for value in (bar.savings_at_low, bar.savings_at_high)
+    ]
+    widths = sorted(float(r.get("width", "0")) for r in rects)
+    ratios = [w / d for w, d in zip(widths, sorted(swings_drawn), strict=True) if d > 0.05]
+    assert len(rects) == 2 * len(bars)
+    assert max(ratios) == pytest.approx(min(ratios), rel=0.01)
+
+
+def test_annual_effect_scales_with_adoption_volume_and_definition() -> None:
     a = load_assumptions()
     unit = unit_economics(POINT, MEASURED, INTAKE)
-    rows = annual_scenarios(unit, MEASURED, a, hours_per_fte=1000)
-    observed, declared, per_n = rows
-    assert declared.disputes_per_year == pytest.approx(observed.disputes_per_year * 10)
+    rows = {(r.scale, r.definition): r for r in annual_scenarios(unit, MEASURED, a, 1000)}
+    assert len(rows) == 6  # 2 scales x 3 definitions; no declared-capacity scenario
+    observed = rows[("This bank, observed volume", "central")]
+    per_n = rows[(f"Per {a.scale.per_customers:,} customers", "central")]
     assert per_n.disputes_per_year == pytest.approx(1_000 / 100_000 * a.scale.per_customers)
+    assert rows[("This bank, observed volume", "strict")].disputes_per_year == pytest.approx(800)
+    assert rows[("This bank, observed volume", "broad")].disputes_per_year == pytest.approx(1_100)
     share = eligible_share(MEASURED, a.intake)
     assert observed.savings_usd[1.0] == pytest.approx(1_000 * share * unit.savings_usd)
     assert observed.savings_usd[0.5] == pytest.approx(observed.savings_usd[1.0] / 2)
+    # FTE split adds up to the total human time saved.
+    saved_minutes = 1_000 * share * unit.human_minutes_saved
+    fte_saved = observed.fte_saved_intake[1.0] + observed.fte_saved_investigation[1.0]
+    assert fte_saved == pytest.approx(saved_minutes / 60 / 1000)
+
+
+def test_minutes_saved_split_into_intake_and_investigation() -> None:
+    unit = unit_economics(POINT, MEASURED, INTAKE)
+    assert unit.intake_minutes_saved == pytest.approx((1 - 0.2) * unit.intake_minutes)
+    assert unit.intake_minutes_saved + unit.investigation_minutes_saved == pytest.approx(
+        unit.human_minutes_saved
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"deflection_share": 0.0},  # savings only from intake and the handoff
+        {"llm_cost_per_case_usd": 0.1},  # LLM x10: savings shrink
+        {"llm_cost_per_case_usd": 10.0},  # LLM x1000: savings turn negative
+    ],
+)
+def test_edge_cases_follow_the_formula(changes: dict[str, float]) -> None:
+    point = {**POINT, **changes}
+    unit = unit_economics(point, MEASURED, INTAKE)
+    intake = intake_minutes(point, MEASURED, INTAKE)
+    esc, defl = point["escalation_share"], point["deflection_share"]
+    agent = esc * (intake + 40) + (1 - esc - defl) * 40 * (1 - point["handoff_time_reduction"])
+    expected = (intake + 40 - agent) * 0.2 - point["llm_cost_per_case_usd"]
+    assert unit.savings_usd == pytest.approx(expected)
+    if point["llm_cost_per_case_usd"] >= 10:
+        assert unit.savings_usd < 0
+        assert unit.savings_share < 0
+
+
+def test_zero_cost_today_is_rejected() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        unit_economics({**POINT, "cost_per_minute_usd": 0.0}, MEASURED, INTAKE)
+
+
+def test_joint_points_bound_every_one_at_a_time_result() -> None:
+    swing_map = {name: Swing(name, Label.TEAM, v, v, v) for name, v in POINT.items()}
+    for name, low, high in (
+        ("deflection_share", 0.05, 0.25),
+        ("escalation_share", 0.1, 0.4),
+        ("investigation_minutes", 20, 60),
+    ):
+        swing_map[name] = Swing(name, Label.INDUSTRY, low, POINT[name], high)
+
+    def evaluate(p: Mapping[str, float]) -> float:
+        return unit_economics(p, MEASURED, INTAKE).savings_usd
+
+    bars = tornado(swing_map, evaluate)
+    worst = evaluate(joint_point(swing_map, bars, worst=True))
+    best = evaluate(joint_point(swing_map, bars, worst=False))
+    for bar in bars:
+        assert worst <= min(bar.savings_at_low, bar.savings_at_high) + 1e-9
+        assert best >= max(bar.savings_at_low, bar.savings_at_high) - 1e-9
 
 
 def test_llm_cost_from_token_prices() -> None:
