@@ -288,9 +288,12 @@ class ServingDB:
         return TransactionRiskSignals(transaction_id=transaction_id, fraud_score=row[0])
 
     def last_claim_date(self, customer_id: str) -> date | None:
-        """Date of this customer's most recent claim (any status, any transaction), or ``None``.
-
-        Input to the repeat-disputer escalation trigger (T9).
+        """Date of this customer's most recent pre-agent claim (any status, any transaction), or
+        ``None``. Input to the repeat-disputer escalation trigger (T9): a dispute the agent
+        itself created is not here, only in ``OpsStore.last_dispute_date``; combine both (the
+        newer date) before building ``PolicyInputs.last_claim_date``, or a customer who disputes
+        repeatedly through the agent, with no prior complaint in the source data, is never
+        flagged as a repeat disputer.
         """
         with duckdb.connect(self._path, read_only=True) as con:
             row = con.execute(_LAST_CLAIM_SQL, [customer_id]).fetchone()

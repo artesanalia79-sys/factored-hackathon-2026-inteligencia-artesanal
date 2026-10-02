@@ -6,7 +6,14 @@ from datetime import date
 
 from pydantic import Field, model_validator
 
-from bankagent.contracts.base import Contract, CurrencyCode, Last4, NonNegativeMoney, Probability
+from bankagent.contracts.base import (
+    Contract,
+    CurrencyCode,
+    Identifier,
+    Last4,
+    NonNegativeMoney,
+    Probability,
+)
 from bankagent.contracts.enums import (
     CONFIRMED_WRITE_ACTIONS,
     ActionType,
@@ -71,7 +78,14 @@ class RouterResult(Contract):
 
 
 class PolicyDecision(Contract):
-    """Deterministic decision of the policy engine for one request."""
+    """Deterministic decision of the policy engine for one request.
+
+    ``target_transaction_id`` is the transaction this decision was evaluated for, when it was
+    evaluated against one (``None`` for a baseline/ad hoc decision with no bound target). A write
+    tool that allows ``create_dispute`` must refuse a call whose ``args.transaction_id`` differs
+    from it: otherwise a decision computed for transaction A would authorize, and stamp its SLA
+    and rule ids onto, a dispute on transaction B (T8 PR #43 review; T9 PR #44 review).
+    """
 
     decision: DecisionType
     rule_ids: tuple[str, ...] = ()
@@ -81,6 +95,7 @@ class PolicyDecision(Contract):
     requires_confirmation: bool = False
     escalation_triggers: tuple[str, ...] = ()
     sla_due_date: date | None = None
+    target_transaction_id: Identifier | None = None
     policy_version: str
 
     @model_validator(mode="after")

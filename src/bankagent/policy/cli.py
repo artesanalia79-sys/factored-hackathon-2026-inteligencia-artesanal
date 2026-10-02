@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 from bankagent.contracts.enums import DecisionType
@@ -19,8 +20,17 @@ from bankagent.store.ops import OpsStore
 from bankagent.store.serving import ServingDB
 
 
+def _latest(*dates: date | None) -> date | None:
+    found = [d for d in dates if d is not None]
+    return max(found) if found else None
+
+
 def _inputs(
-    serving: ServingDB, store: OpsStore | None, customer_id: str, transaction_id: str
+    serving: ServingDB,
+    store: OpsStore | None,
+    customer_id: str,
+    transaction_id: str,
+    filed_on: date,
 ) -> PolicyInputs:
     transaction = serving.transaction(customer_id, transaction_id)
     if transaction is None:
@@ -38,9 +48,13 @@ def _inputs(
         transaction=transaction,
         customer_country=customer.country,
         as_of_date=serving.as_of_date(),
+        filed_on=filed_on,
         open_dispute_id=open_dispute_id,
         risk=serving.risk_signals(customer_id, transaction_id),
-        last_claim_date=serving.last_claim_date(customer_id),
+        last_claim_date=_latest(
+            serving.last_claim_date(customer_id),
+            store.last_dispute_date(customer_id) if store else None,
+        ),
     )
 
 
@@ -69,12 +83,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bank", type=Path, default=DEFAULT_BANK, help="serving DB (DuckDB)")
     parser.add_argument("--ops-store", type=Path, default=None, help="ops store (SQLite), optional")
     parser.add_argument("--policy", type=Path, default=POLICY_FILE, help="policy YAML")
+    parser.add_argument(
+        "--filed-on",
+        type=date.fromisoformat,
+        default=None,
+        help="day the dispute is filed (default: today); drives the SLA due date, never the "
+        "eligibility window (that compares to the bank's as_of_date)",
+    )
     args = parser.parse_args(argv)
 
     serving = ServingDB(args.bank)
     store = OpsStore(args.ops_store) if args.ops_store else None
     config = load_policy(args.policy)
-    inputs = _inputs(serving, store, args.customer_id, args.transaction_id)
+    filed_on = args.filed_on or date.today()
+    inputs = _inputs(serving, store, args.customer_id, args.transaction_id, filed_on)
     decision = evaluate(config, inputs)
     _print_decision(config, decision.decision, decision.rule_ids)
     if decision.sla_due_date is not None:

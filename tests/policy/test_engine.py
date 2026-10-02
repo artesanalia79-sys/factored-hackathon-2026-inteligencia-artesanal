@@ -10,8 +10,15 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from bankagent.contracts.domain import TransactionRiskSignals, TransactionView
-from bankagent.contracts.enums import Channel, DecisionType, TransactionStatus, TransactionType
+from bankagent.contracts.domain import DisputeCase, TransactionRiskSignals, TransactionView
+from bankagent.contracts.enums import (
+    Channel,
+    DecisionType,
+    DisputeReason,
+    DisputeStatus,
+    TransactionStatus,
+    TransactionType,
+)
 from bankagent.policy.engine import PolicyInputs, evaluate
 from bankagent.policy.schema import (
     ApprovedStatusRule,
@@ -23,10 +30,17 @@ from bankagent.policy.schema import (
     WindowRule,
     load_policy,
 )
+from bankagent.store.ops import OpsStore
 from bankagent.store.serving import ServingDB
 
 AS_OF = date(2026, 6, 17)
-MARIANA, CARLOS, VALENTINA, DIEGO = "CUST-FX-001", "CUST-FX-006", "CUST-FX-007", "CUST-FX-008"
+MARIANA, CARLOS, VALENTINA, DIEGO, ANDRES = (
+    "CUST-FX-001",
+    "CUST-FX-006",
+    "CUST-FX-007",
+    "CUST-FX-008",
+    "CUST-FX-002",
+)
 
 
 def _txn(
@@ -96,6 +110,7 @@ def _inputs(**overrides: object) -> PolicyInputs:
         "transaction": _txn(),
         "customer_country": "AR",
         "as_of_date": AS_OF,
+        "filed_on": AS_OF,
         "open_dispute_id": None,
         "risk": None,
         "last_claim_date": None,
@@ -113,6 +128,25 @@ def test_a_clean_case_proceeds() -> None:
     assert decision.rule_ids == ("E1", "E2", "W1")
     assert decision.requires_confirmation is True
     assert decision.sla_due_date == AS_OF + timedelta(days=30)
+    assert decision.target_transaction_id == "TXN-TEST-0001"
+
+
+def test_the_sla_is_counted_from_filed_on_not_from_as_of_date() -> None:
+    # as_of_date (the frozen snapshot) and filed_on (today) can be far apart; only filed_on
+    # drives the SLA, or every dispute filed today would get an SLA stamped on a stale date.
+    filed_on = AS_OF + timedelta(days=120)
+    decision = evaluate(_config(), _inputs(filed_on=filed_on))
+    assert decision.decision == DecisionType.PROCEED
+    assert decision.sla_due_date == filed_on + timedelta(days=30)
+    assert decision.sla_due_date != AS_OF + timedelta(days=30)
+
+
+def test_target_transaction_id_is_set_even_when_ineligible_or_escalated() -> None:
+    ineligible = evaluate(_config(), _inputs(transaction=_txn(status=TransactionStatus.DECLINED)))
+    assert ineligible.target_transaction_id == "TXN-TEST-0001"
+    risk = TransactionRiskSignals(transaction_id="TXN-TEST-0001", fraud_score=99.0)
+    escalated = evaluate(_config(), _inputs(risk=risk))
+    assert escalated.target_transaction_id == "TXN-TEST-0001"
 
 
 def test_a_non_approved_transaction_is_ineligible() -> None:
@@ -198,18 +232,29 @@ def test_both_escalation_triggers_combine_in_rule_order() -> None:
 # -- end to end on the real policy and the real fixture bank ------------------------------
 
 
-def _real_inputs(serving: ServingDB, customer_id: str, transaction_id: str) -> PolicyInputs:
+def _real_inputs(
+    serving: ServingDB,
+    customer_id: str,
+    transaction_id: str,
+    *,
+    store: OpsStore | None = None,
+    filed_on: date | None = None,
+) -> PolicyInputs:
     transaction = serving.transaction(customer_id, transaction_id)
     assert transaction is not None
     customer = serving.customer(customer_id)
     assert customer is not None
+    history_claim = serving.last_claim_date(customer_id)
+    agent_claim = store.last_dispute_date(customer_id) if store else None
+    last_claim_date = max((d for d in (history_claim, agent_claim) if d is not None), default=None)
     return PolicyInputs(
         transaction=transaction,
         customer_country=customer.country,
         as_of_date=serving.as_of_date(),
+        filed_on=filed_on or serving.as_of_date(),
         open_dispute_id=serving.open_complaint_id(customer_id, transaction_id),
         risk=serving.risk_signals(customer_id, transaction_id),
-        last_claim_date=serving.last_claim_date(customer_id),
+        last_claim_date=last_claim_date,
     )
 
 
@@ -256,3 +301,42 @@ def test_a_high_fraud_score_is_escalated(serving: ServingDB) -> None:
     decision = evaluate(load_policy(), _real_inputs(serving, CARLOS, "TXN-FX-0601"))
     assert decision.decision == DecisionType.ESCALATE
     assert decision.rule_ids == ("DSP-ESC-01",)
+
+
+def test_the_real_sla_is_counted_from_filed_on_not_the_fixtures_as_of_date(
+    serving: ServingDB,
+) -> None:
+    filed_on = serving.as_of_date() + timedelta(days=200)
+    decision = evaluate(
+        load_policy(), _real_inputs(serving, MARIANA, "TXN-FX-0101", filed_on=filed_on)
+    )
+    assert decision.decision == DecisionType.PROCEED
+    assert decision.sla_due_date == filed_on + timedelta(days=30)
+
+
+def test_a_customer_with_no_history_but_a_recent_agent_dispute_is_a_repeat_disputer(
+    serving: ServingDB, ops_store: OpsStore
+) -> None:
+    # CUST-FX-002 (Andrés) has no dispute_history row at all: only the agent's own prior
+    # dispute (T9 PR #44 review) should make the second one a repeat disputer.
+    as_of = serving.as_of_date()
+    first = DisputeCase(
+        dispute_id="DSP-TEST-0001",
+        transaction_id="TXN-FX-0201",
+        reason=DisputeReason.UNRECOGNIZED,
+        status=DisputeStatus.SUBMITTED,
+        created_at=datetime.combine(as_of, datetime.min.time(), tzinfo=UTC),
+        amount=Decimal("859.00"),
+        currency="COP",
+        idempotency_key="idem-dispute-0099",
+        policy_version="test-v1",
+    )
+    ops_store.insert_dispute(ANDRES, first)
+
+    without_agent_history = _real_inputs(serving, ANDRES, "TXN-FX-0202")
+    assert without_agent_history.last_claim_date is None
+
+    with_agent_history = _real_inputs(serving, ANDRES, "TXN-FX-0202", store=ops_store)
+    decision = evaluate(load_policy(), with_agent_history)
+    assert decision.decision == DecisionType.ESCALATE
+    assert decision.rule_ids == ("DSP-ESC-02",)

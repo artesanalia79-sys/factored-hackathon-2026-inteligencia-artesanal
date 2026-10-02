@@ -28,7 +28,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from bankagent.contracts.domain import CardBlockEvent, ConfirmationToken, DisputeCase, Session
@@ -349,6 +349,19 @@ class OpsStore:
                 [customer_id, transaction_id],
             )
         return None if row is None else DisputeCase.model_validate_json(row["payload"])
+
+    def last_dispute_date(self, customer_id: str) -> date | None:
+        """Filing date of this customer's most recent agent-made dispute, across every
+        transaction, or ``None``. Input to the policy engine's repeat-disputer trigger (T9):
+        combine with ``ServingDB.last_claim_date`` (the pre-agent history), taking the newer of
+        the two, since a customer who disputes through the agent repeatedly is a repeat disputer
+        even with no prior complaint in the source data.
+        """
+        row = self._db.one(
+            "SELECT max(created_at) AS latest FROM disputes WHERE customer_id = ?", [customer_id]
+        )
+        value = from_text(row["latest"]) if row else None
+        return None if value is None else value.date()
 
     # -- card blocks -------------------------------------------------------
 

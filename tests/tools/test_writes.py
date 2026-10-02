@@ -618,6 +618,37 @@ def test_without_a_policy_decision_the_dispute_carries_no_sla_or_rules(desk: Des
     assert dispute.policy_version == "test-policy-v1"
 
 
+def test_a_decision_bound_to_another_transaction_is_refused_and_spends_nothing(
+    desk: Desk,
+) -> None:
+    # A PolicyDecision the engine evaluated for TXN-FX-0101 must not authorize a dispute on a
+    # different transaction (T8 PR #43 / T9 PR #44 review): the tool checks the bound target,
+    # not only that the action is allowed.
+    bound_elsewhere = PolicyDecision(
+        decision=DecisionType.PROCEED,
+        allowed_actions=(ActionType.CREATE_DISPUTE,),
+        requires_confirmation=True,
+        target_transaction_id="TXN-FX-0101",
+        policy_version="test-policy-v1",
+    )
+    # TXN-FX-0104 and TXN-FX-0105 are Mariana's own, distinct from the bound TXN-FX-0101.
+    other = _dispute("TXN-FX-0104", key="idem-wrong-target-0001")
+    token = desk.confirm(ToolName.CREATE_DISPUTE, other)
+    with pytest.raises(InvalidArguments, match="different transaction"):
+        desk.run(ToolName.CREATE_DISPUTE, other, token=token, policy=bound_elsewhere)
+    assert desk.store.count("disputes") == 0
+    assert desk.token_is_spent(token) is False
+    # The same decision, bound to the right transaction, proceeds.
+    matching = bound_elsewhere.model_copy(update={"target_transaction_id": "TXN-FX-0104"})
+    assert desk.run(ToolName.CREATE_DISPUTE, other, token=token, policy=matching).created
+    # A decision with no bound target (the LLM-only baseline, or ad hoc test fixtures) is
+    # unrestricted, as before.
+    unbound = bound_elsewhere.model_copy(update={"target_transaction_id": None})
+    unbound_args = _dispute("TXN-FX-0105", key="idem-unbound-0001")
+    token2 = desk.confirm(ToolName.CREATE_DISPUTE, unbound_args)
+    assert desk.run(ToolName.CREATE_DISPUTE, unbound_args, token=token2, policy=unbound).created
+
+
 @WRITES
 def test_the_baseline_wiring_writes_without_a_policy_decision(
     make_desk: MakeDesk, write: Write

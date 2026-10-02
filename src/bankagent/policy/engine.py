@@ -8,7 +8,8 @@ Evaluation order (`docs/rules/backend.md`, `.agents/skills/policy-rule/SKILL.md`
 2. escalation rules (``fraud_score``, ``repeat_disputer``), run together only if every
    eligibility rule passed: ``escalate`` (no write actions) when any trigger fires.
 3. otherwise ``proceed``: ``create_dispute`` and ``block_card`` allowed, confirmation required,
-   ``sla_due_date = as_of_date + sla_days``.
+   ``sla_due_date = filed_on + sla_days`` (``filed_on``, not ``as_of_date``: the SLA is a promise
+   counted from the day the customer actually files, not from the serving DB's snapshot date).
 
 ``is_fraud`` is never an input (ADR 0003, AGENTS.md rule 6); only ``fraud_score`` is read, and only
 here.
@@ -41,7 +42,12 @@ class PolicyInputs:
 
     ``customer_country`` is the customer's own country (``CustomerProfile.country``), not the
     transaction's: the dispute window follows where the account is, not where the charge was
-    made. ``as_of_date`` is the serving DB's build date, not the wall clock (the skill's rule).
+    made. ``as_of_date`` is the serving DB's build date, not the wall clock (the skill's rule):
+    eligibility (the dispute window) compares transaction dates to it, so a frozen fixture or a
+    curated snapshot stays internally consistent. ``filed_on`` is a separate date, the real day
+    the customer is filing this dispute (``ctx.now.date()`` for the orchestrator); only the SLA
+    due date is counted from it, never from ``as_of_date``, or every SLA would be stamped
+    relative to the snapshot's build day instead of today.
     ``open_dispute_id`` is whatever ``GetTransactionResult.open_dispute_id`` already reports: the
     agent-made dispute if any, else the newest still-open prior complaint.
     """
@@ -49,6 +55,7 @@ class PolicyInputs:
     transaction: TransactionView
     customer_country: str
     as_of_date: date
+    filed_on: date
     open_dispute_id: str | None
     risk: TransactionRiskSignals | None
     last_claim_date: date | None
@@ -83,6 +90,7 @@ def _check_escalation(rule: Rule, inputs: PolicyInputs) -> bool:
 
 def evaluate(config: PolicyConfig, inputs: PolicyInputs) -> PolicyDecision:
     checked_ids: list[str] = []
+    target = inputs.transaction.transaction_id
     for rule in config.eligibility_rules():
         checked_ids.append(rule.rule_id)
         if _check_eligibility(rule, inputs):
@@ -90,6 +98,7 @@ def evaluate(config: PolicyConfig, inputs: PolicyInputs) -> PolicyDecision:
                 decision=DecisionType.INELIGIBLE,
                 rule_ids=(rule.rule_id,),
                 explanation_keys=(rule.explanation_key,),
+                target_transaction_id=target,
                 policy_version=config.policy_version,
             )
 
@@ -100,6 +109,7 @@ def evaluate(config: PolicyConfig, inputs: PolicyInputs) -> PolicyDecision:
             rule_ids=tuple(rule.rule_id for rule in triggered),
             explanation_keys=tuple(rule.explanation_key for rule in triggered),
             escalation_triggers=tuple(rule.kind for rule in triggered),
+            target_transaction_id=target,
             policy_version=config.policy_version,
         )
 
@@ -108,6 +118,7 @@ def evaluate(config: PolicyConfig, inputs: PolicyInputs) -> PolicyDecision:
         rule_ids=tuple(checked_ids),
         allowed_actions=PROCEED_ACTIONS,
         requires_confirmation=True,
-        sla_due_date=inputs.as_of_date + timedelta(days=config.sla_days),
+        sla_due_date=inputs.filed_on + timedelta(days=config.sla_days),
+        target_transaction_id=target,
         policy_version=config.policy_version,
     )
