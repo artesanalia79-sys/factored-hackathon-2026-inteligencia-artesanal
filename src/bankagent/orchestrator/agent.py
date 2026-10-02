@@ -208,7 +208,17 @@ class Agent:
         result_type: type[ResultT],
         state: ConversationState,
     ) -> tuple[ResultT | None, ExecutionRecord]:
-        tool = self._tools[tool_name]
+        tool = self._tools.get(tool_name)
+        if tool is None:
+            return None, self._record(
+                session,
+                StepKind.TOOL_CALL,
+                state,
+                StepOutcome.FAILURE,
+                tool=tool_name,
+                args=args,
+                error_code=ToolErrorCode.TOOL_UNAVAILABLE,
+            )
         try:
             context = ToolContext(session=session, trace_id=self._trace_id, now=self._clock())
             result = tool.run(context, args)
@@ -363,6 +373,18 @@ class Agent:
         if self._pending_args is None or self._issue_confirmation is None:
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
         args = self._pending_args
+        tool = self._tools.get(ToolName.CREATE_DISPUTE)
+        if tool is None:
+            self._record(
+                session,
+                StepKind.TOOL_CALL,
+                ConversationState.ACT,
+                StepOutcome.FAILURE,
+                tool=ToolName.CREATE_DISPUTE,
+                args=args,
+                error_code=ToolErrorCode.TOOL_UNAVAILABLE,
+            )
+            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
         try:
             token = self._issue_confirmation(session, ToolName.CREATE_DISPUTE, args, self._clock())
         except ToolError:
@@ -375,7 +397,6 @@ class Agent:
             args=args,
         )
         self._state = ConversationState.ACT
-        tool = self._tools[ToolName.CREATE_DISPUTE]
         context = ToolContext(
             session=session,
             trace_id=self._trace_id,
@@ -492,14 +513,18 @@ class Agent:
         if slots.transaction_ref is not None:
             read_args = GetTransactionArgs(transaction_id=slots.transaction_ref)
         else:
-            found, _ = self._read(
+            found, search_record = self._read(
                 session,
                 ToolName.SEARCH_TRANSACTIONS,
                 search_args,
                 SearchTransactionsResult,
                 ConversationState.IDENTIFY_TXN,
             )
-            if found is None or not found.transactions:
+            if found is None:
+                if search_record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
+                    return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+                return self._clarify(session)
+            if not found.transactions:
                 return self._clarify(session)
             candidates = found.transactions
             if len(candidates) == 1:

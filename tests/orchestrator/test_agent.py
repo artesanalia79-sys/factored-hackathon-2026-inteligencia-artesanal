@@ -392,3 +392,11 @@ def test_clarification_is_limited_to_two_rounds() -> None:
     assert not second.ended
     assert third.ended
     assert get.calls == 0
+
+
+def test_unavailable_search_fails_without_claim_or_retry_prompt() -> None:
+    agent = create_agent(llm=StubProvider(), tools={}, clock=lambda: NOW)
+    output = agent.handle_turn(_session(), "Tengo un cargo de 2,450 pesos que no reconozco")
+    assert output.ended
+    assert output.claimed_actions == ()
+    assert any(record.error_code == "tool_unavailable" for record in output.records)
