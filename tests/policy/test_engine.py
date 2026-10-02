@@ -7,6 +7,7 @@ Fixture-bank tests load the real file and exercise the real `ServingDB` reads, o
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -289,9 +290,10 @@ def test_a_transaction_with_an_open_prior_complaint_is_ineligible(serving: Servi
     assert decision.rule_ids == ("DSP-ELIG-02",)
 
 
-def test_a_repeat_disputer_is_escalated_on_an_unrelated_clean_transaction(
-    serving: ServingDB,
-) -> None:
+def test_a_repeat_disputer_is_escalated_on_a_different_transaction(serving: ServingDB) -> None:
+    # TXN-FX-0702 carries `dq_txn_after_card_expiry` (not read by the engine, PR #44 review); it
+    # is not TXN-FX-0701 (the one with the open complaint), which is the only fact this test is
+    # about.
     decision = evaluate(load_policy(), _real_inputs(serving, VALENTINA, "TXN-FX-0702"))
     assert decision.decision == DecisionType.ESCALATE
     assert decision.rule_ids == ("DSP-ESC-02",)
@@ -338,5 +340,56 @@ def test_a_customer_with_no_history_but_a_recent_agent_dispute_is_a_repeat_dispu
 
     with_agent_history = _real_inputs(serving, ANDRES, "TXN-FX-0202", store=ops_store)
     decision = evaluate(load_policy(), with_agent_history)
+    assert decision.decision == DecisionType.ESCALATE
+    assert decision.rule_ids == ("DSP-ESC-02",)
+
+
+_INSERT_DISPUTE_HISTORY = """
+INSERT INTO dispute_history
+    (complaint_id, customer_id, created_at, case_type, category, subcategory, status,
+     claimed_amount, currency, related_transaction_id, resolution_days)
+VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)
+"""
+
+
+def test_a_recent_claim_outside_transactions_does_not_make_a_repeat_disputer(
+    altered_bank: Callable[..., ServingDB],
+) -> None:
+    # A Fees Claim is not a dispute (T16's definition): 81% of "Claim"s on curated data are not,
+    # per the PR #44 review (Fees, Technical, Branch, Service).
+    bank = altered_bank(
+        _INSERT_DISPUTE_HISTORY,
+        [
+            "CMP-TEST-FEES-01",
+            MARIANA,
+            datetime(2026, 5, 20),
+            "Claim",
+            "Fees",
+            "Annual fee",
+            "Resolved",
+        ],
+    )
+    decision = evaluate(load_policy(), _real_inputs(bank, MARIANA, "TXN-FX-0104"))
+    assert decision.decision == DecisionType.PROCEED
+
+
+def test_a_recent_transactions_complaint_makes_a_repeat_disputer(
+    altered_bank: Callable[..., ServingDB],
+) -> None:
+    # Most unrecognized-charge cases on curated data are filed as `Complaint`, not `Claim`
+    # (PR #44 review): the rule must count them too.
+    bank = altered_bank(
+        _INSERT_DISPUTE_HISTORY,
+        [
+            "CMP-TEST-TXN-01",
+            MARIANA,
+            datetime(2026, 5, 20),
+            "Complaint",
+            "Transactions",
+            "Cargo no reconocido",
+            "Closed",
+        ],
+    )
+    decision = evaluate(load_policy(), _real_inputs(bank, MARIANA, "TXN-FX-0104"))
     assert decision.decision == DecisionType.ESCALATE
     assert decision.rule_ids == ("DSP-ESC-02",)

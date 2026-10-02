@@ -75,7 +75,8 @@ rules:
   - rule_id: DSP-ESC-02
     kind: repeat_disputer
     description: >
-      A customer with a prior claim (dispute_history, case_type Claim, any status) in the last
+      A customer with a prior dispute (dispute_history, category Transactions, case_type
+      Complaint or Claim, any status, any transaction, T16's definition) in the last
       window_days is escalated to a human for this dispute instead of auto-creating it.
     explanation_key: dispute.repeat_disputer
     window_days: 90

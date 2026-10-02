@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import shutil
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
+from typing import Any
 
+import duckdb
 import pytest
 
 from bankagent.fixtures.builder import build
@@ -29,3 +32,17 @@ def serving(fixture_bank: Path) -> ServingDB:
 def ops_store(tmp_path: Path) -> Iterator[OpsStore]:
     with OpsStore(tmp_path / "ops.sqlite") as opened:
         yield opened
+
+
+@pytest.fixture
+def altered_bank(fixture_bank: Path, tmp_path: Path) -> Callable[..., ServingDB]:
+    """A copy of the fixture bank changed by one parameterized statement."""
+
+    def alter(statement: str, parameters: Sequence[Any] = ()) -> ServingDB:
+        copy = tmp_path / f"bank_altered_{len(list(tmp_path.glob('bank_altered_*')))}.duckdb"
+        shutil.copy(fixture_bank, copy)
+        with duckdb.connect(str(copy)) as con:
+            con.execute(statement, parameters)
+        return ServingDB(copy)
+
+    return alter

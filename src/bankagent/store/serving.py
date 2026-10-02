@@ -79,9 +79,13 @@ SELECT fraud_score FROM transactions_enriched WHERE customer_id = ? AND transact
 """
 
 # Any status, any transaction: a repeat disputer is a property of the customer, not of one
-# transaction. `Claim` only: a Service/Branch `Complaint` (e.g. CMP-FX-101) is not a dispute.
+# transaction. `category = 'Transactions'` is T16's dispute definition (`t16_dispute_definition
+# .sql`, docs/evidence/complaints_baseline.md), not `case_type`: on curated data most unrecognized
+# charges are filed as `Complaint`, and most `Claim`s are not disputes (Fees, Technical, Branch).
+# A Service `Complaint` (e.g. CMP-FX-101) has no `Transactions` category and is still excluded.
 _LAST_CLAIM_SQL = """
-SELECT max(created_at) FROM dispute_history WHERE customer_id = ? AND case_type = 'Claim'
+SELECT max(created_at) FROM dispute_history
+WHERE customer_id = ? AND category = 'Transactions' AND case_type IN ('Complaint', 'Claim')
 """
 
 
@@ -288,7 +292,8 @@ class ServingDB:
         return TransactionRiskSignals(transaction_id=transaction_id, fraud_score=row[0])
 
     def last_claim_date(self, customer_id: str) -> date | None:
-        """Date of this customer's most recent pre-agent claim (any status, any transaction), or
+        """Date of this customer's most recent pre-agent dispute (T16's definition: category
+        ``Transactions``, case type ``Complaint`` or ``Claim``; any status, any transaction), or
         ``None``. Input to the repeat-disputer escalation trigger (T9): a dispute the agent
         itself created is not here, only in ``OpsStore.last_dispute_date``; combine both (the
         newer date) before building ``PolicyInputs.last_claim_date``, or a customer who disputes
