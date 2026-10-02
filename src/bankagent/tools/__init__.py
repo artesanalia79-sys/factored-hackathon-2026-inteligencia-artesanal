@@ -1,1 +1,1 @@
-"""Session-scoped agent tools (reads, confirmed and verified writes). Owner: Victor (T8)."""
+"""Session-scoped agent tools (reads, confirmed and verified writes). Owner: Juan José (T8)."""

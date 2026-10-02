@@ -51,7 +51,7 @@ row names its query. The `dq_*` counts are in `dq_report.md` and the fraud_score
 |---|---|---|
 | Silver (T5 follow-up) | Add flags for B1, B4 and D1 (`dq_before_product_opening`, `dq_after_card_expiry`, `dq_future_last_updated`, complaint `dq_product_customer_mismatch`) so `dq_report.md` counts them. | Santiago |
 | Gold / serving (T6) | Never serve `products.last_transaction_ts`; derive it from transactions (B5). Take `as_of_date` from transactions, not from `max(last_updated)` (B4). Card validity cannot come from `product_status` alone (B3). | Juan José |
-| Policy (T9) | Transactions before opening or after expiry are common source artefacts and must not auto-reject a dispute (B1). The `>= 30` vs `>= 35` trade-off is documented (C2). Dispute windows computed on dates must name their calendar (A1). | Victor |
-| Tools / card block (T8, T19) | In curated mode no Blocked card has history, so blocked-card scenarios come from our ops store or fixtures (B2). Response codes cannot explain a decline (B8). | Victor |
+| Policy (T9) | Transactions before opening or after expiry are common source artefacts and must not auto-reject a dispute (B1). The `>= 30` vs `>= 35` trade-off is documented (C2). Dispute windows computed on dates must name their calendar (A1). | Juan José |
+| Tools / card block (T8, T19) | In curated mode no Blocked card has history, so blocked-card scenarios come from our ops store or fixtures (B2). Response codes cannot explain a decline (B8). | Juan José |
 | Evaluation (T12, T17) | "Double charge" disputes have no organic example (B7), and complaints cannot ground cases (D1, D2). Eval cases come from fixtures or team-generated data. | Santiago |
-| Auth (T7) | Mexican personas use DNI, not CURP (D4). | Victor |
+| Auth (T7) | Mexican personas use DNI, not CURP (D4). | Juan José |
