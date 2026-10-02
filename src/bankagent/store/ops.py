@@ -127,13 +127,6 @@ class LoginChallenge:
     attempts: int = 0
     consumed_at: datetime | None = None
 
-    def is_open(self, now: datetime) -> bool:
-        return (
-            self.consumed_at is None
-            and self.attempts < self.max_attempts
-            and self.issued_at <= now < self.expires_at
-        )
-
 
 def _ts(value: datetime) -> str:
     if value.tzinfo is None:
@@ -331,6 +324,12 @@ class OpsStore:
 
     def clear_failures(self, customer_id: str) -> None:
         self._write("DELETE FROM login_failures WHERE customer_id = ?", [customer_id])
+
+    def purge_login_data(self, before: datetime) -> None:
+        """Delete challenges that expired, and failures recorded, before ``before``."""
+        with self.transaction():
+            self._con.execute("DELETE FROM login_challenges WHERE expires_at < ?", [_ts(before)])
+            self._con.execute("DELETE FROM login_failures WHERE failed_at < ?", [_ts(before)])
 
     # -- confirmation tokens -----------------------------------------------
 

@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -208,3 +211,54 @@ def test_logs_carry_no_secret_token_otp_name_or_customer_id(
     assert "session_issued" in text
     for forbidden in (secret, token, otps.issued[-1], WRONG, "Mariana", "CUST-T7-001", mariana):
         assert forbidden not in text
+
+
+@pytest.mark.parametrize("hostile", ["per-ñandú", "１２３４５６", "\ud800", "per-\x00"])
+def test_non_ascii_input_is_rejected_cleanly(
+    service: AuthService, persona_of: PersonaOf, hostile: str
+) -> None:
+    # Regression: non-ASCII used to raise TypeError / UnicodeEncodeError (HTTP 500).
+    challenge = service.start_login(persona_of("Mariana"))
+    for call in (
+        lambda: service.start_login(hostile),
+        lambda: service.verify_otp(hostile, "000001"),
+        lambda: service.verify_otp(challenge.challenge_id, hostile),
+    ):
+        with pytest.raises(InvalidCredentials):
+            call()
+
+
+def test_concurrent_guesses_across_challenges_cannot_beat_the_lockout(
+    service: AuthService, persona_of: PersonaOf
+) -> None:
+    # Regression: the lockout check and the failure count were separate steps, so guesses
+    # fired in parallel over many challenges were all evaluated before the lockout applied.
+    challenges = [service.start_login(persona_of("Mariana")).challenge_id for _ in range(30)]
+    evaluated = 0
+    lock = threading.Lock()
+
+    def guess(challenge_id: str) -> None:
+        nonlocal evaluated
+        try:
+            service.verify_otp(challenge_id, WRONG)
+        except InvalidCredentials:
+            with lock:
+                evaluated += 1
+        except TooManyAttempts:
+            pass
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        list(pool.map(guess, challenges * 3))
+    assert evaluated == 5  # exactly `lockout_failures`, never more
+
+
+def test_old_challenges_and_failures_are_purged(
+    service: AuthService, store: OpsStore, clock: Any, persona_of: PersonaOf
+) -> None:
+    for _ in range(3):
+        _fail(service, service.start_login(persona_of("Mariana")).challenge_id, 1)
+    assert store.count("login_challenges") == 3
+    clock.advance(minutes=21)  # past the 5 min OTP TTL plus the 15 min lockout window
+    service.start_login(persona_of("Rafael"))
+    assert store.count("login_challenges") == 1
+    assert store.failures_since("CUST-T7-001", clock.now - timedelta(days=1)) == []

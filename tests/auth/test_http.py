@@ -139,3 +139,36 @@ def test_logout_revokes_the_token(client: TestClient) -> None:
 def test_do_login_fixture_matches_http(client: TestClient, do_login: Callable[..., str]) -> None:
     # A token minted through the service works over HTTP: one source of truth for sessions.
     assert client.get("/api/protected", headers=_bearer(do_login())).status_code == 200
+
+
+def test_validation_errors_do_not_echo_the_input(client: TestClient) -> None:
+    response = client.post(
+        "/api/auth/login", json={"persona_id": "per-x", "customer_id": "CUST-T7-001"}
+    )
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": [{"loc": ["body", "customer_id"], "type": "extra_forbidden"}]
+    }
+    assert "CUST-T7-001" not in response.text
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"challenge_id": "\\ud800", "code": "1"}',
+        b'{"challenge_id": "chl-x", "code": "\\ud800"}',
+        b"not json",
+    ],
+)
+def test_unencodable_or_malformed_bodies_get_422_not_500(client: TestClient, raw: bytes) -> None:
+    # Regression: FastAPI's default handler echoed the input and crashed on a lone surrogate.
+    response = client.post(
+        "/api/auth/verify", content=raw, headers={"content-type": "application/json"}
+    )
+    assert response.status_code == 422
+
+
+def test_non_ascii_persona_gets_401(client: TestClient) -> None:
+    response = client.post("/api/auth/login", json={"persona_id": "per-ñandú"})
+    assert response.status_code == 401
+    assert response.json() == {"detail": {"error": "invalid_credentials"}}

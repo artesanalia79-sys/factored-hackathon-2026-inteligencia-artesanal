@@ -5,15 +5,22 @@ gives every protected endpoint its server-side ``Session`` from the ``Authorizat
 header. Request models forbid unknown fields, so a body carrying ``customer_id`` is rejected
 with 422 before it reaches any logic. No response ever contains ``customer_id``.
 
+Validation errors go through ``SafeValidationRoute``: FastAPI's default handler echoes the
+rejected input back, which would repeat a submitted code or id and fails with a 500 on input
+that cannot be encoded (a lone surrogate). Ours returns only where and what kind of error.
+
 No ``from __future__ import annotations`` here: FastAPI must resolve the dependencies that
 are closed over inside ``build_auth_router`` when it reads the endpoint signatures.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,6 +30,27 @@ from bankagent.contracts.enums import Language
 from bankagent.contracts.errors import SessionExpired, Unauthorized
 
 _bearer = HTTPBearer(auto_error=False)
+
+
+class SafeValidationRoute(APIRoute):
+    """Route whose 422 responses never echo the client's input. Reusable by other routers."""
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        handler = super().get_route_handler()
+
+        async def safe_handler(request: Request) -> Response:
+            try:
+                return await handler(request)
+            except RequestValidationError as exc:
+                detail = [
+                    {"loc": [str(part) for part in error["loc"]], "type": error["type"]}
+                    for error in exc.errors()
+                ]
+                return JSONResponse(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": detail}
+                )
+
+        return safe_handler
 
 
 class _Request(BaseModel):
@@ -92,7 +120,7 @@ def session_dependency(service: AuthService) -> Callable[..., Session]:
 
 
 def build_auth_router(service: AuthService) -> APIRouter:
-    router = APIRouter(prefix="/api/auth", tags=["auth"])
+    router = APIRouter(prefix="/api/auth", tags=["auth"], route_class=SafeValidationRoute)
     current_session = session_dependency(service)
 
     @router.get("/personas")

@@ -10,7 +10,13 @@ Attempt limits:
 - per customer: ``lockout_failures`` wrong codes inside ``lockout_window`` block new challenges
   and verifications until the window passes, so asking for a new code does not reset the count.
 
-Failures never say why (unknown persona, wrong, expired or reused code look the same). Logs carry
+Every verification first spends one attempt and counts one failure inside a single store
+transaction (lockout check included), and only then compares the code; a success clears the
+count. Concurrent guesses therefore cannot exceed either limit.
+
+Client strings are untrusted: anything that is not plain ASCII is rejected before it reaches a
+hash, a comparison or the database. Failures never say why (unknown persona, wrong, expired or
+reused code look the same). Logs carry
 event names and opaque ids only: no secret, token, OTP, name or ``customer_id``.
 """
 
@@ -153,11 +159,13 @@ class AuthService:
 
     def start_login(self, persona_id: str) -> ChallengeIssued:
         now = self._clock()
-        customer = self._customer_for(persona_id)
+        customer = self._customer_for(persona_id) if persona_id.isascii() else None
         if customer is None:
             log.info("login_rejected reason=unknown_persona")
             raise InvalidCredentials(InvalidCredentials.code)
         self._check_lockout(customer.customer_id, now)
+        # Housekeeping: nothing older than the lockout window can matter any more.
+        self._store.purge_login_data(now - self._settings.lockout_window)
         challenge_id = self._new_id("chl")
         code = self._otp_factory()
         expires_at = now + self._settings.otp_ttl
@@ -178,22 +186,27 @@ class AuthService:
 
     def verify_otp(self, challenge_id: str, code: str) -> LoginSuccess:
         now = self._clock()
+        if not (challenge_id.isascii() and code.isascii()):
+            log.info("login_rejected reason=malformed_input")
+            raise InvalidCredentials(InvalidCredentials.code)
         challenge = self._store.get_challenge(challenge_id)
         # Hash even when the challenge is unknown, so both paths take similar time.
         presented = self._keyed_hash("otp", f"{challenge_id}:{code}")
         if challenge is None:
             log.info("login_rejected reason=unknown_challenge")
             raise InvalidCredentials(InvalidCredentials.code)
-        self._check_lockout(challenge.customer_id, now)
-        if challenge.consumed_at is None and challenge.attempts >= challenge.max_attempts:
-            log.info("login_rejected reason=challenge_exhausted challenge=%s", challenge_id)
-            raise TooManyAttempts(0)
-        # Spend the attempt atomically before comparing: concurrent guesses cannot overshoot.
-        if not self._store.reserve_attempt(challenge_id, now):
-            log.info("login_rejected reason=challenge_closed challenge=%s", challenge_id)
-            raise InvalidCredentials(InvalidCredentials.code)
-        if not hmac.compare_digest(challenge.otp_hash, presented):
+        # Lockout check, attempt and failure count in one transaction, before comparing: the
+        # guess is counted as a failure up front and a success clears it below.
+        with self._store.transaction():
+            self._check_lockout(challenge.customer_id, now)
+            if challenge.consumed_at is None and challenge.attempts >= challenge.max_attempts:
+                log.info("login_rejected reason=challenge_exhausted challenge=%s", challenge_id)
+                raise TooManyAttempts(0)
+            if not self._store.reserve_attempt(challenge_id, now):
+                log.info("login_rejected reason=challenge_closed challenge=%s", challenge_id)
+                raise InvalidCredentials(InvalidCredentials.code)
             self._store.record_login_failure(challenge.customer_id, now)
+        if not hmac.compare_digest(challenge.otp_hash, presented):
             log.info("login_failed challenge=%s", challenge_id)
             raise InvalidCredentials(InvalidCredentials.code)
         customer = self._customers.customer(challenge.customer_id)

@@ -292,3 +292,18 @@ def test_login_failures_are_listed_per_customer_and_cleared(store: OpsStore) -> 
     store.clear_failures("CUST-A")
     assert store.failures_since("CUST-A", NOW) == []
     assert store.failures_since("CUST-B", NOW) == [NOW]
+
+
+def test_purge_removes_only_what_is_older_than_the_cutoff(store: OpsStore) -> None:
+    store.create_challenge(_challenge(3, "chl-old"))  # expires at NOW + 5 min
+    store.create_challenge(
+        LoginChallenge(
+            "chl-new", "CUST-A", HASH, NOW + timedelta(hours=1), NOW + timedelta(hours=2), 3
+        )
+    )
+    store.record_login_failure("CUST-A", NOW)
+    store.record_login_failure("CUST-A", NOW + timedelta(hours=1))
+    store.purge_login_data(NOW + timedelta(minutes=30))
+    assert store.get_challenge("chl-old") is None
+    assert store.get_challenge("chl-new") is not None
+    assert store.failures_since("CUST-A", NOW) == [NOW + timedelta(hours=1)]
