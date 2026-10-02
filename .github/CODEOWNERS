@@ -32,15 +32,16 @@
 /src/bankagent/router/          @jjresher @santig005
 /docs/models/                   @jjresher @santig005
 
-# Backend: auth, tools, policy, store, orchestrator (Victor)
-/src/bankagent/auth/            @VictorJVA
-/src/bankagent/tools/           @VictorJVA
-/src/bankagent/policy/          @VictorJVA
-/src/bankagent/store/           @VictorJVA
+# Backend: auth, store, tools, policy (Juan José since T7-T9 were reassigned, 2026-10-02);
+# orchestrator and API (Victor + Jacobo)
+/src/bankagent/auth/            @jjresher
+/src/bankagent/tools/           @jjresher
+/src/bankagent/policy/          @jjresher
+/src/bankagent/store/           @jjresher
 /src/bankagent/orchestrator/    @VictorJVA @jacobozj
 /src/bankagent/api/             @VictorJVA @jacobozj
 /src/bankagent/obs/             @santig005 @VictorJVA
-/policy/                        @VictorJVA
+/policy/                        @jjresher
 
 # Interpreter, templates, web (Jacobo)
 /src/bankagent/interpret/       @jacobozj

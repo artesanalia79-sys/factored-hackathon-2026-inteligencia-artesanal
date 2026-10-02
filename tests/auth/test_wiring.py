@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from bankagent.auth.settings import AuthConfigError
@@ -27,6 +29,7 @@ def fixture_bank(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def _env(fixture_bank: Path, tmp_path: Path, secret: str) -> dict[str, str]:
     return {
         "APP_SECRET_KEY": secret,
+        "AUTH_EXPOSE_MOCK_OTP": "true",
         "SERVING_DB_PATH": str(fixture_bank),
         "OPS_DB_PATH": str(tmp_path / "runtime" / "ops.sqlite"),
     }
@@ -66,3 +69,27 @@ def test_missing_secret_or_serving_db_fails_closed(
         create_auth_service({**env, "APP_SECRET_KEY": ""})
     with pytest.raises(FileNotFoundError, match="poe fixtures"):
         create_auth_service({**env, "SERVING_DB_PATH": str(tmp_path / "missing.duckdb")})
+
+
+def test_serving_db_reports_its_data_mode(fixture_bank: Path) -> None:
+    assert ServingDB(fixture_bank).data_mode() == "synthetic"
+
+
+def test_exposed_mock_otp_is_refused_on_a_curated_serving_db(
+    fixture_bank: Path, tmp_path: Path, secret: str
+) -> None:
+    # DATA_MODE is only a declaration: here it says synthetic, but the DB itself is curated.
+    curated = tmp_path / "bank_curated.duckdb"
+    shutil.copy(fixture_bank, curated)
+    with duckdb.connect(str(curated)) as con:
+        con.execute(
+            "UPDATE _serving_metadata SET value = ? WHERE key = ?", ["curated", "data_mode"]
+        )
+    env = {**_env(fixture_bank, tmp_path, secret), "SERVING_DB_PATH": str(curated)}
+    with pytest.raises(AuthConfigError, match="only allowed with synthetic"):
+        create_auth_service({**env, "DATA_MODE": "synthetic"})
+    # Without the exposed OTP the curated DB is accepted, and no code is returned.
+    service = create_auth_service(
+        {**env, "DATA_MODE": "curated", "AUTH_EXPOSE_MOCK_OTP": "false"}, clock=lambda: NOW
+    )
+    assert service.start_login(service.personas()[0].persona_id).mock_otp is None

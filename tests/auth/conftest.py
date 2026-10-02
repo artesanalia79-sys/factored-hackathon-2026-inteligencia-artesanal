@@ -14,7 +14,8 @@ from bankagent.contracts.enums import Language
 from bankagent.store.ops import OpsStore
 from bankagent.store.serving import CustomerProfile
 
-SECRET = "test-secret-" + "k" * 40
+# Built at import time: varied enough to pass the entropy check, and not a literal credential.
+SECRET = "unit-test-" + "".join(chr(97 + i % 26) for i in range(40))
 START = datetime(2026, 6, 17, 12, 0, tzinfo=UTC)
 
 MARIANA = CustomerProfile("CUST-T7-001", "Mariana", "MX", "Active", Language.ES)
@@ -81,7 +82,8 @@ def store(tmp_path: Path) -> Iterator[OpsStore]:
 
 @pytest.fixture
 def settings() -> AuthSettings:
-    return AuthSettings(secret=Secret(SECRET))
+    # The demo delivery (OTP in the response) is opt-in; these tests exercise it.
+    return AuthSettings(secret=Secret(SECRET), expose_mock_otp=True)
 
 
 @pytest.fixture

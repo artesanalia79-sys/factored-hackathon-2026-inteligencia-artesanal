@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -25,7 +27,17 @@ from bankagent.contracts.enums import (
 )
 from bankagent.contracts.handoff import HandoffPacket, HandoffRouting
 from bankagent.contracts.records import ExecutionRecord
-from bankagent.store.ops import SCHEMA_VERSION, LoginChallenge, OpsStore, OpsStoreError
+from bankagent.store.console import HandoffConsole
+from bankagent.store.ops import (
+    SCHEMA_VERSION,
+    CardAlreadyBlocked,
+    DisputeAlreadyExists,
+    IdempotencyConflict,
+    LoginChallenge,
+    OpsStore,
+    OpsStoreError,
+)
+from bankagent.store.sqlite import Database
 
 NOW = datetime(2026, 6, 17, 12, 0, tzinfo=UTC)
 HASH = "a" * 64
@@ -88,8 +100,8 @@ def test_file_is_created_and_survives_reopen(tmp_path: Path) -> None:
 
 def test_wrong_schema_version_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "ops.sqlite"
-    with OpsStore(path) as store, store.transaction():
-        store._con.execute("UPDATE schema_version SET version = ?", [SCHEMA_VERSION + 1])
+    with Database(path) as database:
+        database.write("UPDATE schema_version SET version = ?", [SCHEMA_VERSION + 1])
     with pytest.raises(OpsStoreError, match="schema version"):
         OpsStore(path)
 
@@ -119,9 +131,11 @@ def test_confirmation_token_is_single_use(store: OpsStore) -> None:
     store.save_confirmation_token(_token())
     assert _consume(store) is True
     assert _consume(store) is False
-    stored = store.get_confirmation_token("tok-1")
+    stored = store.get_confirmation_token("tok-1", "ses-1")
     assert stored is not None
     assert stored.used_at == NOW + timedelta(seconds=30)
+    # Another session cannot even see the token.
+    assert store.get_confirmation_token("tok-1", "ses-other") is None
 
 
 @pytest.mark.parametrize(
@@ -163,43 +177,174 @@ def test_dispute_is_idempotent_and_scoped_by_customer(store: OpsStore) -> None:
         store.get_dispute("CUST-A")
 
 
-def test_card_block_is_idempotent_and_scoped(store: OpsStore) -> None:
-    block = CardBlockEvent(
-        block_id="BLK-1",
-        product_id="CARD-1",
+def _block(
+    block_id: str = "BLK-1", key: str = "idem-key-0002", product_id: str = "CARD-1"
+) -> CardBlockEvent:
+    return CardBlockEvent(
+        block_id=block_id,
+        product_id=product_id,
         card_last4="4242",
         blocked_at=NOW,
         reason="unrecognized charge",
-        idempotency_key="idem-key-0002",
+        idempotency_key=key,
     )
+
+
+def test_card_block_is_idempotent_and_scoped(store: OpsStore) -> None:
+    block = _block()
     assert store.insert_card_block("CUST-A", block) == (block, True)
     assert store.insert_card_block("CUST-A", block) == (block, False)
     assert store.get_card_block("CUST-A", "CARD-1") == block
     assert store.get_card_block("CUST-B", "CARD-1") is None
 
 
-def test_handoff_round_trip_and_queue_order(store: OpsStore) -> None:
-    def packet(handoff_id: str, minutes: int) -> HandoffPacket:
-        return HandoffPacket(
-            handoff_id=handoff_id,
-            created_at=NOW + timedelta(minutes=minutes),
-            customer_id="CUST-A",
-            trace_id="trace-1",
-            language=Language.ES,
-            request="cliente pide hablar con una persona",
-            intent=Intent.HUMAN_REQUEST,
-            policy_version="v1",
-            routing=HandoffRouting(
-                specialty=Specialty.DISPUTES, language=Language.ES, priority=Priority.MEDIUM
-            ),
-        )
+def _packet(handoff_id: str, minutes: int = 0, **changes: Any) -> HandoffPacket:
+    values: dict[str, Any] = {
+        "handoff_id": handoff_id,
+        "created_at": NOW + timedelta(minutes=minutes),
+        "customer_id": "CUST-A",
+        "trace_id": "trace-1",
+        "language": Language.ES,
+        "request": "cliente pide hablar con una persona",
+        "intent": Intent.HUMAN_REQUEST,
+        "policy_version": "v1",
+        "routing": HandoffRouting(
+            specialty=Specialty.DISPUTES, language=Language.ES, priority=Priority.MEDIUM
+        ),
+    }
+    return HandoffPacket.model_validate({**values, **changes})
 
-    first, created = store.insert_handoff(packet("HND-1", 0), "idem-key-0003")
+
+def test_handoff_replay_and_customer_scoped_read(store: OpsStore) -> None:
+    first, created = store.insert_handoff(_packet("HND-1"), "idem-key-0003")
     assert created is True
-    assert store.insert_handoff(packet("HND-9", 5), "idem-key-0003") == (first, False)
-    store.insert_handoff(packet("HND-2", 1), "idem-key-0004")
-    assert store.get_handoff("HND-1") == first
-    assert [h.handoff_id for h in store.list_handoffs()] == ["HND-2", "HND-1"]
+    # A replay mints a new id and timestamp but carries the same content.
+    assert store.insert_handoff(_packet("HND-9", 5), "idem-key-0003") == (first, False)
+    assert store.count("handoffs") == 1
+    assert store.get_handoff("CUST-A", "HND-1") == first
+    assert store.get_handoff("CUST-B", "HND-1") is None  # BOLA: looks like a missing one
+    assert store.get_handoff("CUST-A", "HND-missing") is None
+
+
+def test_console_reads_are_unscoped_and_live_outside_the_store(store: OpsStore) -> None:
+    store.insert_handoff(_packet("HND-1"), "idem-key-0003")
+    store.insert_handoff(_packet("HND-2", 1, customer_id="CUST-B"), "idem-key-0004")
+    console = HandoffConsole(store.database)
+    assert [h.handoff_id for h in console.list_handoffs()] == ["HND-2", "HND-1"]
+    assert [h.handoff_id for h in console.list_handoffs(limit=1)] == ["HND-2"]
+    found = console.get_handoff("HND-2")
+    assert found is not None
+    assert found.customer_id == "CUST-B"
+    assert console.get_handoff("HND-missing") is None
+    # The customer-facing store has no unscoped handoff read at all.
+    assert not hasattr(store, "list_handoffs")
+
+
+def test_tools_layer_never_imports_the_console() -> None:
+    tools = Path(__file__).resolve().parents[2] / "src" / "bankagent" / "tools"
+    offenders = [
+        path.name
+        for path in tools.rglob("*.py")
+        if re.search(r"bankagent\.store\.console|import console", path.read_text("utf-8"))
+    ]
+    assert offenders == []
+
+
+# -- idempotency conflicts and single dispute / block -------------------------
+
+
+def test_idempotency_key_reused_for_another_dispute_is_a_conflict(store: OpsStore) -> None:
+    store.insert_dispute("CUST-A", _dispute())
+    with pytest.raises(IdempotencyConflict):
+        store.insert_dispute("CUST-A", _dispute(dispute_id="DSP-2", txn="TXN-2"))
+    other_reason = _dispute(dispute_id="DSP-3").model_copy(
+        update={"reason": DisputeReason.NOT_RECEIVED}
+    )
+    with pytest.raises(IdempotencyConflict):
+        store.insert_dispute("CUST-A", other_reason)
+    assert store.count("disputes") == 1
+    assert store.insert_dispute("CUST-A", _dispute(dispute_id="DSP-4")) == (_dispute(), False)
+
+
+def test_idempotency_key_reused_for_another_card_is_a_conflict(store: OpsStore) -> None:
+    store.insert_card_block("CUST-A", _block())
+    with pytest.raises(IdempotencyConflict):
+        store.insert_card_block("CUST-A", _block(block_id="BLK-2", product_id="CARD-2"))
+    assert store.count("card_blocks") == 1
+    assert store.insert_card_block("CUST-A", _block(block_id="BLK-3")) == (_block(), False)
+
+
+def test_idempotency_key_reused_for_another_handoff_is_a_conflict(store: OpsStore) -> None:
+    first, _ = store.insert_handoff(_packet("HND-1"), "idem-key-0003")
+    with pytest.raises(IdempotencyConflict):
+        store.insert_handoff(_packet("HND-2", request="otra solicitud"), "idem-key-0003")
+    assert store.count("handoffs") == 1
+    assert store.insert_handoff(_packet("HND-3", 9), "idem-key-0003") == (first, False)
+
+
+def test_second_dispute_on_a_transaction_is_refused(store: OpsStore) -> None:
+    first, _ = store.insert_dispute("CUST-A", _dispute())
+    with pytest.raises(DisputeAlreadyExists) as refused:
+        store.insert_dispute("CUST-A", _dispute(dispute_id="DSP-2", key="idem-key-9999"))
+    assert refused.value.existing == first
+    assert store.count("disputes") == 1
+    # Another transaction of the same customer is fine.
+    store.insert_dispute("CUST-A", _dispute(dispute_id="DSP-5", key="idem-key-5555", txn="TXN-5"))
+    assert store.count("disputes") == 2
+
+
+def test_concurrent_disputes_on_one_transaction_create_a_single_row(store: OpsStore) -> None:
+    def attempt(i: int) -> str:
+        try:
+            store.insert_dispute("CUST-A", _dispute(dispute_id=f"DSP-{i}", key=f"idem-key-{i:04d}"))
+        except DisputeAlreadyExists:
+            return "exists"
+        return "created"
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(attempt, range(40)))
+    assert outcomes.count("created") == 1
+    assert store.count("disputes") == 1
+
+
+def test_second_block_on_a_card_is_refused(store: OpsStore) -> None:
+    first, _ = store.insert_card_block("CUST-A", _block())
+    with pytest.raises(CardAlreadyBlocked) as refused:
+        store.insert_card_block("CUST-A", _block(block_id="BLK-2", key="idem-key-8888"))
+    assert refused.value.existing == first
+    assert store.count("card_blocks") == 1
+
+
+# -- several connections on one file (uvicorn workers) -----------------------
+
+
+def test_two_connections_share_one_file_and_keep_the_guarantees(tmp_path: Path) -> None:
+    path = tmp_path / "ops.sqlite"
+    with OpsStore(path) as first, OpsStore(path) as second:
+        first.save_confirmation_token(_token())
+        stores = [first, second]
+
+        def consume(i: int) -> bool:
+            return _consume(stores[i % 2])
+
+        def dispute(i: int) -> str:
+            try:
+                stores[i % 2].insert_dispute(
+                    "CUST-A", _dispute(dispute_id=f"DSP-{i}", key=f"idem-key-{i:04d}")
+                )
+            except DisputeAlreadyExists:
+                return "exists"
+            return "created"
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            consumed = list(pool.map(consume, range(20)))
+            disputes = list(pool.map(dispute, range(20)))
+        assert sum(consumed) == 1  # single use across connections
+        assert disputes.count("created") == 1
+        assert second.count("disputes") == first.count("disputes") == 1
+        journal = first.database.one("PRAGMA journal_mode")
+        assert journal is not None
+        assert journal[0] == "wal"
 
 
 def test_execution_records_are_listed_in_step_order(store: OpsStore) -> None:
@@ -263,8 +408,6 @@ def test_attempts_are_reserved_atomically_up_to_the_limit(store: OpsStore) -> No
 
 
 def test_concurrent_guesses_cannot_exceed_the_attempt_limit(store: OpsStore) -> None:
-    from concurrent.futures import ThreadPoolExecutor
-
     store.create_challenge(_challenge(3))
     with ThreadPoolExecutor(max_workers=8) as pool:
         granted = list(pool.map(lambda _: store.reserve_attempt("chl-1", NOW), range(40)))
@@ -281,16 +424,18 @@ def test_reserve_and_consume_respect_the_validity_window(store: OpsStore) -> Non
     assert store.reserve_attempt("chl-1", NOW) is False  # used challenges take no more guesses
 
 
-def test_login_failures_are_listed_per_customer_and_cleared(store: OpsStore) -> None:
+def test_login_failures_are_listed_per_customer_and_forgotten_one_by_one(
+    store: OpsStore,
+) -> None:
     store.record_login_failure("CUST-A", NOW)
-    store.record_login_failure("CUST-A", NOW + timedelta(seconds=5))
+    second = store.record_login_failure("CUST-A", NOW + timedelta(seconds=5))
     store.record_login_failure("CUST-B", NOW)
     assert store.failures_since("CUST-A", NOW) == [NOW, NOW + timedelta(seconds=5)]
     assert store.failures_since("CUST-A", NOW + timedelta(seconds=1)) == [
         NOW + timedelta(seconds=5)
     ]
-    store.clear_failures("CUST-A")
-    assert store.failures_since("CUST-A", NOW) == []
+    store.forget_login_failure(second)
+    assert store.failures_since("CUST-A", NOW) == [NOW]  # the earlier failure still counts
     assert store.failures_since("CUST-B", NOW) == [NOW]
 
 

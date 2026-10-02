@@ -9,10 +9,11 @@ Attempt limits:
 - per challenge: ``otp_max_attempts`` wrong codes close the challenge for good;
 - per customer: ``lockout_failures`` wrong codes inside ``lockout_window`` block new challenges
   and verifications until the window passes, so asking for a new code does not reset the count.
+  A successful login removes only its own counted attempt, never earlier wrong guesses.
 
 Every verification first spends one attempt and counts one failure inside a single store
-transaction (lockout check included), and only then compares the code; a success clears the
-count. Concurrent guesses therefore cannot exceed either limit.
+transaction (lockout check included), and only then compares the code. Concurrent guesses
+therefore cannot exceed either limit.
 
 Client strings are untrusted: anything that is not plain ASCII is rejected before it reaches a
 hash, a comparison or the database. Failures never say why (unknown persona, wrong, expired or
@@ -196,7 +197,7 @@ class AuthService:
             log.info("login_rejected reason=unknown_challenge")
             raise InvalidCredentials(InvalidCredentials.code)
         # Lockout check, attempt and failure count in one transaction, before comparing: the
-        # guess is counted as a failure up front and a success clears it below.
+        # guess is counted as a failure up front and a success forgets that one count below.
         with self._store.transaction():
             self._check_lockout(challenge.customer_id, now)
             if challenge.consumed_at is None and challenge.attempts >= challenge.max_attempts:
@@ -205,7 +206,7 @@ class AuthService:
             if not self._store.reserve_attempt(challenge_id, now):
                 log.info("login_rejected reason=challenge_closed challenge=%s", challenge_id)
                 raise InvalidCredentials(InvalidCredentials.code)
-            self._store.record_login_failure(challenge.customer_id, now)
+            counted = self._store.record_login_failure(challenge.customer_id, now)
         if not hmac.compare_digest(challenge.otp_hash, presented):
             log.info("login_failed challenge=%s", challenge_id)
             raise InvalidCredentials(InvalidCredentials.code)
@@ -224,7 +225,7 @@ class AuthService:
                 language=customer.language,
             )
             self._store.save_session(session)
-            self._store.clear_failures(customer.customer_id)
+            self._store.forget_login_failure(counted)
         log.info("session_issued session=%s challenge=%s", session.session_id, challenge_id)
         return LoginSuccess(
             token=self._tokens.issue(session),

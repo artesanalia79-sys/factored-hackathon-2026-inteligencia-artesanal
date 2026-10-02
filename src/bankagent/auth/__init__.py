@@ -1,4 +1,4 @@
-"""Persona login, mock OTP and signed TTL session tokens. Owner: Victor (T7).
+"""Persona login, mock OTP and signed TTL session tokens. Owner: Juan José (T7).
 
 `service.AuthService` is the logic (personas, OTP challenges with attempt limits, server-side
 sessions); `tokens` signs and checks the session token; `http` is the FastAPI router and the

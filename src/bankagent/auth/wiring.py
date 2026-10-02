@@ -43,12 +43,16 @@ def create_auth_service(
     """Auth service on the configured serving DB and ops store.
 
     Pass ``store`` to share one ``OpsStore`` with the tools; otherwise it is opened at
-    ``OPS_DB_PATH``.
+    ``OPS_DB_PATH``. Raises ``AuthConfigError`` when the mock OTP is exposed on curated data.
     """
     env = os.environ if environ is None else environ
+    settings = AuthSettings.from_env(env)
+    customers = ServingDB(_path(env, "SERVING_DB_PATH", DEFAULT_SERVING_DB))
+    # DATA_MODE is only a declaration; the serving DB records what it really holds.
+    settings.require_safe_for(customers.data_mode())
     return AuthService(
-        settings=AuthSettings.from_env(env),
+        settings=settings,
         store=store or OpsStore(_path(env, "OPS_DB_PATH", DEFAULT_OPS_DB)),
-        customers=ServingDB(_path(env, "SERVING_DB_PATH", DEFAULT_SERVING_DB)),
+        customers=customers,
         clock=clock,
     )

@@ -111,15 +111,30 @@ def test_new_challenges_do_not_reset_the_customer_lockout(
     assert do_login("Mariana")
 
 
-def test_success_clears_earlier_failures(
-    service: AuthService, otps: Any, persona_of: PersonaOf, do_login: DoLogin
+def test_a_successful_login_does_not_wipe_earlier_wrong_guesses(
+    service: AuthService, otps: Any, store: OpsStore, clock: Any, persona_of: PersonaOf
 ) -> None:
+    # Regression (PR #41 review): a login used to clear every failure of the customer, so an
+    # attacker got a fresh budget of guesses each time the victim logged in.
+    mariana = persona_of("Mariana")
     for _ in range(2):
-        challenge = service.start_login(persona_of("Mariana"))
+        challenge = service.start_login(mariana)
         _fail(service, challenge.challenge_id, 2)
-        service.verify_otp(challenge.challenge_id, otps.issued[-1])
-    # 4 failures in total, but each success reset the count: no lockout.
-    assert do_login("Mariana")
+        service.verify_otp(challenge.challenge_id, otps.issued[-1])  # legitimate login
+    window_start = clock.now - timedelta(minutes=15)
+    assert len(store.failures_since("CUST-T7-001", window_start)) == 4
+    # The 5th wrong guess locks the customer, the two logins in between notwithstanding.
+    _fail(service, service.start_login(mariana).challenge_id, 1)
+    with pytest.raises(TooManyAttempts):
+        service.start_login(mariana)
+
+
+def test_a_correct_code_leaves_no_failure_behind(
+    service: AuthService, store: OpsStore, do_login: DoLogin
+) -> None:
+    for _ in range(6):  # more logins than `lockout_failures`
+        assert do_login("Mariana")
+    assert store.count("login_failures") == 0
 
 
 def test_challenge_is_single_use(service: AuthService, otps: Any, persona_of: PersonaOf) -> None:

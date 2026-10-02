@@ -14,7 +14,8 @@ from bankagent.auth.tokens import SessionTokens
 from bankagent.contracts.domain import Session
 from bankagent.contracts.errors import SessionExpired, Unauthorized
 
-SECRET = "token-secret-" + "s" * 60
+# Built at import time: long and varied, and not a literal credential.
+SECRET = "token-test-" + "".join(chr(97 + i % 26) for i in range(60))
 NOW = datetime(2026, 6, 17, 12, 0, tzinfo=UTC)
 SESSION = Session(
     session_id="ses-abc",
@@ -133,6 +134,34 @@ def test_secret_is_masked_and_must_be_long_enough() -> None:
     assert SECRET not in repr(AuthSettings(secret=secret))
     with pytest.raises(AuthConfigError, match="at least"):
         AuthSettings(secret=Secret("short"))
+    with pytest.raises(AuthConfigError, match="low-entropy"):
+        AuthSettings(secret=Secret("a" * 32))
     with pytest.raises(AuthConfigError, match="not set"):
         AuthSettings.from_env({})
     assert AuthSettings.from_env({"APP_SECRET_KEY": SECRET}).secret.reveal() == SECRET.encode()
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("true", True), ("TRUE", True), ("1", True), ("false", False), ("0", False), ("", False)],
+)
+def test_from_env_honours_the_mock_otp_flag(raw: str, expected: bool) -> None:
+    settings = AuthSettings.from_env({"APP_SECRET_KEY": SECRET, "AUTH_EXPOSE_MOCK_OTP": raw})
+    assert settings.expose_mock_otp is expected
+
+
+def test_mock_otp_is_off_unless_asked_and_typos_fail_closed() -> None:
+    assert AuthSettings.from_env({"APP_SECRET_KEY": SECRET}).expose_mock_otp is False
+    assert AuthSettings(secret=Secret(SECRET)).expose_mock_otp is False
+    with pytest.raises(AuthConfigError, match="true or false"):
+        AuthSettings.from_env({"APP_SECRET_KEY": SECRET, "AUTH_EXPOSE_MOCK_OTP": "maybe"})
+
+
+@pytest.mark.parametrize("mode", ["curated", "CURATED", "something-else"])
+def test_exposed_mock_otp_is_refused_outside_synthetic_data(mode: str) -> None:
+    env = {"APP_SECRET_KEY": SECRET, "AUTH_EXPOSE_MOCK_OTP": "true", "DATA_MODE": mode}
+    with pytest.raises(AuthConfigError, match="only allowed with synthetic"):
+        AuthSettings.from_env(env)
+    # Curated data is fine as long as the OTP is not exposed.
+    hidden = AuthSettings.from_env({**env, "AUTH_EXPOSE_MOCK_OTP": "false"})
+    assert (hidden.data_mode, hidden.expose_mock_otp) == (mode.lower(), False)

@@ -2,7 +2,7 @@
 
 Only what authentication needs lives here: the minimal customer profile. The session-scoped
 tools (T8) add their own reads on top of the same file. Every statement is parameterized.
-Owner: Victor (T7, T19).
+Owner: Juan José (T7, T19).
 """
 
 from __future__ import annotations
@@ -51,6 +51,14 @@ class ServingDB:
                 f"serving DB not found at {self._path}; run `uv run poe fixtures` "
                 "(synthetic) or `uv run poe serving-build` (curated)"
             )
+
+    def data_mode(self) -> str:
+        """``synthetic`` or ``curated``, as recorded by the build in ``_serving_metadata``."""
+        with duckdb.connect(self._path, read_only=True) as con:
+            row = con.execute(
+                "SELECT value FROM _serving_metadata WHERE key = ?", ["data_mode"]
+            ).fetchone()
+        return "unknown" if row is None else str(row[0])
 
     def customer(self, customer_id: str) -> CustomerProfile | None:
         with duckdb.connect(self._path, read_only=True) as con:
