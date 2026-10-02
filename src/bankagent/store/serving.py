@@ -1,20 +1,88 @@
-"""Read-only access to the serving DB (DuckDB) for identity lookups.
+"""Read-only access to the serving DB (DuckDB): identity lookups and the reads behind the tools.
 
-Only what authentication needs lives here: the minimal customer profile. The session-scoped
-tools (T8) add their own reads on top of the same file. Every statement is parameterized.
-Owner: Juan José (T7, T19).
+Rules that hold here so callers cannot get them wrong:
+
+- Every statement is a constant string with bound parameters; no SQL is ever built from values.
+- Every read behind a tool (cards, transactions, prior complaints) takes ``customer_id`` and
+  filters by it, so another customer's card or transaction is indistinguishable from a missing
+  one. Not scoped to one customer: the persona picker of the login (``active_customers``, T7).
+- Views exclude ``fraud_score`` and ``dq_flags`` (ADR 0003); the policy engine reads its own
+  inputs.
+
+Timestamps are naive UTC in the file and are returned as aware UTC datetimes.
+Owner: Juan José (T7, T8, T19).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
+from typing import Any
 
 import duckdb
+from pydantic import ValidationError
 
+from bankagent.contracts.domain import CardView, TransactionView
 from bankagent.contracts.enums import Language
+from bankagent.contracts.tools import SearchTransactionsArgs
 
 UNKNOWN_DATA_MODE = "unknown"
+
+
+_CARDS_SQL = """
+SELECT product_id, card_type, card_last4, currency, product_status, expiration_date
+FROM customer_cards
+WHERE customer_id = $customer_id
+  AND ($product_id::VARCHAR IS NULL OR product_id = $product_id::VARCHAR)
+ORDER BY product_id
+"""
+
+# One statement for the lookup by id and for the search: every filter is optional and bound.
+# The card join repeats the customer, so a card of someone else can never label a transaction.
+_TRANSACTIONS_SQL = """
+SELECT t.transaction_id, t.product_id, c.card_last4, t.transaction_ts, t.transaction_type,
+       t.transaction_category, t.amount, t.currency, t.amount_usd, t.channel, t.merchant_name,
+       t.merchant_category, t.transaction_country, t.transaction_city, t.transaction_status,
+       t.is_foreign
+FROM transactions_enriched AS t
+LEFT JOIN customer_cards AS c
+       ON c.product_id = t.product_id AND c.customer_id = t.customer_id
+WHERE t.customer_id = $customer_id
+  AND ($transaction_id::VARCHAR IS NULL OR t.transaction_id = $transaction_id::VARCHAR)
+  AND ($amount_min::DECIMAL(15,2) IS NULL OR t.amount >= $amount_min::DECIMAL(15,2))
+  AND ($amount_max::DECIMAL(15,2) IS NULL OR t.amount <= $amount_max::DECIMAL(15,2))
+  AND ($currency::VARCHAR IS NULL OR t.currency = $currency::VARCHAR)
+  AND ($merchant::VARCHAR IS NULL
+       OR contains(strip_accents(lower(t.merchant_name)), strip_accents(lower($merchant::VARCHAR))))
+  AND ($date_from::DATE IS NULL OR CAST(t.transaction_ts AS DATE) >= $date_from::DATE)
+  AND ($date_to::DATE IS NULL OR CAST(t.transaction_ts AS DATE) <= $date_to::DATE)
+  AND ($card_last4::VARCHAR IS NULL OR c.card_last4 = $card_last4::VARCHAR)
+ORDER BY t.transaction_ts DESC, t.transaction_id
+LIMIT $limit
+"""
+
+# Source statuses that still count as an open case (the rest: Resolved, Closed, Rejected).
+_OPEN_COMPLAINT_SQL = """
+SELECT complaint_id
+FROM dispute_history
+WHERE customer_id = ? AND related_transaction_id = ?
+  AND status IN ('Open', 'In Process', 'Escalated')
+ORDER BY created_at DESC, complaint_id
+LIMIT 1
+"""
+
+
+class ServingDataError(RuntimeError):
+    """A served row does not fit its contract view.
+
+    Names the table, the view and the offending fields, never a value: it is raised outside
+    the ``except`` block so the validation error (which quotes the row) is not chained to it.
+    """
+
+    def __init__(self, table: str, error: ValidationError) -> None:
+        fields = sorted({".".join(str(part) for part in e["loc"]) for e in error.errors()})
+        super().__init__(f"a {table} row does not fit {error.title} ({', '.join(fields)})")
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +109,47 @@ def _profile(row: tuple[str, str, str, str, str | None]) -> CustomerProfile:
         customer_status=status,
         language=Language(language) if language in set(Language) else None,
     )
+
+
+def _card(row: tuple[Any, ...]) -> CardView:
+    product_id, card_type, card_last4, currency, status, expiration_date = row
+    try:
+        return CardView(
+            product_id=product_id,
+            card_type=card_type,
+            card_last4=card_last4,
+            currency=currency,
+            product_status=status,
+            expiration_date=expiration_date,
+        )
+    except ValidationError as exc:
+        problem = ServingDataError("customer_cards", exc)
+    raise problem
+
+
+def _transaction(row: tuple[Any, ...]) -> TransactionView:
+    try:
+        return TransactionView(
+            transaction_id=row[0],
+            product_id=row[1],
+            card_last4=row[2],
+            transaction_ts=row[3].replace(tzinfo=UTC),
+            transaction_type=row[4],
+            transaction_category=row[5],
+            amount=row[6],
+            currency=row[7],
+            amount_usd=row[8],
+            channel=row[9],
+            merchant_name=row[10],
+            merchant_category=row[11],
+            transaction_country=row[12],
+            transaction_city=row[13],
+            transaction_status=row[14],
+            is_foreign=row[15],
+        )
+    except ValidationError as exc:
+        problem = ServingDataError("transactions_enriched", exc)
+    raise problem
 
 
 class ServingDB:
@@ -88,3 +197,58 @@ class ServingDB:
                 [limit],
             ).fetchall()
         return [_profile(row) for row in rows]
+
+    # -- reads behind the tools (T8): customer data is always scoped by customer_id ----------
+
+    def cards(self, customer_id: str, product_id: str | None = None) -> list[CardView]:
+        """The customer's cards by product id, or only ``product_id`` if it is theirs."""
+        with duckdb.connect(self._path, read_only=True) as con:
+            rows = con.execute(
+                _CARDS_SQL, {"customer_id": customer_id, "product_id": product_id}
+            ).fetchall()
+        return [_card(row) for row in rows]
+
+    def transaction(self, customer_id: str, transaction_id: str) -> TransactionView | None:
+        """One transaction of this customer; ``None`` for a missing or a foreign id alike."""
+        found = self._transactions(customer_id, SearchTransactionsArgs(), transaction_id, 1)
+        return found[0] if found else None
+
+    def search_transactions(
+        self, customer_id: str, filters: SearchTransactionsArgs, *, limit: int
+    ) -> list[TransactionView]:
+        """The customer's transactions matching every given filter, newest first.
+
+        ``limit`` is separate from ``filters.limit`` so a caller can ask for one extra row to
+        learn whether the result was truncated. Dates compare against the UTC date.
+        """
+        return self._transactions(customer_id, filters, None, limit)
+
+    def _transactions(
+        self,
+        customer_id: str,
+        filters: SearchTransactionsArgs,
+        transaction_id: str | None,
+        limit: int,
+    ) -> list[TransactionView]:
+        parameters = {
+            "customer_id": customer_id,
+            "transaction_id": transaction_id,
+            "amount_min": filters.amount_min,
+            "amount_max": filters.amount_max,
+            "currency": filters.currency,
+            # A blank query carries no information; it must not turn into "match everything".
+            "merchant": (filters.merchant_query or "").strip() or None,
+            "date_from": filters.date_from,
+            "date_to": filters.date_to,
+            "card_last4": filters.card_last4,
+            "limit": limit,
+        }
+        with duckdb.connect(self._path, read_only=True) as con:
+            rows = con.execute(_TRANSACTIONS_SQL, parameters).fetchall()
+        return [_transaction(row) for row in rows]
+
+    def open_complaint_id(self, customer_id: str, transaction_id: str) -> str | None:
+        """Newest still-open prior complaint of this customer on the transaction, if any."""
+        with duckdb.connect(self._path, read_only=True) as con:
+            row = con.execute(_OPEN_COMPLAINT_SQL, [customer_id, transaction_id]).fetchone()
+        return None if row is None else str(row[0])

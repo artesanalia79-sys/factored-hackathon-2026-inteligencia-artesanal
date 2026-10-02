@@ -1,5 +1,25 @@
 {
   "$defs": {
+    "ActionType": {
+      "enum": [
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    },
+    "DecisionType": {
+      "enum": [
+        "proceed",
+        "clarify",
+        "abstain",
+        "escalate",
+        "ineligible"
+      ],
+      "title": "DecisionType",
+      "type": "string"
+    },
     "Language": {
       "enum": [
         "es",
@@ -7,6 +27,83 @@
       ],
       "title": "Language",
       "type": "string"
+    },
+    "PolicyDecision": {
+      "additionalProperties": false,
+      "description": "Deterministic decision of the policy engine for one request.",
+      "properties": {
+        "allowed_actions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ActionType"
+          },
+          "title": "Allowed Actions",
+          "type": "array"
+        },
+        "decision": {
+          "$ref": "#/$defs/DecisionType"
+        },
+        "escalation_triggers": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Escalation Triggers",
+          "type": "array"
+        },
+        "explanation_keys": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Explanation Keys",
+          "type": "array"
+        },
+        "policy_version": {
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "required_slots": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Slots",
+          "type": "array"
+        },
+        "requires_confirmation": {
+          "default": false,
+          "title": "Requires Confirmation",
+          "type": "boolean"
+        },
+        "rule_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        },
+        "sla_due_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sla Due Date"
+        }
+      },
+      "required": [
+        "decision",
+        "policy_version"
+      ],
+      "title": "PolicyDecision",
+      "type": "object"
     },
     "Session": {
       "additionalProperties": false,
@@ -57,7 +154,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Server-side context of a tool call. Built by the orchestrator, never by the model.",
+  "description": "Server-side context of a tool call. Built by the orchestrator, never by the model.\n\n``policy`` is the decision the write was allowed under. ``create_dispute`` and ``block_card``\nrefuse an action the decision does not allow, and the dispute is stamped with its version,\nrule ids and SLA due date.",
   "properties": {
     "confirmation_token_id": {
       "anyOf": [
@@ -77,6 +174,17 @@
       "format": "date-time",
       "title": "Now",
       "type": "string"
+    },
+    "policy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PolicyDecision"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "session": {
       "$ref": "#/$defs/Session"
