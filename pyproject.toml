@@ -14,6 +14,13 @@ dependencies = [
 #   uv add --group data "dbt-duckdb==1.11.0"
 #   uv add --group api "fastapi==0.141.1"
 [dependency-groups]
+# Identity, sessions and the HTTP API (T7, T13). Installed by default (see default-groups).
+api = [
+    "fastapi==0.141.1",
+    "httpx==0.28.1",
+    "pyjwt==2.15.0",
+    "uvicorn==0.54.0",
+]
 # Ingest (T4) and dbt silver/gold (T5, T6). Not installed by default: `uv sync --group data`.
 data = [
     "boto3==1.43.103",
@@ -37,7 +44,7 @@ requires = ["uv_build>=0.12.19,<0.13"]
 build-backend = "uv_build"
 
 [tool.uv]
-default-groups = ["dev", "llm"]
+default-groups = ["api", "dev", "llm"]
 
 # ---------------------------------------------------------------------------
 # Task runner (cross-platform; no make on Windows). Run `uv run poe` to list.
