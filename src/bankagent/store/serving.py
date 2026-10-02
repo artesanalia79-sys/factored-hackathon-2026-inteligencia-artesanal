@@ -6,24 +6,25 @@ Rules that hold here so callers cannot get them wrong:
 - Every read behind a tool (cards, transactions, prior complaints) takes ``customer_id`` and
   filters by it, so another customer's card or transaction is indistinguishable from a missing
   one. Not scoped to one customer: the persona picker of the login (``active_customers``, T7).
-- Views exclude ``fraud_score`` and ``dq_flags`` (ADR 0003); the policy engine reads its own
-  inputs.
+- Views exclude ``fraud_score`` and ``dq_flags`` (ADR 0003); the policy engine (T9) reads its own
+  inputs below (``risk_signals``, ``last_claim_date``, ``as_of_date``): no tool calls them, and
+  no tool result or template ever carries ``fraud_score``.
 
 Timestamps are naive UTC in the file and are returned as aware UTC datetimes.
-Owner: Juan José (T7, T8, T19).
+Owner: Juan José (T7, T8, T19); policy inputs: Santiago (T9).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, date
 from pathlib import Path
 from typing import Any
 
 import duckdb
 from pydantic import ValidationError
 
-from bankagent.contracts.domain import CardView, TransactionView
+from bankagent.contracts.domain import CardView, TransactionRiskSignals, TransactionView
 from bankagent.contracts.enums import Language
 from bankagent.contracts.tools import SearchTransactionsArgs
 
@@ -70,6 +71,17 @@ WHERE customer_id = ? AND related_transaction_id = ?
   AND status IN ('Open', 'In Process', 'Escalated')
 ORDER BY created_at DESC, complaint_id
 LIMIT 1
+"""
+
+# Policy-only (T9): fraud_score is excluded from every other statement in this module.
+_RISK_SQL = """
+SELECT fraud_score FROM transactions_enriched WHERE customer_id = ? AND transaction_id = ?
+"""
+
+# Any status, any transaction: a repeat disputer is a property of the customer, not of one
+# transaction. `Claim` only: a Service/Branch `Complaint` (e.g. CMP-FX-101) is not a dispute.
+_LAST_CLAIM_SQL = """
+SELECT max(created_at) FROM dispute_history WHERE customer_id = ? AND case_type = 'Claim'
 """
 
 
@@ -252,3 +264,38 @@ class ServingDB:
         with duckdb.connect(self._path, read_only=True) as con:
             row = con.execute(_OPEN_COMPLAINT_SQL, [customer_id, transaction_id]).fetchone()
         return None if row is None else str(row[0])
+
+    # -- policy engine inputs (T9): never read by a tool, a template or the model --------------
+
+    def as_of_date(self) -> date:
+        """The build's as-of date (``_serving_metadata``). Policy compares windows to this, not
+        the wall clock, so a frozen fixture or curated snapshot stays internally consistent."""
+        with duckdb.connect(self._path, read_only=True) as con:
+            row = con.execute(
+                "SELECT value FROM _serving_metadata WHERE key = 'as_of_date'"
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("_serving_metadata has no 'as_of_date' row")
+        return date.fromisoformat(str(row[0]))
+
+    def risk_signals(self, customer_id: str, transaction_id: str) -> TransactionRiskSignals | None:
+        """``fraud_score`` for one of the customer's transactions (ADR 0003). ``None`` for a
+        missing or a foreign id, exactly like the tools' reads."""
+        with duckdb.connect(self._path, read_only=True) as con:
+            row = con.execute(_RISK_SQL, [customer_id, transaction_id]).fetchone()
+        if row is None:
+            return None
+        return TransactionRiskSignals(transaction_id=transaction_id, fraud_score=row[0])
+
+    def last_claim_date(self, customer_id: str) -> date | None:
+        """Date of this customer's most recent pre-agent claim (any status, any transaction), or
+        ``None``. Input to the repeat-disputer escalation trigger (T9): a dispute the agent
+        itself created is not here, only in ``OpsStore.last_dispute_date``; combine both (the
+        newer date) before building ``PolicyInputs.last_claim_date``, or a customer who disputes
+        repeatedly through the agent, with no prior complaint in the source data, is never
+        flagged as a repeat disputer.
+        """
+        with duckdb.connect(self._path, read_only=True) as con:
+            row = con.execute(_LAST_CLAIM_SQL, [customer_id]).fetchone()
+        value = row[0] if row else None
+        return None if value is None else value.date()

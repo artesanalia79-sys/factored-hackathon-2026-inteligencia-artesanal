@@ -3,12 +3,14 @@
 ``create_dispute`` and ``block_card`` follow one sequence:
 
 1. the policy decision in the context must allow the action;
-2. the target must be the session customer's (otherwise ``NotFound``);
-3. ``create_dispute`` also refuses when the transaction already has an open case, agent-made or
+2. ``create_dispute`` also refuses a decision bound to a different transaction (a policy
+   evaluated for A must not authorize, or stamp its SLA and rule ids onto, a dispute on B);
+3. the target must be the session customer's (otherwise ``NotFound``);
+4. ``create_dispute`` also refuses when the transaction already has an open case, agent-made or
    from before the agent existed (``InvalidArguments``, no token spent);
-4. in one store transaction, the confirmation token is spent and the record is written, so a
+5. in one store transaction, the confirmation token is spent and the record is written, so a
    refused or failed write never burns the token and a spent token always has its record;
-5. the record is read back; ``verified`` is true only if it equals what the tool reports.
+6. the record is read back; ``verified`` is true only if it equals what the tool reports.
 
 The token is spent before the store looks for an existing record, so a call repeated with its
 used token is refused; repeated with a fresh token it returns the stored record
@@ -49,6 +51,7 @@ UNSPECIFIED_POLICY_VERSION = "unspecified"
 KEY_REUSED = "idempotency key already used for a different request"
 ALREADY_DISPUTED = "this transaction already has a dispute"
 ALREADY_BLOCKED = "this card is already blocked"
+WRONG_TARGET = "the policy decision was evaluated for a different transaction"
 
 
 class CreateDispute(BaseTool[CreateDisputeArgs, CreateDisputeResult]):
@@ -56,6 +59,9 @@ class CreateDispute(BaseTool[CreateDisputeArgs, CreateDisputeResult]):
 
     def _run(self, ctx: ToolContext, args: CreateDisputeArgs) -> CreateDisputeResult:
         self._require_allowed_by_policy(ctx)
+        policy = ctx.policy
+        if policy is not None and policy.target_transaction_id not in (None, args.transaction_id):
+            raise InvalidArguments(WRONG_TARGET)
         customer_id = ctx.session.customer_id
         store = self._deps.store
         transaction = self._deps.serving.transaction(customer_id, args.transaction_id)
@@ -66,7 +72,6 @@ class CreateDispute(BaseTool[CreateDisputeArgs, CreateDisputeResult]):
         if self._deps.serving.open_complaint_id(customer_id, args.transaction_id) is not None:
             raise InvalidArguments(ALREADY_DISPUTED)
         token_id = self._require_token(ctx)
-        policy = ctx.policy
         dispute = DisputeCase(
             dispute_id=self._deps.new_id("DSP"),
             transaction_id=transaction.transaction_id,
