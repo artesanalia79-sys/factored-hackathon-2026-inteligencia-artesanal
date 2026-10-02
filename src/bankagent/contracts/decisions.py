@@ -85,6 +85,8 @@ class PolicyDecision(Contract):
     tool that allows ``create_dispute`` must refuse a call whose ``args.transaction_id`` differs
     from it: otherwise a decision computed for transaction A would authorize, and stamp its SLA
     and rule ids onto, a dispute on transaction B (T8 PR #43 review; T9 PR #44 review).
+    ``target_product_id`` is the card of that transaction, the only card ``block_card`` may block
+    under this decision (same reasoning, for the block).
     """
 
     decision: DecisionType
@@ -96,6 +98,7 @@ class PolicyDecision(Contract):
     escalation_triggers: tuple[str, ...] = ()
     sla_due_date: date | None = None
     target_transaction_id: Identifier | None = None
+    target_product_id: Identifier | None = None
     policy_version: str
 
     @model_validator(mode="after")
