@@ -1,8 +1,8 @@
 # Backend and agent rules
 
 Applies to `src/bankagent/**` (except `fixtures/`, `router/` and `eval/`, see their rule files),
-`policy/**` and `config/**`. Owners: Victor (auth, tools, policy, orchestrator), Jacobo
-(interpreter, templates). Skills: `tool-contract`, `policy-rule`, `data-contracts`.
+`policy/**` and `config/**`. Owners: Juan José (auth, store, tools, policy), Jacobo
+(interpreter, templates, orchestrator, api). Skills: `tool-contract`, `policy-rule`, `data-contracts`.
 
 ## Architecture boundaries
 
@@ -19,6 +19,10 @@ Applies to `src/bankagent/**` (except `fixtures/`, `router/` and `eval/`, see th
 - Tools raise `NotFound` for both "not yours" and "does not exist" (no existence disclosure);
   `Unauthorized` is only for session/role failures; `SessionExpired` when the TTL passed.
 - Every SQL statement is parameterized. Never build SQL with f-strings or string concatenation.
+- For reads, `ExecutionRecord.verified=true` means a successful, session-authorized,
+  customer-scoped lookup produced the typed result associated with that tool call and
+  its `args_hash`. `get_transaction` must return the requested ID; `list_cards` must
+  contain only the session customer's cards. Failed or mismatched reads are unverified.
 
 ## Writes
 

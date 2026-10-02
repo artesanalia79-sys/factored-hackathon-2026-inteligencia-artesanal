@@ -107,15 +107,15 @@ Gold models exactly per the serving contract, plus `cc_contact_baseline` and
 `complaints_baseline`; an incremental model with a late-arrival fixture; forbidden-columns check;
 `DATA_MODE` (`synthetic` | `curated`).
 
-**T7. Identity, sessions, operational store** [P0] (Victor)
+**T7. Identity, sessions, operational store** [P0] (Juan José)
 Persona login + mock OTP, signed TTL session tokens (`APP_SECRET_KEY`), SQLite ops store for
 disputes, blocks and confirmation tokens.
 
-**T8. Tools layer** [P0] (Victor)
+**T8. Tools layer** [P0] (Juan José)
 All tools per `TOOL_SPECS`: session-scoped parameterized SQL, BOLA tests, confirmation tokens,
 idempotency, read-back verification.
 
-**T9. Policy engine** [P0] (Victor)
+**T9. Policy engine** [P0] (Juan José)
 `policy/dispute_policy_v1.yaml` with stable rule ids, labeled synthetic unless verified
 (Argentina Ley 25.065 arts. 26-29 verified; MX/CO TODO-verify by a human); `poe policy-explain`.
 
@@ -131,7 +131,7 @@ Scripted-user simulator driven by `FactSheet`; runners for both systems; scorer 
 `ExecutionRecord`s; official metrics + deflection; Wilson CIs; slices; repeats;
 `eval/preregistration.md`; `eval/gates.yaml`; `eval-smoke` in CI (StubProvider, 0 USD).
 
-**T13. Orchestrator walking skeleton incl. recognition step** [P0] (Victor + Jacobo)
+**T13. Orchestrator walking skeleton incl. recognition step** [P0] (Jacobo)
 State machine end to end, `POST /api/chat/turn`, max 2 clarification rounds, handoff packets.
 
 **T14. Chat UI** [P0] (Jacobo)
