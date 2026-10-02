@@ -13,6 +13,7 @@ from typing import Annotated, Protocol
 from pydantic import AwareDatetime, Field, StringConstraints, model_validator
 
 from bankagent.contracts.base import Contract, CurrencyCode, Identifier, Last4, NonNegativeMoney
+from bankagent.contracts.decisions import PolicyDecision
 from bankagent.contracts.domain import (
     CardBlockEvent,
     CardView,
@@ -27,12 +28,18 @@ IdempotencyKey = Annotated[str, StringConstraints(min_length=8, max_length=64)]
 
 
 class ToolContext(Contract):
-    """Server-side context of a tool call. Built by the orchestrator, never by the model."""
+    """Server-side context of a tool call. Built by the orchestrator, never by the model.
+
+    ``policy`` is the decision the write was allowed under. ``create_dispute`` and ``block_card``
+    refuse an action the decision does not allow, and the dispute is stamped with its version,
+    rule ids and SLA due date.
+    """
 
     session: Session
     trace_id: Identifier
     now: AwareDatetime
     confirmation_token_id: Identifier | None = None
+    policy: PolicyDecision | None = None
 
 
 # ---------------------------------------------------------------------------

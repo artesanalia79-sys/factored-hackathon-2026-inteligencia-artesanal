@@ -1,0 +1,86 @@
+# Dispute policy, version 1 (Task 9). Loaded and validated by `bankagent.policy.schema`.
+#
+# Evaluated in this order by `bankagent.policy.engine.evaluate`:
+#   1. eligibility rules (approved_status, no_open_case, window), short-circuit on the first
+#      failure -> decision: ineligible, no write actions.
+#   2. escalation rules (fraud_score, repeat_disputer), evaluated together if eligibility
+#      passed -> decision: escalate (no write actions) when any trigger fires.
+#   3. otherwise -> decision: proceed, create_dispute and block_card allowed, confirmation
+#      required, sla_due_date = as_of_date + sla_days.
+#
+# `provenance.synthetic: true` means the parameter is a placeholder, not checked against a
+# primary source. See docs/limitations.md.
+
+policy_version: dispute-v1
+sla_days: 30
+
+rules:
+  - rule_id: DSP-ELIG-01
+    kind: approved_status
+    description: >
+      Only a settled (Approved) transaction can be disputed. Declined charged nothing final,
+      Pending has not settled yet, Reversed is already undone.
+    explanation_key: dispute.not_settled
+    provenance:
+      synthetic: false
+      source: "bankagent.contracts.enums.TransactionStatus; a non-Approved transaction has no
+        completed charge to dispute"
+
+  - rule_id: DSP-ELIG-02
+    kind: no_open_case
+    description: >
+      A transaction that already has an open case cannot be disputed again: an agent-made
+      dispute (store.get_dispute) or a still-open prior complaint (Open, In Process or
+      Escalated in dispute_history, from before the agent existed).
+    explanation_key: dispute.already_disputed
+    provenance:
+      synthetic: false
+      source: "store/ops.py DisputeAlreadyExists (one dispute per transaction) and
+        tools/writes.py open_complaint_id check (T8 PR #43 review); defense in depth, CHECK_POLICY
+        refuses before CONFIRM/ACT"
+
+  - rule_id: DSP-WIN-01
+    kind: window
+    description: >
+      A dispute must be filed within this many days of the transaction date, counted from the
+      serving DB's as_of_date (not the wall clock).
+    explanation_key: dispute.out_of_window
+    window_days:
+      AR: 90
+      MX: 90
+      CO: 90
+    provenance:
+      synthetic: true
+      source: "placeholder pending legal verification; no primary source checked yet for AR, MX
+        or CO"
+    todo: "TODO(T9, Santiago): verify Argentina Ley 25.065 arts. 26-29 and the MX/CO equivalents
+      against a primary source before this policy is used on real customers; window_days is a
+      synthetic placeholder until then (docs/limitations.md)."
+
+  - rule_id: DSP-ESC-01
+    kind: fraud_score
+    description: >
+      A disputed transaction at or above the fraud_score threshold is escalated to a human
+      instead of auto-creating the dispute.
+    explanation_key: dispute.fraud_risk
+    threshold: 30.0
+    provenance:
+      synthetic: false
+      source: "ADR 0003 (accepted); docs/evidence/fraud_score_thresholds.md, offline on 4.43M
+        labelled transactions (4,316 fraud, base rate 0.0975%): >=30 escalates 2,982 transactions
+        (0.067%) at precision 0.80, recall 0.55"
+      verified_by: "Santiago, Victor, Juan José"
+      verified_on: "2026-09-29"
+
+  - rule_id: DSP-ESC-02
+    kind: repeat_disputer
+    description: >
+      A customer with a prior claim (dispute_history, case_type Claim, any status) in the last
+      window_days is escalated to a human for this dispute instead of auto-creating it.
+    explanation_key: dispute.repeat_disputer
+    window_days: 90
+    provenance:
+      synthetic: true
+      source: "business heuristic (serial-dispute risk signal), not externally verified"
+    todo: "TODO(T9, Santiago): business sign-off on the repeat-disputer window and on whether a
+      repeat disputer should escalate or only add context to a human review."
