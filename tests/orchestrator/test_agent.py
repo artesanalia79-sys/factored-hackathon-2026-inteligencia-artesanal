@@ -190,7 +190,7 @@ def test_llm_timeout_uses_keyword_fallback() -> None:
 
 
 def _policy(
-    _session: Session, _transaction: TransactionView, _reason: DisputeReason
+    _session: Session, _transaction: GetTransactionResult, _reason: DisputeReason
 ) -> PolicyDecision:
     return PolicyDecision(
         decision=DecisionType.PROCEED,
@@ -328,7 +328,7 @@ def test_policy_escalation_creates_complete_handoff() -> None:
     handoff = HandoffTool()
 
     def escalate(
-        _session: Session, _transaction: TransactionView, _reason: DisputeReason
+        _session: Session, _transaction: GetTransactionResult, _reason: DisputeReason
     ) -> PolicyDecision:
         return PolicyDecision(
             decision=DecisionType.ESCALATE,
