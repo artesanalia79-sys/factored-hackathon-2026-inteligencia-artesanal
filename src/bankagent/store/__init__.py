@@ -4,6 +4,6 @@
 challenges, confirmation tokens, disputes, card blocks, handoffs and execution records, every
 read scoped to a customer or session; `console.HandoffConsole` has the unscoped reads for human
 agents (never imported by the tools); `serving.ServingDB` reads the minimal customer profile
-and, for the tools, the cards, transactions and prior complaints of one customer plus the agent
-directory. The tools hold no SQL: every statement they run is here. Owner: Juan José (T7, T8, T19).
+and, for the tools, the cards, transactions and prior complaints of one customer. The tools
+hold no SQL: every statement they run is here. Owner: Juan José (T7, T8, T19).
 """

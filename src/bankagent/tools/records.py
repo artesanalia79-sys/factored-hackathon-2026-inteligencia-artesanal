@@ -2,9 +2,12 @@
 
 The orchestrator owns the turn and step numbering and stores the records; this module gives
 it the record of a call with the fields the evaluation reads (``docs/eval/system_interface.md``):
-the tool, the hash of the exact arguments, the real outcome and error code, the latency and,
-for a write, whether its read-back verified it. Only metadata is copied: no argument, result or
-error text ever reaches a record.
+the tool, the hash of the exact arguments, the real outcome and error code, the latency and
+``verified``. Only metadata is copied: no argument, result or error text ever reaches a record.
+
+``verified`` follows ``docs/rules/backend.md``: for a write, its own read-back matched; for a
+read, the call succeeded for this session and returned the typed result for these arguments
+(``get_transaction`` the requested id). The templates only render facts from a verified record.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from bankagent.contracts.base import Contract, args_hash
 from bankagent.contracts.enums import ConversationState, StepKind, StepOutcome, ToolErrorCode
 from bankagent.contracts.errors import ToolError
 from bankagent.contracts.records import ExecutionRecord
-from bankagent.contracts.tools import Tool, ToolContext
+from bankagent.contracts.tools import GetTransactionResult, Tool, ToolContext, ToolSpec
 
 _IDENTIFIER_MAX = 64  # max_length of `bankagent.contracts.base.Identifier`
 
@@ -38,6 +41,16 @@ def record_id_for(trace_id: str, turn_index: int, step_index: int) -> str:
     if len(readable) <= _IDENTIFIER_MAX:
         return readable
     return f"rec-{hashlib.sha256(readable.encode('utf-8')).hexdigest()[:32]}"
+
+
+def _verified(spec: ToolSpec, args: Contract, result: Contract) -> bool:
+    if not isinstance(result, spec.result_model):
+        return False
+    if spec.is_write:
+        return bool(getattr(result, "verified", False))
+    if isinstance(result, GetTransactionResult):
+        return result.transaction.transaction_id == getattr(args, "transaction_id", None)
+    return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,8 +104,7 @@ def call_tool[ArgsT: Contract, ResultT: Contract](
         tool=tool.spec.name,
         args_hash=args_hash(args),
         outcome=StepOutcome.SUCCESS if error is None else outcome_for(error.code),
-        # Read tools have no `verified`; a write is verified only by its own read-back.
-        verified=error is None and bool(getattr(result, "verified", False)),
+        verified=result is not None and _verified(tool.spec, args, result),
         latency_ms=latency_ms,
         error_code=None if error is None else error.code,
         created_at=ctx.now,

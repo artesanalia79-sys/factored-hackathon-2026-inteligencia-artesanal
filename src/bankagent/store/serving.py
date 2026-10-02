@@ -5,8 +5,7 @@ Rules that hold here so callers cannot get them wrong:
 - Every statement is a constant string with bound parameters; no SQL is ever built from values.
 - Every read behind a tool (cards, transactions, prior complaints) takes ``customer_id`` and
   filters by it, so another customer's card or transaction is indistinguishable from a missing
-  one. Not scoped to one customer: the persona picker of the login (``active_customers``, T7)
-  and the agent directory (``agents_routing``), which holds no customer data.
+  one. Not scoped to one customer: the persona picker of the login (``active_customers``, T7).
 - Views exclude ``fraud_score`` and ``dq_flags`` (ADR 0003); the policy engine reads its own
   inputs.
 
@@ -25,7 +24,7 @@ import duckdb
 from pydantic import ValidationError
 
 from bankagent.contracts.domain import CardView, TransactionView
-from bankagent.contracts.enums import Language, Specialty
+from bankagent.contracts.enums import Language
 from bankagent.contracts.tools import SearchTransactionsArgs
 
 UNKNOWN_DATA_MODE = "unknown"
@@ -71,13 +70,6 @@ WHERE customer_id = ? AND related_transaction_id = ?
   AND status IN ('Open', 'In Process', 'Escalated')
 ORDER BY created_at DESC, complaint_id
 LIMIT 1
-"""
-
-_ACTIVE_AGENTS_SQL = """
-SELECT agent_id
-FROM agents_routing
-WHERE is_active AND specialty = ? AND list_contains(languages, ?)
-ORDER BY agent_id
 """
 
 
@@ -260,9 +252,3 @@ class ServingDB:
         with duckdb.connect(self._path, read_only=True) as con:
             row = con.execute(_OPEN_COMPLAINT_SQL, [customer_id, transaction_id]).fetchone()
         return None if row is None else str(row[0])
-
-    def active_agents(self, specialty: Specialty, language: Language) -> list[str]:
-        """Ids of the active human agents of a specialty who speak the language, in id order."""
-        with duckdb.connect(self._path, read_only=True) as con:
-            rows = con.execute(_ACTIVE_AGENTS_SQL, [specialty.value, language.value]).fetchall()
-        return [str(row[0]) for row in rows]

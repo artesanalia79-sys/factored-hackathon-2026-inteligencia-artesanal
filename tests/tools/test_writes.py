@@ -371,16 +371,23 @@ def test_a_key_reused_for_another_reason_is_invalid(desk: Desk) -> None:
 
 
 @WRITES
-def test_a_target_already_written_under_another_key_returns_the_stored_record(
+def test_a_target_already_written_under_another_key_is_refused_and_spends_nothing(
     desk: Desk, write: Write
 ) -> None:
     first = desk.confirmed(write.tool, write.args)
     token = desk.confirm(write.tool, write.same_target_other_key)
-    second = desk.run(write.tool, write.same_target_other_key, token=token)
-    assert (second.created, second.verified) == (False, True)
-    assert write.stored(second) == write.stored(first)
+    with pytest.raises(InvalidArguments) as refused:
+        desk.run(write.tool, write.same_target_other_key, token=token)
+    assert refused.value.message in {
+        "this transaction already has a dispute",
+        "this card is already blocked",
+    }
     assert desk.store.count(write.table) == 1
-    assert desk.token_is_spent(token) is True  # the confirmation was honoured
+    assert desk.token_is_spent(token) is False
+    # `created=False` is only ever an exact replay of the original call.
+    replay = desk.confirmed(write.tool, write.args)
+    assert (replay.created, replay.verified) == (False, True)
+    assert write.stored(replay) == write.stored(first)
 
 
 def test_the_same_key_is_independent_per_customer(desk: Desk) -> None:
@@ -423,19 +430,25 @@ def test_one_token_fired_in_parallel_is_honoured_once(desk: Desk, write: Write) 
     assert desk.store.count(write.table) == 1
 
 
-def test_concurrent_disputes_under_different_keys_share_one_case(desk: Desk) -> None:
+def test_concurrent_disputes_under_different_keys_create_one_case(desk: Desk) -> None:
     calls = [_dispute(key=f"idem-race-{i:04d}") for i in range(16)]
     tokens = [desk.confirm(ToolName.CREATE_DISPUTE, args) for args in calls]
+
+    def attempt(pair: tuple[CreateDisputeArgs, str]) -> str:
+        try:
+            result = desk.run(ToolName.CREATE_DISPUTE, pair[0], token=pair[1])
+        except InvalidArguments:
+            return "already disputed"
+        assert (result.created, result.verified) == (True, True)
+        return "created"
+
     with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(
-            pool.map(
-                lambda pair: desk.run(ToolName.CREATE_DISPUTE, pair[0], token=pair[1]),
-                zip(calls, tokens, strict=True),
-            )
-        )
-    assert [r.created for r in results].count(True) == 1
-    assert len({r.dispute.dispute_id for r in results}) == 1
+        outcomes = list(pool.map(attempt, zip(calls, tokens, strict=True)))
+    assert outcomes.count("created") == 1
+    assert outcomes.count("already disputed") == 15
     assert desk.store.count("disputes") == 1
+    # Only the winner's confirmation was spent.
+    assert [desk.token_is_spent(token) for token in tokens].count(True) == 1
 
 
 # -- read-back and store failures -------------------------------------------------
@@ -645,102 +658,27 @@ def test_create_handoff_stores_a_verified_packet_with_the_session_identity(desk:
     # No confirmation token and no policy decision: escalating must always be possible.
     result = desk.run(ToolName.CREATE_HANDOFF, args, CARLOS, policy=None)
     assert (result.handoff_id, result.created, result.verified) == ("HND-0001", True, True)
-    assert result.routing == HandoffRouting(
-        specialty=Specialty.DISPUTES,
-        language=Language.PT,
-        priority=Priority.HIGH,
-        agent_id="AGT-FX-03",  # the only active disputes agent who speaks Portuguese
-    )
+    assert result.routing == args.draft.routing  # stored exactly as requested
     stored = desk.store.get_handoff(CARLOS, "HND-0001")
     assert stored is not None
-    assert (stored.customer_id, stored.created_at, stored.routing) == (
-        CARLOS,
-        desk.now,
-        result.routing,
-    )
-    assert stored.model_dump(exclude={"handoff_id", "created_at", "customer_id", "routing"}) == (
-        args.draft.model_dump(exclude={"routing"})
+    assert (stored.customer_id, stored.created_at) == (CARLOS, desk.now)
+    assert stored.model_dump(exclude={"handoff_id", "created_at", "customer_id"}) == (
+        args.draft.model_dump()
     )
     # BOLA: nobody else reads it through the customer-facing store.
     assert desk.store.get_handoff(MARIANA, "HND-0001") is None
 
 
-def test_the_trace_and_the_agent_are_set_by_the_server_not_by_the_draft(desk: Desk) -> None:
-    inactive = HandoffRouting(
-        specialty=Specialty.DISPUTES,
-        language=Language.PT,
-        priority=Priority.LOW,
-        agent_id="AGT-FX-08",  # inactive
+def test_the_trace_is_set_by_the_server_and_the_routing_is_kept_as_requested(desk: Desk) -> None:
+    named = HandoffRouting(
+        specialty=Specialty.CARDS, language=Language.PT, priority=Priority.LOW, agent_id="AGT-FX-06"
     )
-    args = _handoff(trace_id="trace-of-someone-else", routing=inactive)
+    args = _handoff(trace_id="trace-of-someone-else", routing=named)
     result = desk.run(ToolName.CREATE_HANDOFF, args, trace_id="trace-real")
-    assert result.routing.agent_id == "AGT-FX-03"
+    assert result.routing == named
     stored = desk.store.get_handoff(MARIANA, result.handoff_id)
     assert stored is not None
-    assert stored.trace_id == "trace-real"
-
-
-@pytest.mark.parametrize(
-    ("specialty", "language", "expected"),
-    [
-        (Specialty.DISPUTES, Language.ES, {"AGT-FX-01", "AGT-FX-02", "AGT-FX-03"}),
-        (Specialty.DISPUTES, Language.PT, {"AGT-FX-03"}),
-        (Specialty.FRAUD, Language.ES, {"AGT-FX-04", "AGT-FX-05"}),
-        (Specialty.FRAUD, Language.PT, {"AGT-FX-05"}),
-        (Specialty.CARDS, Language.ES, {"AGT-FX-06"}),
-        (Specialty.GENERAL, Language.ES, {"AGT-FX-07"}),
-        # Nobody in cards or general speaks Portuguese: the handoff is queued without an agent.
-        (Specialty.CARDS, Language.PT, {None}),
-        (Specialty.GENERAL, Language.PT, {None}),
-    ],
-)
-def test_handoffs_go_to_active_agents_of_the_specialty_and_language(
-    desk: Desk, specialty: Specialty, language: Language, expected: set[str | None]
-) -> None:
-    assigned = {
-        desk.run(
-            ToolName.CREATE_HANDOFF, _handoff(f"idem-route-{i:04d}", specialty, language)
-        ).routing.agent_id
-        for i in range(40)
-    }
-    assert assigned == expected  # spread over every candidate, never the inactive AGT-FX-08
-    assert desk.store.count("handoffs") == 40
-
-
-def test_an_agent_named_by_the_draft_is_dropped_when_nobody_can_take_the_handoff(
-    desk: Desk,
-) -> None:
-    named = HandoffRouting(
-        specialty=Specialty.CARDS, language=Language.PT, priority=Priority.LOW, agent_id="AGT-FX-08"
-    )
-    result = desk.run(ToolName.CREATE_HANDOFF, _handoff(routing=named))
-    assert result.routing.agent_id is None
-    assert result.verified is True
-
-
-def test_one_key_pattern_does_not_send_every_customer_to_the_same_agent(desk: Desk) -> None:
-    # An orchestrator may derive the key from the turn; the assignment also mixes in the
-    # customer, so equal keys of different customers still spread over the candidates.
-    assigned = {
-        desk.run(ToolName.CREATE_HANDOFF, _handoff(), f"CUST-FX-00{n}").routing.agent_id
-        for n in range(1, 9)
-    }
-    assert len(assigned) > 1
-    assert assigned <= {"AGT-FX-01", "AGT-FX-02", "AGT-FX-03"}
-
-
-def test_a_specialty_without_agents_falls_back_to_general(
-    make_desk: MakeDesk, altered_bank: AlteredBank
-) -> None:
-    # The curated data has no cards agents at all (decision ledger, T6).
-    bank = altered_bank(
-        "UPDATE agents_routing SET is_active = false WHERE specialty = ?", ["cards"]
-    )
-    desk = make_desk(serving_db=bank)
-    result = desk.run(ToolName.CREATE_HANDOFF, _handoff(specialty=Specialty.CARDS))
-    assert result.routing.agent_id == "AGT-FX-07"
-    assert result.routing.specialty == Specialty.CARDS  # what the customer needs is kept
-    assert result.verified is True
+    assert (stored.trace_id, stored.routing) == ("trace-real", named)
 
 
 def test_a_handoff_replay_returns_the_same_handoff(desk: Desk) -> None:

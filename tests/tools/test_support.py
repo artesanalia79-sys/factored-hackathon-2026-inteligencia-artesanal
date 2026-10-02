@@ -234,10 +234,49 @@ def test_a_read_call_is_recorded_with_its_hash_latency_and_position(desk: Desk) 
     assert (record.outcome, record.error_code, record.verified) == (
         StepOutcome.SUCCESS,
         None,
-        False,  # reads are never "verified"
+        True,  # a successful, session-scoped read of the requested id (docs/rules/backend.md)
     )
     assert record.latency_ms == pytest.approx(250.0)
     assert record.created_at == desk.now
+
+
+def test_every_successful_read_is_recorded_as_verified_for_the_templates(desk: Desk) -> None:
+    for tool, args in (
+        (ToolName.LIST_CARDS, ListCardsArgs()),
+        (ToolName.SEARCH_TRANSACTIONS, SearchTransactionsArgs()),
+        (ToolName.GET_TRANSACTION, GetTransactionArgs(transaction_id="TXN-FX-0105")),
+    ):
+        record = _call(desk, tool, args).record
+        assert (record.tool, record.args_hash, record.verified) == (tool, args_hash(args), True)
+
+
+def test_a_read_that_returns_something_else_is_not_verified(desk: Desk) -> None:
+    class Confused:
+        """Answers with another transaction, or with the result of another tool."""
+
+        def __init__(self, answer: Contract) -> None:
+            self._answer = answer
+
+        @property
+        def spec(self) -> ToolSpec:
+            return TOOL_SPECS[ToolName.GET_TRANSACTION]
+
+        def run(self, ctx: ToolContext, args: GetTransactionArgs, /) -> Any:
+            return self._answer
+
+    asked = GetTransactionArgs(transaction_id="TXN-FX-0101")
+    other = desk.run(ToolName.GET_TRANSACTION, GetTransactionArgs(transaction_id="TXN-FX-0104"))
+    cards = desk.run(ToolName.LIST_CARDS, ListCardsArgs())
+    for answer in (other, cards):
+        call = call_tool(
+            Confused(answer),
+            desk.ctx(),
+            asked,
+            turn_index=0,
+            step_index=0,
+            state=ConversationState.IDENTIFY_TXN,
+        )
+        assert (call.record.outcome, call.record.verified) == (StepOutcome.SUCCESS, False)
 
 
 def test_a_long_trace_id_still_gets_a_valid_record_id(desk: Desk) -> None:
@@ -406,7 +445,7 @@ def test_no_runtime_statement_reads_fraud_labels_or_risk_columns() -> None:
         assert "is_fraud" not in text, path.name
     serving = (SRC / "store" / "serving.py").read_text("utf-8")
     statements = re.findall(r'_SQL = """(.*?)"""', serving, re.S)
-    assert len(statements) >= 4
+    assert len(statements) == 3
     for statement in statements:
         assert "fraud" not in statement
         assert "dq_flags" not in statement

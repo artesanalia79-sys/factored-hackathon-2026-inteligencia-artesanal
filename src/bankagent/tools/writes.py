@@ -13,23 +13,22 @@ used token is refused; repeated with a fresh token it returns the stored record
 (``created=False``, still one row). ``create_handoff`` needs no confirmation and no policy
 decision: escalating must always be possible.
 
-What the store's three refusals become:
+What the store's three refusals become, all without writing or spending the token:
 
 - ``IdempotencyConflict`` (the key was used for a different request): a caller bug,
-  ``InvalidArguments``; nothing is written and the token is not spent.
+  ``InvalidArguments``.
 - ``DisputeAlreadyExists`` / ``CardAlreadyBlocked`` (the same target under another key, e.g. two
-  sessions racing): the stored record with ``created=False``. The customer's goal already
-  holds, and ``created`` tells the renderer not to say it was done now.
+  sessions racing; the policy's open-dispute rule stops the normal case earlier):
+  ``InvalidArguments`` too. ``created=False`` is therefore always an exact replay, which is the
+  only existing-state case the templates render.
 """
 
 from __future__ import annotations
 
-import hashlib
-
 from bankagent.contracts.domain import CardBlockEvent, DisputeCase
-from bankagent.contracts.enums import DisputeStatus, Specialty, ToolName
+from bankagent.contracts.enums import DisputeStatus, ToolName
 from bankagent.contracts.errors import InvalidArguments, NotFound
-from bankagent.contracts.handoff import HandoffPacket, HandoffRouting
+from bankagent.contracts.handoff import HandoffPacket
 from bankagent.contracts.tools import (
     BlockCardArgs,
     BlockCardResult,
@@ -46,6 +45,8 @@ from bankagent.tools.reads import CARD_NOT_FOUND, TRANSACTION_NOT_FOUND
 # Stamped on a dispute written without a policy decision (LLM-only baseline of the evaluation).
 UNSPECIFIED_POLICY_VERSION = "unspecified"
 KEY_REUSED = "idempotency key already used for a different request"
+ALREADY_DISPUTED = "this transaction already has a dispute"
+ALREADY_BLOCKED = "this card is already blocked"
 
 
 class CreateDispute(BaseTool[CreateDisputeArgs, CreateDisputeResult]):
@@ -81,7 +82,7 @@ class CreateDispute(BaseTool[CreateDisputeArgs, CreateDisputeResult]):
             except IdempotencyConflict as exc:
                 raise InvalidArguments(KEY_REUSED) from exc
             except DisputeAlreadyExists as exc:
-                stored, created = exc.existing, False
+                raise InvalidArguments(ALREADY_DISPUTED) from exc
         verified = self._read_back(
             lambda: store.get_dispute(customer_id, transaction_id=args.transaction_id), stored
         )
@@ -114,7 +115,7 @@ class BlockCard(BaseTool[BlockCardArgs, BlockCardResult]):
             except IdempotencyConflict as exc:
                 raise InvalidArguments(KEY_REUSED) from exc
             except CardAlreadyBlocked as exc:
-                stored, created = exc.existing, False
+                raise InvalidArguments(ALREADY_BLOCKED) from exc
         verified = self._read_back(
             lambda: store.get_card_block(customer_id, args.product_id), stored
         )
@@ -122,7 +123,12 @@ class BlockCard(BaseTool[BlockCardArgs, BlockCardResult]):
 
 
 class CreateHandoff(BaseTool[CreateHandoffArgs, CreateHandoffResult]):
-    """Stores the handoff packet. Identity, trace and the agent are set here, server-side."""
+    """Stores the handoff packet. Identity and trace are set here, server-side.
+
+    The routing is stored exactly as requested: choosing the specialty (and an agent, if any)
+    is the caller's decision, and the templates only claim a handoff whose stored routing
+    equals the requested one.
+    """
 
     name = ToolName.CREATE_HANDOFF
 
@@ -133,7 +139,6 @@ class CreateHandoff(BaseTool[CreateHandoffArgs, CreateHandoffResult]):
             {
                 **args.draft.model_dump(),
                 "trace_id": ctx.trace_id,
-                "routing": self._route(customer_id, args),
                 "handoff_id": self._deps.new_id("HND"),
                 "created_at": ctx.now,
                 "customer_id": customer_id,
@@ -149,20 +154,3 @@ class CreateHandoff(BaseTool[CreateHandoffArgs, CreateHandoffResult]):
         return CreateHandoffResult(
             handoff_id=stored.handoff_id, routing=stored.routing, created=created, verified=verified
         )
-
-    def _route(self, customer_id: str, args: CreateHandoffArgs) -> HandoffRouting:
-        """Assign an active agent of the specialty who speaks the language.
-
-        Falls back to the general specialty (the curated data has no cards agents) and then to
-        no agent at all: the handoff still enters the queue. The choice depends only on the
-        customer, the idempotency key and the agent directory, so a replay is assigned the same
-        agent and handoffs spread over the candidates.
-        """
-        requested = args.draft.routing
-        digest = hashlib.sha256(f"{customer_id}\x1f{args.idempotency_key}".encode()).digest()
-        for specialty in dict.fromkeys((requested.specialty, Specialty.GENERAL)):
-            agents = self._deps.serving.active_agents(specialty, requested.language)
-            if agents:
-                chosen = agents[int.from_bytes(digest[:8]) % len(agents)]
-                return requested.model_copy(update={"agent_id": chosen})
-        return requested.model_copy(update={"agent_id": None})
