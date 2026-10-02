@@ -80,7 +80,7 @@ eval-smoke = { cmd = "python -m bankagent.eval.cli smoke", help = "[Task 12] 10 
 # Placeholders owned by later tasks (they fail loudly until implemented).
 analysis = { cmd = "python -m bankagent.analysis.report", help = "[Task 16] Regenerate docs/evidence/{call_center_baseline,complaints_baseline,roi}.md + roi_tornado.svg from the warehouse and config/roi_assumptions.yaml (pass --eval-results after T27)" }
 eval-full = { cmd = "python scripts/todo_task.py 27 'Final evaluation' 'all'", help = "[Task 27] Full held-out evaluation" }
-serve = { cmd = "python scripts/todo_task.py 13 'Orchestrator + API walking skeleton' 'Victor + Jacobo'", help = "[Task 13] Run the API locally" }
+serve = { cmd = "python scripts/todo_task.py 13 'Orchestrator + API walking skeleton' 'Jacobo'", help = "[Task 13] Run the API locally" }
 
 # ---------------------------------------------------------------------------
 # Tooling

@@ -32,16 +32,17 @@
 /src/bankagent/router/          @jjresher @santig005
 /docs/models/                   @jjresher @santig005
 
-# Backend: auth, store, tools, policy (Juan José since T7-T9 were reassigned, 2026-10-02);
-# orchestrator and API (Victor + Jacobo)
-/src/bankagent/auth/            @jjresher
-/src/bankagent/tools/           @jjresher
-/src/bankagent/policy/          @jjresher
-/src/bankagent/store/           @jjresher
-/src/bankagent/orchestrator/    @VictorJVA @jacobozj
-/src/bankagent/api/             @VictorJVA @jacobozj
+# Backend: auth, store, tools, policy (Juan José); orchestrator and api (Jacobo).
+# @santig005 is co-owner so a code-owner review exists even when the owner authors the PR:
+# GitHub does not count an author's own approval.
+/src/bankagent/auth/            @jjresher @santig005
+/src/bankagent/tools/           @jjresher @santig005
+/src/bankagent/policy/          @jjresher @santig005
+/src/bankagent/store/           @jjresher @santig005
+/src/bankagent/orchestrator/    @jacobozj @santig005
+/src/bankagent/api/             @jacobozj @santig005
 /src/bankagent/obs/             @santig005 @VictorJVA
-/policy/                        @jjresher
+/policy/                        @jjresher @santig005
 
 # Interpreter, templates, web (Jacobo)
 /src/bankagent/interpret/       @jacobozj
