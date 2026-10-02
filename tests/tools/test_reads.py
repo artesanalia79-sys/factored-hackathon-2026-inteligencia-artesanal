@@ -15,10 +15,12 @@ import duckdb
 import pytest
 
 from bankagent.contracts.base import Contract
+from bankagent.contracts.domain import DisputeCase
 from bankagent.contracts.enums import (
     CardType,
     Channel,
     DisputeReason,
+    DisputeStatus,
     Intent,
     Language,
     Priority,
@@ -354,13 +356,27 @@ def test_a_dispute_made_through_the_agent_is_the_open_dispute(desk: Desk) -> Non
     created = desk.confirmed(ToolName.CREATE_DISPUTE, _dispute_args())
     result = desk.run(ToolName.GET_TRANSACTION, GetTransactionArgs(transaction_id="TXN-FX-0101"))
     assert result.open_dispute_id == created.dispute.dispute_id
-    # It takes precedence over the history when both exist.
-    args = _dispute_args("TXN-FX-0701")
-    mine = desk.confirmed(ToolName.CREATE_DISPUTE, args, VALENTINA)
+    # It takes precedence over the history when both exist. `create_dispute` itself now
+    # refuses a transaction with an open prior complaint (tests/tools/test_writes.py), so this
+    # state is simulated directly in the store rather than through the tool.
+    transaction = desk.serving.transaction(VALENTINA, "TXN-FX-0701")
+    assert transaction is not None
+    mine = DisputeCase(
+        dispute_id="DSP-PRE-0701",
+        transaction_id="TXN-FX-0701",
+        reason=DisputeReason.UNRECOGNIZED,
+        status=DisputeStatus.SUBMITTED,
+        created_at=desk.now,
+        amount=transaction.amount,
+        currency=transaction.currency,
+        idempotency_key="idem-pre-0701",
+        policy_version="test-policy-v1",
+    )
+    desk.store.insert_dispute(VALENTINA, mine)
     again = desk.run(
         ToolName.GET_TRANSACTION, GetTransactionArgs(transaction_id="TXN-FX-0701"), VALENTINA
     )
-    assert again.open_dispute_id == mine.dispute.dispute_id
+    assert again.open_dispute_id == mine.dispute_id
 
 
 def test_a_transaction_is_never_labelled_with_another_customers_card(

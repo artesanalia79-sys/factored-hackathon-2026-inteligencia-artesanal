@@ -4,9 +4,11 @@
 
 1. the policy decision in the context must allow the action;
 2. the target must be the session customer's (otherwise ``NotFound``);
-3. in one store transaction, the confirmation token is spent and the record is written, so a
+3. ``create_dispute`` also refuses when the transaction already has an open case, agent-made or
+   from before the agent existed (``InvalidArguments``, no token spent);
+4. in one store transaction, the confirmation token is spent and the record is written, so a
    refused or failed write never burns the token and a spent token always has its record;
-4. the record is read back; ``verified`` is true only if it equals what the tool reports.
+5. the record is read back; ``verified`` is true only if it equals what the tool reports.
 
 The token is spent before the store looks for an existing record, so a call repeated with its
 used token is refused; repeated with a fresh token it returns the stored record
@@ -59,6 +61,10 @@ class CreateDispute(BaseTool[CreateDisputeArgs, CreateDisputeResult]):
         transaction = self._deps.serving.transaction(customer_id, args.transaction_id)
         if transaction is None:
             raise NotFound(TRANSACTION_NOT_FOUND)
+        # A dispute the agent already created on this transaction is caught below by
+        # `DisputeAlreadyExists`; this catches a still-open case from before the agent existed.
+        if self._deps.serving.open_complaint_id(customer_id, args.transaction_id) is not None:
+            raise InvalidArguments(ALREADY_DISPUTED)
         token_id = self._require_token(ctx)
         policy = ctx.policy
         dispute = DisputeCase(

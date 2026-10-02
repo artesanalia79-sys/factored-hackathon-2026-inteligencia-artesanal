@@ -47,7 +47,7 @@ from bankagent.store.serving import ServingDB
 if TYPE_CHECKING:
     from .conftest import Desk
 
-MARIANA, ANDRES, CARLOS = "CUST-FX-001", "CUST-FX-002", "CUST-FX-006"
+MARIANA, ANDRES, CARLOS, VALENTINA = "CUST-FX-001", "CUST-FX-002", "CUST-FX-006", "CUST-FX-007"
 
 MakeDesk = Callable[..., "Desk"]
 AlteredBank = Callable[..., ServingDB]
@@ -396,6 +396,19 @@ def test_the_same_key_is_independent_per_customer(desk: Desk) -> None:
     assert (mine.created, theirs.created) == (True, True)
     assert mine.dispute.dispute_id != theirs.dispute.dispute_id
     assert desk.store.count("disputes") == 2
+
+
+def test_a_transaction_with_an_open_prior_complaint_is_refused_and_spends_nothing(
+    desk: Desk,
+) -> None:
+    # TXN-FX-0701 (CUST-FX-007) carries CMP-FX-701, "In Process" in dispute_history: a claim
+    # opened before the agent existed, not one this tool wrote.
+    args = _dispute(transaction_id="TXN-FX-0701", key="idem-dispute-0701")
+    token = desk.confirm(ToolName.CREATE_DISPUTE, args, VALENTINA)
+    with pytest.raises(InvalidArguments, match="already has a dispute"):
+        desk.run(ToolName.CREATE_DISPUTE, args, VALENTINA, token=token)
+    assert desk.store.count("disputes") == 0
+    assert desk.token_is_spent(token, VALENTINA) is False
 
 
 # -- concurrency ------------------------------------------------------------------
