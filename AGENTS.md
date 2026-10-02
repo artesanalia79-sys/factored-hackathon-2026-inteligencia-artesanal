@@ -91,7 +91,7 @@ Python is managed by uv (Python 3.12). Tasks run through poethepoet: `uv run poe
 - If a skill changed: edit only `.agents/skills/`, then `uv run poe sync-skills`.
 - New behavior has tests; bug fixes have a regression test.
 - Decisions with trade-offs get an ADR (`write-adr` skill) or a line in `docs/decision_ledger.md`.
-- No TODO without an owner and task number, e.g. `# TODO(T9, Victor): verify MX rule`.
+- No TODO without an owner and task number, e.g. `# TODO(T9, Juan José): verify MX rule`.
 
 ## Git workflow
 

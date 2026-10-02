@@ -1,6 +1,6 @@
 # What the agent must expose for evaluation (Task 13)
 
-Audience: Victor and Jacobo (Task 13). Owner of the harness side: Santiago (Task 12).
+Audience: Jacobo (Task 13). Owner of the harness side: Santiago (Task 12).
 
 The evaluation harness (`src/bankagent/eval/`) scores the agent from its `ExecutionRecord`s and from
 what the tools did. **Production code never imports `bankagent.eval`**: the harness wraps the agent

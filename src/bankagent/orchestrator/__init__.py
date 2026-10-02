@@ -1,1 +1,1 @@
-"""Deterministic conversation state machine (ConversationState). Owner: Victor + Jacobo (T13)."""
+"""Deterministic conversation state machine (ConversationState). Owner: Jacobo (T13)."""
