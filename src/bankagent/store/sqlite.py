@@ -21,7 +21,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+# 2: UNIQUE (customer_id, transaction_id) on disputes and (customer_id, product_id) on card
+# blocks. A file created with an older schema is refused: delete it, it holds only runtime data.
+SCHEMA_VERSION = 2
 
 _SCHEMA = (
     "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)",

@@ -106,6 +106,17 @@ def test_wrong_schema_version_is_refused(tmp_path: Path) -> None:
         OpsStore(path)
 
 
+def test_file_from_the_previous_schema_is_refused(tmp_path: Path) -> None:
+    # Schema 1 had no UNIQUE constraints on disputes / card blocks; such a file must not be
+    # silently reused, or the constraints would be missing.
+    path = tmp_path / "ops.sqlite"
+    with Database(path) as database:
+        database.write("UPDATE schema_version SET version = ?", [1])
+    with pytest.raises(OpsStoreError, match="delete the file"):
+        OpsStore(path)
+    assert SCHEMA_VERSION == 2
+
+
 def test_session_round_trip_and_revocation(store: OpsStore) -> None:
     session = Session(
         session_id="ses-1",

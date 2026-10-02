@@ -14,6 +14,8 @@ import duckdb
 
 from bankagent.contracts.enums import Language
 
+UNKNOWN_DATA_MODE = "unknown"
+
 
 @dataclass(frozen=True, slots=True)
 class CustomerProfile:
@@ -53,12 +55,19 @@ class ServingDB:
             )
 
     def data_mode(self) -> str:
-        """``synthetic`` or ``curated``, as recorded by the build in ``_serving_metadata``."""
+        """``synthetic`` or ``curated``, as recorded by the build in ``_serving_metadata``.
+
+        ``unknown`` when the table or the row is missing: callers that gate on synthetic data
+        must treat it as not synthetic (fail closed).
+        """
         with duckdb.connect(self._path, read_only=True) as con:
-            row = con.execute(
-                "SELECT value FROM _serving_metadata WHERE key = ?", ["data_mode"]
-            ).fetchone()
-        return "unknown" if row is None else str(row[0])
+            try:
+                row = con.execute(
+                    "SELECT value FROM _serving_metadata WHERE key = ?", ["data_mode"]
+                ).fetchone()
+            except duckdb.CatalogException:
+                return UNKNOWN_DATA_MODE
+        return UNKNOWN_DATA_MODE if row is None else str(row[0])
 
     def customer(self, customer_id: str) -> CustomerProfile | None:
         with duckdb.connect(self._path, read_only=True) as con:

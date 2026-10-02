@@ -93,3 +93,27 @@ def test_exposed_mock_otp_is_refused_on_a_curated_serving_db(
         {**env, "DATA_MODE": "curated", "AUTH_EXPOSE_MOCK_OTP": "false"}, clock=lambda: NOW
     )
     assert service.start_login(service.personas()[0].persona_id).mock_otp is None
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "DELETE FROM _serving_metadata WHERE key = 'data_mode'",  # row missing
+        "DROP TABLE _serving_metadata",  # table missing
+    ],
+)
+def test_serving_db_without_a_data_mode_is_not_treated_as_synthetic(
+    fixture_bank: Path, tmp_path: Path, secret: str, statement: str
+) -> None:
+    # Regression guard (PR #41 review): falling back to "synthetic" here would silently
+    # re-open the exposed-OTP hole on a serving DB of unknown origin.
+    unlabeled = tmp_path / "bank_unlabeled.duckdb"
+    shutil.copy(fixture_bank, unlabeled)
+    with duckdb.connect(str(unlabeled)) as con:
+        con.execute(statement)
+    assert ServingDB(unlabeled).data_mode() == "unknown"
+    env = {**_env(fixture_bank, tmp_path, secret), "SERVING_DB_PATH": str(unlabeled)}
+    with pytest.raises(AuthConfigError, match="only allowed with synthetic"):
+        create_auth_service(env)
+    # It still starts when the OTP is not exposed.
+    assert create_auth_service({**env, "AUTH_EXPOSE_MOCK_OTP": "false"}, clock=lambda: NOW)
