@@ -45,7 +45,7 @@ def create_default_app() -> FastAPI:
     issuer = build_confirmation_issuer(store)
     provider_name = env.get("LLM_PROVIDER", "stub")
     if provider_name == "openai":
-        llm = OpenAIProvider()
+        llm = OpenAIProvider(model=env.get("LLM_MODEL", "gpt-6-luna"))
     elif provider_name == "stub":
         llm = StubProvider()
     else:

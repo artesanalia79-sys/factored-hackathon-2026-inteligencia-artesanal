@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bankagent.api.app import create_app
+from bankagent.api.wiring import create_default_app
 from bankagent.auth.service import AuthService
 from bankagent.auth.settings import AuthSettings, Secret
 from bankagent.contracts.domain import Session
@@ -84,6 +85,20 @@ def _turn(client: TestClient, headers: dict[str, str], text: str) -> dict[str, A
     response = client.post("/api/chat/turn", headers=headers, json={"text": text})
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def test_serve_factory_starts_with_configured_fixture_bank(
+    fixture_bank: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SERVING_DB_PATH", str(fixture_bank))
+    monkeypatch.setenv("OPS_DB_PATH", str(tmp_path / "serve.sqlite"))
+    monkeypatch.setenv("APP_SECRET_KEY", SECRET)
+    monkeypatch.setenv("DATA_MODE", "synthetic")
+    monkeypatch.setenv("AUTH_EXPOSE_MOCK_OTP", "true")
+    monkeypatch.setenv("LLM_PROVIDER", "stub")
+    client = TestClient(create_default_app())
+    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/api/auth/personas").status_code == 200
 
 
 def test_fx001_unrecognized_charge_creates_verified_dispute(
