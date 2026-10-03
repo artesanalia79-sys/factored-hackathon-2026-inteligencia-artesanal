@@ -64,7 +64,10 @@ _CLAIMS: dict[ActionType, re.Pattern[str]] = {
     ),
 }
 
-_PAN = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
+# A card number is 13-19 digits standing alone (spaces or hyphens between them allowed).
+# Digits inside an alphanumeric token are not one: record ids are random hex
+# ("DSP-3F9A61C2D4E8B705"), and about 0.5% of them contain 13 or more consecutive digits.
+_PAN = re.compile(r"(?<![\w-])(?:\d[ -]?){12,18}\d(?!\w)")
 _EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 _PHONE = re.compile(
     r"(?<![\w.,])\+?\d{1,3}[ -]?\(?\d{2,3}\)?[ -]?\d{3,4}[ -]?\d{4}(?![\w,]|[.,]\d)"

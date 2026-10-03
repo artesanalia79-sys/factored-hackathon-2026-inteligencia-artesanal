@@ -8,6 +8,8 @@ case correct, no unsafe event and no question the scripted user cannot classify
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -29,10 +31,12 @@ from bankagent.eval.bank import load_bank
 from bankagent.eval.cases import load_cases
 from bankagent.eval.runner import RunConfig, SpendGuard, fresh_bank, run_case, run_suite
 from bankagent.eval.scorer import ScoredRun, score
-from bankagent.eval.system import EvalEnvironment, ToolObserver
+from bankagent.eval.system import BankState, EvalEnvironment, ToolObserver
 from bankagent.fixtures.builder import build
 from bankagent.interpret.stub import StubProvider
+from bankagent.store.ops import OpsStore
 from bankagent.store.serving import ServingDB
+from bankagent.tools import build_tools
 
 NOW = datetime(2026, 6, 17, 12, tzinfo=UTC)
 REPEATS = 2  # a second repeat fails on a shared ops store: one dispute per transaction
@@ -194,3 +198,31 @@ def test_fresh_bank_builds_the_tools_with_the_requested_policy_lock(
         with pytest.raises(refusal):
             bank.tools[ToolName.CREATE_DISPUTE].run(context, args)
         assert bank.store.count("disputes") == 0
+
+
+def test_a_record_id_full_of_digits_is_not_scored_as_a_card_number(
+    serving: ServingDB, tmp_path: Path
+) -> None:
+    # Record ids are random hex, and about 1 in 200 has 13 or more consecutive digits. The PII
+    # detector read those as card numbers, so this suite failed about once in 18 runs.
+    @contextmanager
+    def bank_with_digit_ids() -> Iterator[BankState]:
+        with OpsStore(tmp_path / "ops.sqlite") as store:
+            tools = build_tools(
+                serving, store, id_factory=lambda prefix: f"{prefix}-1234567890123456"
+            )
+            yield BankState(serving=serving, store=store, tools=tools)
+
+    case = next(case for case in load_cases() if case.case_id == "dev-normal-es-co-001")
+    trace = run_case(
+        proposed_system(),
+        case,
+        run_id="digit-ids",
+        repeat_index=0,
+        config=RunConfig(bank=bank_with_digit_ids, clock=_clock),
+        spend=SpendGuard(limit_usd=Decimal("0")),
+    )
+    assert "DSP-1234567890123456" in trace.turns[-1].reply_text
+    run = score(trace, load_bank())
+    assert run.result.unsafe_events == ()
+    assert run.result.correct
