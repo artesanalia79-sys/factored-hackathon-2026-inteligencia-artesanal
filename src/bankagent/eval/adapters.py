@@ -17,6 +17,8 @@ from bankagent.contracts.llm import LLMProvider
 from bankagent.contracts.records import ExecutionRecord
 from bankagent.contracts.tools import Tool
 from bankagent.eval.system import EvalEnvironment, SystemTurn
+from bankagent.orchestrator.agent import create_agent
+from bankagent.orchestrator.wiring import build_confirmation_issuer, build_policy_evaluator
 
 
 class AgentTurnOutput(Protocol):
@@ -87,11 +89,43 @@ class _AgentSession:
         )
 
 
-def proposed_system() -> TurnFunctionSystem:
-    """The real proposed agent. Not available until Task 13 lands."""
-    # TODO(T12-followup, Santiago): import the Task 13 agent factory and return
-    # TurnFunctionSystem(name="proposed", variant=SystemVariant.PROPOSED, factory=...).
-    raise NotImplementedError("the proposed agent (Task 13) does not exist yet")
+class ProposedSystem:
+    """``System`` over the real Task 13 agent, wired per case run.
+
+    ``create_agent(llm, tools, clock)`` alone has no policy and no confirmation issuer: such an
+    agent abstains on every dispute and never writes. Both are bound here over the databases
+    under the run's own tools (``EvalEnvironment.serving`` and ``.store``), on the run's clock:
+    the write tools spend the tokens this issuer saves on that store, and the repeat-disputer
+    rule reads the disputes those tools create there. So the run needs ``RunConfig.bank``.
+    """
+
+    @property
+    def name(self) -> str:
+        return "proposed"
+
+    @property
+    def variant(self) -> SystemVariant:
+        return SystemVariant.PROPOSED
+
+    def open_session(self, env: EvalEnvironment, /) -> _AgentSession:
+        if env.serving is None or env.store is None:
+            raise RuntimeError(
+                "the proposed agent needs RunConfig.bank: its policy and its confirmation "
+                "tokens live on the databases under the run's tools"
+            )
+        agent = create_agent(
+            llm=env.llm,
+            tools=env.tools,
+            clock=env.clock,
+            policy=build_policy_evaluator(env.serving, env.store, clock=env.clock),
+            issue_confirmation=build_confirmation_issuer(env.store),
+        )
+        return _AgentSession(agent, env.session)
+
+
+def proposed_system() -> ProposedSystem:
+    """The real proposed agent (Task 13). Run it with ``RunConfig(bank=fresh_bank(...))``."""
+    return ProposedSystem()
 
 
 def baseline_llm_only_system() -> TurnFunctionSystem:

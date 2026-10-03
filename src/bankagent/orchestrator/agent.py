@@ -971,7 +971,14 @@ def create_agent(
     policy: PolicyEvaluator | None = None,
     issue_confirmation: ConfirmationIssuer | None = None,
 ) -> Agent:
-    """Factory shape used by the evaluation adapter."""
+    """Build the agent of one conversation.
+
+    ``llm``, ``tools`` and ``clock`` are the shape of ``docs/eval/system_interface.md``, but they
+    are not enough to resolve a dispute: ``policy`` and ``issue_confirmation`` must be bound too
+    (`bankagent.orchestrator.wiring`), over the same serving DB and ops store the tools use.
+    Without a policy the agent abstains at CHECK_POLICY; without an issuer it abstains at the
+    customer's yes. Either way it never writes, so it fails closed.
+    """
     return Agent(
         llm=llm,
         tools=tools,
