@@ -122,5 +122,13 @@
       "es": "No pude comprobar el resultado. Inténtalo más tarde o solicita ayuda.",
       "pt": "Não consegui verificar o resultado. Tente mais tarde ou peça ajuda."
     }
+  },
+  "block_offer": {
+    "es": "También puedo bloquear la tarjeta para evitar nuevos cargos. ¿Confirmas bloquear la tarjeta terminada en 1234?",
+    "pt": "Também posso bloquear o cartão para evitar novas cobranças. Você confirma o bloqueio do cartão com final 1234?"
+  },
+  "block_declined": {
+    "es": "Entendido, no bloquearé la tarjeta.",
+    "pt": "Entendido, não vou bloquear o cartão."
   }
 }

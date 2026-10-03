@@ -33,12 +33,16 @@ from bankagent.contracts.handoff import HandoffDraft, HandoffRouting, VerifiedFa
 from bankagent.contracts.llm import ChatMessage, LLMError, LLMProvider
 from bankagent.contracts.records import ExecutionRecord
 from bankagent.contracts.tools import (
+    BlockCardArgs,
+    BlockCardResult,
     CreateDisputeArgs,
     CreateDisputeResult,
     CreateHandoffArgs,
     CreateHandoffResult,
     GetTransactionArgs,
     GetTransactionResult,
+    ListCardsArgs,
+    ListCardsResult,
     SearchTransactionsArgs,
     SearchTransactionsResult,
     Tool,
@@ -47,6 +51,9 @@ from bankagent.contracts.tools import (
 from bankagent.interpret.keywords import interpret_text, language_evidence, normalize
 from bankagent.render.templates import (
     UnverifiedRenderError,
+    render_block_declined,
+    render_block_offer,
+    render_blocked_card,
     render_confirmation,
     render_created_dispute,
     render_created_handoff,
@@ -68,6 +75,13 @@ REASONS = {
     Intent.DISPUTE_UNRECOGNIZED: DisputeReason.UNRECOGNIZED,
     Intent.DISPUTE_DUPLICATE: DisputeReason.DUPLICATE,
     Intent.DISPUTE_NOT_RECEIVED: DisputeReason.NOT_RECEIVED,
+}
+
+# Stored with the card block for the bank's staff; never shown to the customer.
+BLOCK_REASONS = {
+    DisputeReason.UNRECOGNIZED: "Customer did not recognize a disputed charge",
+    DisputeReason.DUPLICATE: "Customer asked for a block while disputing a duplicate charge",
+    DisputeReason.NOT_RECEIVED: "Customer asked for a block while disputing a missing purchase",
 }
 
 
@@ -117,6 +131,12 @@ class Agent:
         self._decision: PolicyDecision | None = None
         self._pending_args: CreateDisputeArgs | None = None
         self._idempotency_key = f"idem-{uuid4().hex}"
+        # The card block offered after the dispute: its own key, and the card read it shows.
+        self._pending_block: BlockCardArgs | None = None
+        self._block_key = f"idem-{uuid4().hex}"
+        self._cards_args: ListCardsArgs | None = None
+        self._cards_result: ListCardsResult | None = None
+        self._cards_record: ExecutionRecord | None = None
         self._clarifications = 0
         self._ended = False
 
@@ -269,7 +289,20 @@ class Agent:
         ):
             return self._abstain(session)
         self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
-        if self._state == ConversationState.CONFIRM and self._pending_args is not None:
+        if (
+            self._pending_block is not None
+            and self._cards_args is not None
+            and self._cards_result is not None
+            and self._cards_record is not None
+        ):
+            reply = render_confirmation(
+                self._language,
+                self._pending_block,
+                self._cards_args,
+                self._cards_result,
+                self._cards_record,
+            )
+        elif self._state == ConversationState.CONFIRM and self._pending_args is not None:
             reply = render_confirmation(
                 self._language,
                 self._pending_args,
@@ -450,27 +483,66 @@ class Agent:
             return self._reask(session)
         if self._pending_args is None or self._issue_confirmation is None:
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
-        args = self._pending_args
-        not_created = (
-            "The confirmed dispute was not created; check for an existing dispute on this "
-            "transaction, then file it if there is none"
+        written = self._write(
+            session,
+            ToolName.CREATE_DISPUTE,
+            self._pending_args,
+            CreateDisputeResult,
+            render_created_dispute,
+            issue=self._issue_confirmation,
+            not_done=(
+                "The confirmed dispute was not created; check for an existing dispute on this "
+                "transaction, then file it if there is none"
+            ),
+            unverified=(
+                "The dispute write was not verified by read-back; check whether it exists "
+                "before filing it again"
+            ),
         )
-        tool = self._tools.get(ToolName.CREATE_DISPUTE)
+        if isinstance(written, AgentTurnOutput):
+            return written
+        self._pending_args = None
+        offer = self._offer_block(session)
+        if offer is None:
+            return self._reply(written, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
+        # The dispute is claimed now, and the conversation stays open for the block question.
+        return self._reply(f"{written} {offer}", claimed_actions=(ActionType.CREATE_DISPUTE,))
+
+    def _write[ArgsT: Contract, ResultT: Contract](
+        self,
+        session: Session,
+        tool_name: ToolName,
+        args: ArgsT,
+        result_type: type[ResultT],
+        render: Callable[[Language, ArgsT, ResultT, ExecutionRecord], str],
+        *,
+        issue: ConfirmationIssuer,
+        not_done: str,
+        unverified: str,
+    ) -> str | AgentTurnOutput:
+        """Run the write the customer just said yes to; return its verified claim.
+
+        The token is issued for exactly ``args`` in this turn, and the confirmation record carries
+        the same args hash as the write it authorizes. A refused or failed write commits nothing
+        (T8); an unverified one may exist. Either way a person must finish the confirmed request
+        (T8 ledger: the tool-failure path), so those return the escalation instead of a claim.
+        """
+        tool = self._tools.get(tool_name)
         if tool is None:
             self._record(
                 session,
                 StepKind.TOOL_CALL,
                 ConversationState.ACT,
                 StepOutcome.FAILURE,
-                tool=ToolName.CREATE_DISPUTE,
+                tool=tool_name,
                 args=args,
                 error_code=ToolErrorCode.TOOL_UNAVAILABLE,
             )
-            return self._escalate(session, open_question=not_created)
+            return self._escalate(session, open_question=not_done)
         try:
-            token = self._issue_confirmation(session, ToolName.CREATE_DISPUTE, args, self._clock())
+            token = issue(session, tool_name, args, self._clock())
         except ToolError:
-            return self._escalate(session, open_question=not_created)
+            return self._escalate(session, open_question=not_done)
         self._record(
             session,
             StepKind.CONFIRMATION,
@@ -496,23 +568,91 @@ class Agent:
         )
         self._records.append(call.record)
         result = call.result
-        # A refused or failed write commits nothing (T8); an unverified one may exist. Either
-        # way a person must finish the confirmed request (T8 ledger: the tool-failure path).
-        if call.error is not None or not isinstance(result, CreateDisputeResult):
-            return self._escalate(session, open_question=not_created)
+        if call.error is not None or not isinstance(result, result_type):
+            return self._escalate(session, open_question=not_done)
         self._state = ConversationState.VERIFY
         try:
-            reply = render_created_dispute(self._language, args, result, call.record)
+            reply = render(self._language, args, result, call.record)
         except UnverifiedRenderError:
-            return self._escalate(
-                session,
-                open_question=(
-                    "The dispute write was not verified by read-back; check whether it exists "
-                    "before filing it again"
-                ),
-            )
+            return self._escalate(session, open_question=unverified)
         self._record(session, StepKind.VERIFY, self._state, StepOutcome.SUCCESS, args=args)
-        return self._reply(reply, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
+        return reply
+
+    def _offer_block(self, session: Session) -> str | None:
+        """The question offering to block the card, after a verified dispute; None for no offer.
+
+        Plan step ACT: offer the block when the customer did not recognize the charge (or asked
+        for a block). Only when the policy allows it: ``dispute-v1.1`` puts ``block_card`` in
+        ``allowed_actions`` for the transaction's own Active card only (``DSP-ACT-01``) and binds
+        it with ``target_product_id``, which the ``block_card`` tool checks again.
+        """
+        decision = self._decision
+        if (
+            decision is None
+            or ActionType.BLOCK_CARD not in decision.allowed_actions
+            or decision.target_product_id is None
+            or self._reason is None
+            or not (self._reason == DisputeReason.UNRECOGNIZED or self._slots.card_block_requested)
+            or ToolName.BLOCK_CARD not in self._tools
+            or ToolName.LIST_CARDS not in self._tools
+        ):
+            return None
+        cards_args = ListCardsArgs()
+        cards, record = self._read(
+            session, ToolName.LIST_CARDS, cards_args, ListCardsResult, ConversationState.CONFIRM
+        )
+        if cards is None:
+            return None
+        args = BlockCardArgs(
+            product_id=decision.target_product_id,
+            reason=BLOCK_REASONS[self._reason],
+            idempotency_key=self._block_key,
+        )
+        try:
+            offer = render_block_offer(self._language, args, cards_args, cards, record)
+        except UnverifiedRenderError:
+            return None  # the card is no longer among the active ones: nothing to block
+        self._pending_block = args
+        self._cards_args = cards_args
+        self._cards_result = cards
+        self._cards_record = record
+        self._state = ConversationState.CONFIRM
+        return offer
+
+    def _confirm_block(
+        self, session: Session, interpreted: InterpretationResult
+    ) -> AgentTurnOutput:
+        act = interpreted.dialogue_act
+        if act == DialogueAct.DENY:
+            # The dispute was already claimed in the previous reply; nothing else is written.
+            self._pending_block = None
+            self._record(session, StepKind.RENDER, ConversationState.RESPOND, StepOutcome.SUCCESS)
+            return self._reply(render_block_declined(self._language), ended=True)
+        if act != DialogueAct.AFFIRM:
+            return self._reask(session)
+        args = self._pending_block
+        if args is None or self._issue_confirmation is None:
+            return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
+        self._pending_block = None
+        written = self._write(
+            session,
+            ToolName.BLOCK_CARD,
+            args,
+            BlockCardResult,
+            render_blocked_card,
+            issue=self._issue_confirmation,
+            not_done=(
+                "The confirmed card block was not completed; check the card's status, then "
+                "block it if it is still active"
+            ),
+            unverified=(
+                "The card block was not verified by read-back; check the card's status before "
+                "blocking it again"
+            ),
+        )
+        if isinstance(written, AgentTurnOutput):
+            return written
+        return self._reply(written, ended=True, claimed_actions=(ActionType.BLOCK_CARD,))
 
     def _follow_language(self, session: Session, text: str) -> None:
         """Keep the conversation's language; switch only on a message clearly in the other one.
@@ -552,6 +692,9 @@ class Agent:
         if interpreted.intent == Intent.HUMAN_REQUEST:
             self._intent = Intent.HUMAN_REQUEST
             return self._escalate(session)
+        if self._pending_block is not None:
+            # Before the intent check below: "Sí, bloquéala" is a card_block intent, not a dispute.
+            return self._confirm_block(session, interpreted)
         if self._state in {ConversationState.RECOGNIZE, ConversationState.CONFIRM}:
             if not self._points_elsewhere(interpreted.slots):
                 if self._state == ConversationState.CONFIRM:

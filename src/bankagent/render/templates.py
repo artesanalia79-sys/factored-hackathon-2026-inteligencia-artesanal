@@ -127,6 +127,16 @@ OUTCOME_COPY: dict[Outcome, dict[Language, str]] = {
     },
 }
 
+# Offered after a verified dispute; neither line states an action as done.
+BLOCK_OFFER_COPY: dict[Language, str] = {
+    Language.ES: "También puedo bloquear la tarjeta para evitar nuevos cargos.",
+    Language.PT: "Também posso bloquear o cartão para evitar novas cobranças.",
+}
+BLOCK_DECLINED_COPY: dict[Language, str] = {
+    Language.ES: "Entendido, no bloquearé la tarjeta.",
+    Language.PT: "Entendido, não vou bloquear o cartão.",
+}
+
 REASONS: dict[DisputeReason, dict[Language, str]] = {
     DisputeReason.UNRECOGNIZED: {
         Language.ES: "movimiento no reconocido",
@@ -265,6 +275,23 @@ def render_confirmation(
     if language == Language.ES:
         return f"¿Confirmas bloquear la tarjeta terminada en {card.card_last4}?"
     return f"Você confirma o bloqueio do cartão com final {card.card_last4}?"
+
+
+def render_block_offer(
+    language: Language,
+    args: BlockCardArgs,
+    read_args: ListCardsArgs,
+    read_result: ListCardsResult,
+    record: ExecutionRecord,
+) -> str:
+    """Offer a card block: a neutral lead, then the block confirmation from a verified card read."""
+    question = render_confirmation(language, args, read_args, read_result, record)
+    return f"{BLOCK_OFFER_COPY[language]} {question}"
+
+
+def render_block_declined(language: Language) -> str:
+    """Acknowledge a declined card block without claiming any action."""
+    return BLOCK_DECLINED_COPY[language]
 
 
 def render_created_dispute(

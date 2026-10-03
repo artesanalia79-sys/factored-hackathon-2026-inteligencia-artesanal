@@ -8,15 +8,24 @@ from typing import Any
 
 from bankagent.contracts.base import Contract, args_hash
 from bankagent.contracts.decisions import DisputeSlots, PolicyDecision
-from bankagent.contracts.domain import ConfirmationToken, DisputeCase, Session, TransactionView
+from bankagent.contracts.domain import (
+    CardBlockEvent,
+    CardView,
+    ConfirmationToken,
+    DisputeCase,
+    Session,
+    TransactionView,
+)
 from bankagent.contracts.enums import (
     ActionType,
+    CardType,
     Channel,
     DecisionType,
     DisputeReason,
     DisputeStatus,
     Language,
     Outcome,
+    ProductStatus,
     ToolName,
     TransactionStatus,
     TransactionType,
@@ -24,12 +33,16 @@ from bankagent.contracts.enums import (
 from bankagent.contracts.errors import ToolUnavailable
 from bankagent.contracts.tools import (
     TOOL_SPECS,
+    BlockCardArgs,
+    BlockCardResult,
     CreateDisputeArgs,
     CreateDisputeResult,
     CreateHandoffArgs,
     CreateHandoffResult,
     GetTransactionArgs,
     GetTransactionResult,
+    ListCardsArgs,
+    ListCardsResult,
     SearchTransactionsArgs,
     SearchTransactionsResult,
     ToolContext,
@@ -576,6 +589,264 @@ def test_the_merchant_spelled_differently_is_still_the_charge_on_screen() -> Non
     output = agent.handle_turn(_session(), "No reconozco ese cargo de Electro Mundo")
     assert "¿Confirmas crear un reclamo" in output.reply_text
     assert search.calls == get.calls == 1
+
+
+# -- card-block offer after a verified dispute (plan step ACT) ----------------------------------
+
+
+# The card the fake decision allows to block (its target), which only the decision names.
+BLOCKABLE_CARD = "CARD-FX-077"
+
+
+class CardsTool:
+    spec = TOOL_SPECS[ToolName.LIST_CARDS]
+
+    def __init__(self, *, status: ProductStatus = ProductStatus.ACTIVE) -> None:
+        self.calls = 0
+        self.status = status
+
+    def run(self, ctx: ToolContext, args: ListCardsArgs, /) -> ListCardsResult:
+        self.calls += 1
+        card = CardView(
+            product_id=BLOCKABLE_CARD,
+            card_type=CardType.CREDIT,
+            card_last4="1234",
+            currency="MXN",
+            product_status=self.status,
+        )
+        active = self.status == ProductStatus.ACTIVE
+        return ListCardsResult(cards=(card,) if active or args.include_inactive else ())
+
+
+class BlockTool:
+    spec = TOOL_SPECS[ToolName.BLOCK_CARD]
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.calls = 0
+        self.fail = fail
+        self.contexts: list[ToolContext] = []
+        self.args: list[BlockCardArgs] = []
+
+    def run(self, ctx: ToolContext, args: BlockCardArgs, /) -> BlockCardResult:
+        self.calls += 1
+        self.contexts.append(ctx)
+        self.args.append(args)
+        if self.fail:
+            raise ToolUnavailable("block_card is temporarily unavailable")
+        return BlockCardResult(
+            block=CardBlockEvent(
+                block_id="BLK-001",
+                product_id=args.product_id,
+                card_last4="1234",
+                blocked_at=NOW,
+                reason=args.reason,
+                idempotency_key=args.idempotency_key,
+            ),
+            created=True,
+            verified=True,
+        )
+
+
+def _policy_with_block(
+    _session: Session, _transaction: GetTransactionResult, _reason: DisputeReason
+) -> PolicyDecision:
+    return PolicyDecision(
+        decision=DecisionType.PROCEED,
+        allowed_actions=(ActionType.CREATE_DISPUTE, ActionType.BLOCK_CARD),
+        requires_confirmation=True,
+        target_transaction_id="TXN-FX-0101",
+        target_product_id=BLOCKABLE_CARD,
+        policy_version="test-v1",
+    )
+
+
+class Issuer:
+    """Issues one token per confirmed write and remembers the action and arguments it covers."""
+
+    def __init__(self) -> None:
+        self.issued: list[tuple[ToolName, Contract]] = []
+
+    def __call__(
+        self, session: Session, tool: ToolName, args: Contract, now: datetime
+    ) -> ConfirmationToken:
+        self.issued.append((tool, args))
+        is_dispute = tool == ToolName.CREATE_DISPUTE
+        return ConfirmationToken(
+            token_id="token-1" if is_dispute else "token-block",
+            session_id=session.session_id,
+            action=ActionType.CREATE_DISPUTE if is_dispute else ActionType.BLOCK_CARD,
+            args_hash=args_hash(args),
+            issued_at=now,
+            expires_at=now + timedelta(minutes=5),
+        )
+
+
+def _block_agent(
+    *,
+    policy: PolicyEvaluator = _policy_with_block,
+    cards: CardsTool | None = None,
+    block: BlockTool | None = None,
+    handoff: HandoffTool | None = None,
+):
+    _, search, get = _agent()
+    cards = cards or CardsTool()
+    block = block or BlockTool()
+    issuer = Issuer()
+    tools: dict[ToolName, Any] = {
+        ToolName.SEARCH_TRANSACTIONS: search,
+        ToolName.GET_TRANSACTION: get,
+        ToolName.CREATE_DISPUTE: DisputeTool(),
+        ToolName.LIST_CARDS: cards,
+        ToolName.BLOCK_CARD: block,
+    }
+    if handoff is not None:
+        tools[ToolName.CREATE_HANDOFF] = handoff
+    agent = create_agent(
+        llm=StubProvider(), tools=tools, clock=lambda: NOW, policy=policy, issue_confirmation=issuer
+    )
+    return agent, cards, block, issuer
+
+
+def _dispute_created(
+    agent: Any, opening: str = "No reconozco un cargo de 2,450 pesos en ELECTROMUNDO"
+):
+    agent.handle_turn(_session(), opening)
+    agent.handle_turn(_session(), "No fui yo")
+    return agent.handle_turn(_session(), "Sí, confirmo")
+
+
+def test_verified_dispute_offers_the_block_in_the_same_reply() -> None:
+    agent, cards, block, _ = _block_agent()
+    output = _dispute_created(agent)
+    assert output.reply_text.startswith("Creé el reclamo DSP-001")
+    assert output.reply_text.endswith("¿Confirmas bloquear la tarjeta terminada en 1234?")
+    assert output.claimed_actions == (ActionType.CREATE_DISPUTE,)
+    assert not output.ended
+    assert cards.calls == 1
+    assert block.calls == 0
+
+
+def test_yes_to_the_block_writes_it_under_the_decision_and_claims_it() -> None:
+    agent, _, block, issuer = _block_agent()
+    _dispute_created(agent)
+    output = agent.handle_turn(_session(), "Sí, por favor bloquéala")
+    assert output.ended
+    assert output.claimed_actions == (ActionType.BLOCK_CARD,)
+    assert output.reply_text == "Bloqueé la tarjeta terminada en 1234."
+    assert block.calls == 1
+    args = block.args[0]
+    assert args.product_id == BLOCKABLE_CARD  # the decision's target, nothing else
+    context = block.contexts[0]
+    assert context.confirmation_token_id == "token-block"
+    assert context.policy is not None
+    assert context.policy.target_product_id == BLOCKABLE_CARD
+    # Its own token and confirmation record, bound to the exact block arguments.
+    assert [tool for tool, _ in issuer.issued] == [ToolName.CREATE_DISPUTE, ToolName.BLOCK_CARD]
+    assert issuer.issued[-1][1] == args
+    confirmation = next(r for r in output.records if r.step == "confirmation")
+    write = next(r for r in output.records if r.tool == ToolName.BLOCK_CARD)
+    assert confirmation.args_hash == write.args_hash == args_hash(args)
+    assert confirmation.step_index < write.step_index
+    assert write.verified
+
+
+def test_the_block_uses_its_own_idempotency_key() -> None:
+    agent, _, block, issuer = _block_agent()
+    _dispute_created(agent)
+    agent.handle_turn(_session(), "Sí")
+    dispute_args = issuer.issued[0][1]
+    assert isinstance(dispute_args, CreateDisputeArgs)
+    assert block.args[0].idempotency_key != dispute_args.idempotency_key
+
+
+def test_no_to_the_block_ends_with_the_dispute_only() -> None:
+    agent, _, block, _ = _block_agent()
+    _dispute_created(agent)
+    output = agent.handle_turn(_session(), "No")
+    assert output.ended
+    assert output.claimed_actions == ()
+    assert output.reply_text == "Entendido, no bloquearé la tarjeta."
+    assert block.calls == 0
+
+
+def test_an_unclear_answer_repeats_the_block_question() -> None:
+    agent, _, block, _ = _block_agent()
+    _dispute_created(agent)
+    output = agent.handle_turn(_session(), "¿Y eso cuánto tarda?")
+    assert output.reply_text == "¿Confirmas bloquear la tarjeta terminada en 1234?"
+    assert not output.ended
+    assert block.calls == 0
+
+
+def _policy_without_block(
+    _session: Session, _transaction: GetTransactionResult, _reason: DisputeReason
+) -> PolicyDecision:
+    # What dispute-v1.1 returns for a card that is not Active: bound to the card, no block.
+    return PolicyDecision(
+        decision=DecisionType.PROCEED,
+        allowed_actions=(ActionType.CREATE_DISPUTE,),
+        requires_confirmation=True,
+        target_transaction_id="TXN-FX-0101",
+        target_product_id=BLOCKABLE_CARD,
+        policy_version="test-v1",
+    )
+
+
+def test_a_decision_without_block_card_never_offers_it() -> None:
+    agent, cards, block, _ = _block_agent(policy=_policy_without_block)
+    output = _dispute_created(agent)
+    assert output.ended
+    assert output.claimed_actions == (ActionType.CREATE_DISPUTE,)
+    assert "bloquear" not in output.reply_text
+    assert cards.calls == block.calls == 0
+
+
+def test_a_recognized_duplicate_gets_no_block_offer() -> None:
+    agent, cards, block, _ = _block_agent()
+    agent.handle_turn(_session(), "Me cobraron dos veces 2,450 pesos en ELECTROMUNDO")
+    agent.handle_turn(_session(), "Sí, fui yo")
+    output = agent.handle_turn(_session(), "Sí, confirmo")
+    assert output.ended
+    assert output.claimed_actions == (ActionType.CREATE_DISPUTE,)
+    assert cards.calls == block.calls == 0
+
+
+def test_a_card_that_is_no_longer_active_is_not_offered() -> None:
+    agent, cards, block, _ = _block_agent(cards=CardsTool(status=ProductStatus.BLOCKED))
+    output = _dispute_created(agent)
+    assert output.ended
+    assert output.claimed_actions == (ActionType.CREATE_DISPUTE,)
+    assert cards.calls == 1
+    assert block.calls == 0
+
+
+def test_a_failed_block_escalates_without_claiming_it() -> None:
+    handoff = HandoffTool()
+    agent, _, block, _ = _block_agent(block=BlockTool(fail=True), handoff=handoff)
+    _dispute_created(agent)
+    output = agent.handle_turn(_session(), "Sí")
+    assert block.calls == 1
+    assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
+    assert "Bloqueé" not in output.reply_text
+    assert handoff.draft is not None
+    assert "card block was not completed" in handoff.draft.open_questions[0]
+
+
+class FailingCardsTool(CardsTool):
+    def run(self, ctx: ToolContext, args: ListCardsArgs, /) -> ListCardsResult:
+        self.calls += 1
+        raise ToolUnavailable("list_cards is temporarily unavailable")
+
+
+def test_an_unavailable_card_read_ends_with_the_dispute_and_no_offer() -> None:
+    agent, cards, block, _ = _block_agent(cards=FailingCardsTool())
+    output = _dispute_created(agent)
+    # The dispute is done and verified; a block the agent cannot show is simply not offered.
+    assert output.ended
+    assert output.claimed_actions == (ActionType.CREATE_DISPUTE,)
+    assert output.reply_text == "Creé el reclamo DSP-001 para el movimiento que confirmaste."
+    assert cards.calls == 1
+    assert block.calls == 0
 
 
 def test_a_message_without_language_markers_keeps_the_conversation_language() -> None:

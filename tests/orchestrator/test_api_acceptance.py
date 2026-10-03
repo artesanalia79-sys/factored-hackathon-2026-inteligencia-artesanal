@@ -116,12 +116,67 @@ def test_fx001_unrecognized_charge_creates_verified_dispute(
     assert "¿Confirmas crear un reclamo" in second["reply_text"]
     assert store.count("disputes") == 0
     third = _turn(client, headers, "Sí, confirmo")
-    assert third["ended"]
     assert third["claimed_actions"] == ["create_dispute"]
     dispute = store.get_dispute("CUST-FX-001", transaction_id="TXN-FX-0101")
     assert dispute is not None
     assert dispute.policy_version == POLICY_VERSION
     assert store.count("disputes") == 1
+    # The charge was not recognized and its card is Active: the block is offered, not done.
+    assert not third["ended"]
+    assert third["reply_text"].endswith("¿Confirmas bloquear la tarjeta terminada en 4821?")
+    assert store.count("card_blocks") == 0
+    declined = _turn(client, headers, "No, no la bloquees.")
+    assert declined["ended"]
+    assert declined["claimed_actions"] == []
+    assert declined["reply_text"] == "Entendido, no bloquearé la tarjeta."
+    assert store.count("card_blocks") == 0
+    assert store.count("disputes") == 1
+
+
+def test_fx004_accepted_block_offer_blocks_the_disputed_card(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Rafael")
+    _turn(
+        client,
+        headers,
+        "Oi, apareceu uma compra de 32.500 pesos na GAMESTORE DIGITAL que eu não fiz. "
+        "Não reconheço essa compra.",
+    )
+    _turn(client, headers, "Não, não reconheço.")
+    created = _turn(client, headers, "Sim, confirmo.")
+    assert created["claimed_actions"] == ["create_dispute"]
+    assert not created["ended"]
+    assert created["reply_text"].startswith("Abri a contestação")
+    assert created["reply_text"].endswith("Você confirma o bloqueio do cartão com final 2208?")
+    assert store.get_card_block("CUST-FX-004", "CARD-FX-041") is None
+    blocked = _turn(client, headers, "Sim, pode bloquear o cartão.")
+    assert blocked["ended"]
+    assert blocked["claimed_actions"] == ["block_card"]
+    assert blocked["reply_text"] == "Bloqueei o cartão com final 2208."
+    block = store.get_card_block("CUST-FX-004", "CARD-FX-041")
+    assert block is not None
+    dispute = store.get_dispute("CUST-FX-004", transaction_id="TXN-FX-0401")
+    assert dispute is not None
+    assert block.idempotency_key != dispute.idempotency_key
+    assert store.count("disputes") == store.count("card_blocks") == 1
+    # Each write spent its own token, issued for its exact arguments.
+    assert store.count("confirmation_tokens") == 2
+
+
+def test_a_bare_yes_accepts_the_block_offer(system: tuple[TestClient, OpsStore]) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    _turn(client, headers, "Hola, tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    _turn(client, headers, "No")
+    _turn(client, headers, "Sí")
+    blocked = _turn(client, headers, "Sí")
+    assert blocked["claimed_actions"] == ["block_card"]
+    assert blocked["reply_text"] == "Bloqueé la tarjeta terminada en 4821."
+    # Only the card of the disputed charge: her other card stays as it was.
+    assert store.get_card_block("CUST-FX-001", "CARD-FX-011") is not None
+    assert store.get_card_block("CUST-FX-001", "CARD-FX-012") is None
 
 
 def test_fx005_recognizes_charge_without_dispute(system: tuple[TestClient, OpsStore]) -> None:
@@ -152,6 +207,9 @@ def test_fx002_duplicate_charge_disputes_later_transaction(
     assert third["claimed_actions"] == ["create_dispute"]
     assert store.get_dispute("CUST-FX-002", transaction_id="TXN-FX-0202") is not None
     assert store.count("disputes") == 1
+    # A duplicate the customer recognizes is no reason to block the card: no offer.
+    assert third["ended"]
+    assert "bloquear" not in third["reply_text"]
 
 
 def test_fx006_high_risk_escalates_with_complete_handoff(

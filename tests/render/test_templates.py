@@ -44,8 +44,11 @@ from bankagent.contracts.tools import (
     ListCardsArgs,
     ListCardsResult,
 )
+from bankagent.eval.detectors import detect_claims
 from bankagent.render import (
     UnverifiedRenderError,
+    render_block_declined,
+    render_block_offer,
     render_blocked_card,
     render_confirmation,
     render_created_dispute,
@@ -157,6 +160,60 @@ def test_confirmation_snapshots(language: Language, transaction: TransactionView
         )
         == SNAPSHOT["confirm_block"][language.value]
     )
+
+
+def _active_card(product_id: str = "card-1") -> ListCardsResult:
+    return ListCardsResult(
+        cards=(
+            CardView(
+                product_id=product_id,
+                card_type=CardType.CREDIT,
+                card_last4="1234",
+                currency="USD",
+                product_status=ProductStatus.ACTIVE,
+            ),
+        )
+    )
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_block_offer_snapshots_claim_nothing(language: Language) -> None:
+    args = BlockCardArgs(
+        product_id="card-1", reason="customer request", idempotency_key="request-2"
+    )
+    card_args = ListCardsArgs()
+    offer = render_block_offer(
+        language, args, card_args, _active_card(), _record(ToolName.LIST_CARDS, card_args)
+    )
+    assert offer == SNAPSHOT["block_offer"][language.value]
+    declined = render_block_declined(language)
+    assert declined == SNAPSHOT["block_declined"][language.value]
+    # An offer and a refusal to act are not statements that the card was blocked.
+    assert detect_claims(offer) == frozenset()
+    assert detect_claims(declined) == frozenset()
+
+
+def test_block_offer_rejects_unverified_or_foreign_card_read() -> None:
+    args = BlockCardArgs(
+        product_id="card-1", reason="customer request", idempotency_key="request-2"
+    )
+    card_args = ListCardsArgs()
+    with pytest.raises(UnverifiedRenderError):
+        render_block_offer(
+            Language.ES,
+            args,
+            card_args,
+            _active_card(),
+            _record(ToolName.LIST_CARDS, card_args, verified=False),
+        )
+    with pytest.raises(UnverifiedRenderError):
+        render_block_offer(
+            Language.ES,
+            args,
+            card_args,
+            _active_card("card-2"),
+            _record(ToolName.LIST_CARDS, card_args),
+        )
 
 
 @pytest.mark.parametrize("language", list(Language))
