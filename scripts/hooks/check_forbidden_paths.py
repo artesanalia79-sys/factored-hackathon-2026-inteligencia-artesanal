@@ -51,7 +51,14 @@ SECRET_PATTERNS: dict[str, re.Pattern[str]] = {
 
 # .env keys whose local values must never appear in versioned files.
 SENSITIVE_ENV_KEYS: frozenset[str] = frozenset(
-    {"APP_SECRET_KEY", "OPENAI_API_KEY", "S3_BUCKET", "HELDOUT_DIR"}
+    {
+        "APP_SECRET_KEY",
+        "DEMO_ACCESS_CODE",
+        "HELDOUT_DIR",
+        "LLM_API_KEY",
+        "OPENAI_API_KEY",
+        "S3_BUCKET",
+    }
 )
 MIN_SENSITIVE_VALUE_LEN = 8
 MAX_SCAN_BYTES = 2_000_000

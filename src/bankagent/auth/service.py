@@ -2,7 +2,9 @@
 
 Flow: ``personas()`` → ``start_login(persona_id)`` → ``verify_otp(challenge_id, code)`` →
 ``authenticate(token)`` on every request. The client never sends ``customer_id``: it picks an
-opaque ``persona_id`` (a keyed hash), and the server maps it to the customer.
+opaque ``persona_id`` (a keyed hash), and the server maps it to the customer. When the
+deployment sets a shared access code (``AuthSettings.access_code``), ``start_login`` refuses
+every caller that does not present it, so no session exists without it.
 
 Attempt limits:
 
@@ -55,6 +57,13 @@ class InvalidCredentials(AuthError):
     """Unknown persona, or a wrong, expired or already used code. Deliberately unspecific."""
 
     code = "invalid_credentials"
+
+
+class AccessCodeRequired(AuthError):
+    """The deployment asks for a shared access code and the login did not carry the right one.
+    A missing and a wrong code look the same."""
+
+    code = "access_code_required"
 
 
 class TooManyAttempts(AuthError):
@@ -158,7 +167,19 @@ class AuthService:
         retry_after = releasing + self._settings.lockout_window - now
         raise TooManyAttempts(max(1, int(retry_after.total_seconds())))
 
-    def start_login(self, persona_id: str) -> ChallengeIssued:
+    def _check_access_code(self, presented: str | None) -> None:
+        expected = self._settings.access_code
+        if expected is None:
+            return
+        given = presented if presented is not None and presented.isascii() else ""
+        if not hmac.compare_digest(given.encode(), expected.reveal()):
+            log.info("login_rejected reason=access_code")
+            raise AccessCodeRequired(AccessCodeRequired.code)
+
+    def start_login(self, persona_id: str, access_code: str | None = None) -> ChallengeIssued:
+        # First, before any lookup or write: without the code a caller can neither create a
+        # challenge nor count failures against a persona.
+        self._check_access_code(access_code)
         now = self._clock()
         customer = self._customer_for(persona_id) if persona_id.isascii() else None
         if customer is None:

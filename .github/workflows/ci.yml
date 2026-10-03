@@ -59,6 +59,20 @@ jobs:
           SKIP: gitleaks
         run: uv run pre-commit run --all-files --show-diff-on-failure
 
+  image:
+    name: container image (context, non-root, dispute over HTTP, size, memory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Build the image and prove what docs/operations.md says about it
+        # Nobody on the team needs Docker locally: this job is where the image is built and
+        # measured (size and memory go to the job summary). Render deploys a commit only after
+        # every check on it passes, this one included (render.yaml, autoDeployTrigger).
+        # No secret is used: the app secret and the access code are generated for the run.
+        run: bash scripts/image_smoke.sh --plant-decoys
+
   secrets:
     name: gitleaks (full history)
     runs-on: ubuntu-latest
