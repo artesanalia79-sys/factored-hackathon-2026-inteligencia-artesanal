@@ -352,10 +352,10 @@ class OpsStore:
 
     def last_dispute_date(self, customer_id: str) -> date | None:
         """Filing date of this customer's most recent agent-made dispute, across every
-        transaction, or ``None``. Input to the policy engine's repeat-disputer trigger (T9):
-        combine with ``ServingDB.last_claim_date`` (the pre-agent history), taking the newer of
-        the two, since a customer who disputes through the agent repeatedly is a repeat disputer
-        even with no prior complaint in the source data.
+        transaction, or ``None``. Input to the policy engine's repeat-disputer trigger (T9),
+        next to ``ServingDB.last_dispute_date`` (the bank's history). This date is real time
+        (``ctx.now``), so the engine compares it to the filing day, never to the snapshot's
+        ``as_of_date`` (``bankagent.policy.inputs.build_inputs``).
         """
         row = self._db.one(
             "SELECT max(created_at) AS latest FROM disputes WHERE customer_id = ?", [customer_id]

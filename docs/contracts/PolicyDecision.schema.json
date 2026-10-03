@@ -22,7 +22,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Deterministic decision of the policy engine for one request.\n\n``target_transaction_id`` is the transaction this decision was evaluated for, when it was\nevaluated against one (``None`` for a baseline/ad hoc decision with no bound target). A write\ntool that allows ``create_dispute`` must refuse a call whose ``args.transaction_id`` differs\nfrom it: otherwise a decision computed for transaction A would authorize, and stamp its SLA\nand rule ids onto, a dispute on transaction B (T8 PR #43 review; T9 PR #44 review).",
+  "description": "Deterministic decision of the policy engine for one request.\n\n``target_transaction_id`` is the transaction this decision was evaluated for, when it was\nevaluated against one (``None`` for a baseline/ad hoc decision with no bound target). A write\ntool that allows ``create_dispute`` must refuse a call whose ``args.transaction_id`` differs\nfrom it: otherwise a decision computed for transaction A would authorize, and stamp its SLA\nand rule ids onto, a dispute on transaction B (T8 PR #43 review; T9 PR #44 review).\n``target_product_id`` is the card of that transaction, the only card ``block_card`` may block\nunder this decision (same reasoning, for the block).",
   "properties": {
     "allowed_actions": {
       "default": [],
@@ -88,6 +88,20 @@
       ],
       "default": null,
       "title": "Sla Due Date"
+    },
+    "target_product_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Product Id"
     },
     "target_transaction_id": {
       "anyOf": [
