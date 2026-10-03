@@ -174,12 +174,16 @@ cases, but it was never called in the container), and memory on Render itself.
 - `.dockerignore` lets `web/` in and keeps `web/node_modules`, `web/dist` and the Playwright
   outputs out: the image builds the UI itself.
 - `Dockerfile`, stage `web`: a Node image pinned by tag and digest runs `npm ci` and
-  `npm run build` (`tsc -b`, then Vite). Only `web/dist` is copied into the runtime stage,
-  at `/app/web/dist`, where `WEB_DIST_DIR` points by default. The UI adds under 1 MB: the
-  image measured 228 MB locally both with and without it (227 MB in CI).
+  `npm run build:app` (the shipped code's types, then Vite; the Playwright specs are checked by
+  the CI job `web`, so a type error in a test cannot block a deploy). Only `web/dist` is copied
+  into the runtime stage, at `/app/web/dist`, where `WEB_DIST_DIR` points by default. The UI
+  adds under 1 MB: the image measured 228 MB locally both with and without it (227 MB in CI).
 - `scripts/image_smoke.sh` allows `web/` in the build context, plants `web/node_modules` and
   `web/dist` decoys that must stay out, expects `/app/web` to hold only `dist`, and checks that
   `GET /` answers the UI with its Content Security Policy.
+- Caching: `index.html` and the other files at the root are sent with `Cache-Control:
+  no-cache` (revalidated on every load, so a redeploy is picked up at once); the hashed files
+  under `/assets/` are `immutable`.
 - With `DEMO_ACCESS_CODE` set, the login screen asks for the code after the first 403
   `access_code_required` and keeps it in memory for the tab (a password field, so a screen
   recording of the demo does not show it).

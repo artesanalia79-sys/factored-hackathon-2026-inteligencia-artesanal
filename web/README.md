@@ -34,12 +34,14 @@ hot reload and proxies `/api` and `/health` to :8000.
 | `uv run poe web-e2e` | Playwright against the real API serving `web/dist` (stub LLM, fixture bank, a fresh ops store and a random signing secret per run). First time: `npx --prefix web playwright install chromium` |
 | `E2E_LLM_PROVIDER=openai uv run --env-file ../.env -- npx playwright test -g "happy path"` (in `web/`) | One spec on the real model; costs money (capped at 2 cents a run), so never the whole suite |
 
-The Playwright suite (`e2e/`, 14 tests) covers the happy path (login, dispute, confirmation), a
-keyboard-only run in Portuguese that also blocks the card, a handoff, a wrong code, a revoked
-session, failures injected in the browser (persona list down, a persona the server no longer
-knows, a locked login, a message lost on the way), the access-code prompt (played by the
-browser, and against a second server started with a real `DEMO_ACCESS_CODE`), axe WCAG 2.2
-A/AA scans in light and dark mode, and a phone-width layout. A fixture records every request and API response of every test
+The Playwright suite (`e2e/`, 16 tests) covers the happy path (login, dispute, confirmation, a
+second click on the card-block question as it appears), a keyboard-only run in Portuguese that
+also blocks the card, a handoff, a wrong code, a revoked session, failures injected in the
+browser (persona list down, a persona the server no longer knows, a locked login, a message lost
+on the way, the reply to a confirmed dispute lost on the way, a sign-out the service never
+answers), the access-code prompt (played by the browser, and against a second server started
+with a real `DEMO_ACCESS_CODE`), axe WCAG 2.2 A/AA scans in light and dark mode, and a
+phone-width layout. A fixture records every request and API response of every test
 and fails it if anything names a customer (`customer_id` or a customer id, also inside the
 decoded session token) or if the page logs an error (a CSP violation included). CI runs all of it
 in the `web` job.
@@ -61,7 +63,14 @@ in the `web` job.
   date, card ending, channel, reason), built from the same verified read as the question. The
   panel labels them and formats nothing. Its buttons answer in the chat with "Sí, confirmo" / "No"
   ("Sim, confirmo" / "Não"); the server issues the confirmation token at that yes for exactly the
-  arguments shown. Nothing is shown as done before the reply arrives.
+  arguments shown. Nothing is shown as done before the reply arrives. A new question takes no
+  answer for its first 600 ms: the card-block offer appears where the dispute question was, so
+  the second click of a double click on "Confirmar" would otherwise confirm it unseen.
+- **A reply that never arrives.** The UI cannot tell whether the message reached the agent, so
+  it never resends it. A typed message goes back into the composer for the customer to decide;
+  an answer to a confirmation does not, because the server may already be asking the next
+  question, and the same "Sí" would answer that one. The customer is told to ask what happened
+  first; the agent then repeats the question it is on (`docs/limitations.md`).
 - **Verified actions.** A status under a reply ("Reclamo registrado y verificado", "Caso enviado a
   una persona del equipo") comes only from `claimed_actions`, which the API fills for writes
   verified by read-back.

@@ -18,6 +18,10 @@ Applies to `web/**`. Owner: Jacobo (Tasks 14, 21, 22).
   last4) before the customer confirms. They come from `ChatTurnResponse.confirmation`
   (`ConfirmationView`, built from the same verified read as the question); never parse facts out
   of the reply text, and never format or derive the values in the UI.
+- A "yes" must answer the question the customer saw. Never resend a message after a failure, and
+  never give an answer to a confirmation back to the composer: the agent may already be asking
+  the next question. A new confirmation panel takes no answer for its first moments (a double
+  click on the previous one lands there).
 - Customer-facing copy is Spanish or Portuguese and comes from the backend templates; UI chrome may
   be bilingual. Code and comments stay in English.
 
