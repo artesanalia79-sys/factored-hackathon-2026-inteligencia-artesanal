@@ -9,6 +9,13 @@
 !policy
 !config
 !tests/fixtures/bank
+# The UI's sources; its installed packages and builds are made inside the image.
+!web
+web/node_modules
+web/dist
+web/test-results
+web/playwright-report
+web/blob-report
 
 # Never, even inside an allowed directory.
 **/__pycache__

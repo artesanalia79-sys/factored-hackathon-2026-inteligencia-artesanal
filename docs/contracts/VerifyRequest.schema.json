@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "challenge_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Challenge Id",
+      "type": "string"
+    },
+    "code": {
+      "maxLength": 12,
+      "minLength": 1,
+      "title": "Code",
+      "type": "string"
+    }
+  },
+  "required": [
+    "challenge_id",
+    "code"
+  ],
+  "title": "VerifyRequest",
+  "type": "object"
+}

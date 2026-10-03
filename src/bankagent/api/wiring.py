@@ -18,6 +18,7 @@ from bankagent.auth.wiring import (
     utc_now,
 )
 from bankagent.contracts.llm import LLMProvider
+from bankagent.contracts.tools import SearchTransactionsArgs
 from bankagent.interpret.compat_provider import from_env as compat_from_env
 from bankagent.interpret.openai_provider import OpenAIProvider
 from bankagent.interpret.stub import StubProvider
@@ -70,7 +71,11 @@ def build_llm(env: Mapping[str, str]) -> LLMProvider:
 
 
 def create_default_app() -> FastAPI:
-    """Build all components over one serving DB and one ops store."""
+    """Build all components over one serving DB and one ops store.
+
+    The web UI is served from ``WEB_DIST_DIR`` (default ``web/dist``) once it is built
+    (``npm --prefix web run build``); without a build the app serves the API only.
+    """
     env = os.environ
     clock = utc_now
     store = OpsStore(_configured_path(env, "OPS_DB_PATH", DEFAULT_OPS_DB))
@@ -82,6 +87,9 @@ def create_default_app() -> FastAPI:
     llm = build_llm(env)
     return create_app(
         auth=auth,
+        transaction_reader=lambda customer_id: serving.search_transactions(
+            customer_id, SearchTransactionsArgs(), limit=50
+        ),
         agent_factory=lambda: create_agent(
             llm=llm, tools=tools, clock=clock, policy=policy, issue_confirmation=issuer
         ),
@@ -90,4 +98,5 @@ def create_default_app() -> FastAPI:
             "serving_db": serving.as_of_date,
             "ops_store": lambda: store.count("sessions"),
         },
+        web_dist=_configured_path(env, "WEB_DIST_DIR", ROOT / "web" / "dist"),
     )

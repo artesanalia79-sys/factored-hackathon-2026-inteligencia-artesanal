@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
+from bankagent.contracts.api import ConfirmationView
 from bankagent.contracts.base import Contract, args_hash
 from bankagent.contracts.decisions import DisputeSlots, InterpretationResult, PolicyDecision
 from bankagent.contracts.domain import ConfirmationToken, Session, TransactionView
@@ -57,12 +58,13 @@ from bankagent.interpret.keywords import (
 )
 from bankagent.render.templates import (
     MAX_CANDIDATES,
+    ConfirmationPrompt,
     UnverifiedRenderError,
+    block_offer_prompt,
+    confirmation_prompt,
     render_block_declined,
-    render_block_offer,
     render_blocked_card,
     render_candidates,
-    render_confirmation,
     render_created_dispute,
     render_created_handoff,
     render_ineligible,
@@ -181,6 +183,11 @@ class AgentTurnOutput:
     records: tuple[ExecutionRecord, ...]
     ended: bool
     claimed_actions: tuple[ActionType, ...] = ()
+    # The language of ``reply_text``. No default: the UI takes its language and the message's
+    # `lang` from it, so a Portuguese reply must never report Spanish by omission (T14).
+    language: Language = field(kw_only=True)
+    # The write the reply asks the customer to confirm, if it asks (the UI's panel, T14).
+    confirmation: ConfirmationView | None = None
 
 
 class Agent:
@@ -282,11 +289,31 @@ class Agent:
         *,
         ended: bool = False,
         claimed_actions: tuple[ActionType, ...] = (),
+        confirmation: ConfirmationView | None = None,
     ) -> AgentTurnOutput:
         self._ended = ended
-        output = AgentTurnOutput(text, tuple(self._records), ended, claimed_actions)
+        output = AgentTurnOutput(
+            text,
+            tuple(self._records),
+            ended,
+            claimed_actions,
+            language=self._language,
+            confirmation=confirmation,
+        )
         self._turn_index += 1
         return output
+
+    def _ask(
+        self,
+        prompt: ConfirmationPrompt,
+        *,
+        lead: str | None = None,
+        claimed_actions: tuple[ActionType, ...] = (),
+    ) -> AgentTurnOutput:
+        """Ask to confirm a write. The question and the UI's panel come from one prompt, so
+        they cannot disagree; ``lead`` goes before the question (a claim just verified)."""
+        text = prompt.text if lead is None else f"{lead} {prompt.text}"
+        return self._reply(text, claimed_actions=claimed_actions, confirmation=prompt.view)
 
     def _interpret(self, session: Session, text: str) -> InterpretationResult:
         # A deterministic attack gate runs before the provider sees the utterance.
@@ -485,17 +512,18 @@ class Agent:
             return self._abstain(session)
         self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
         if self._state == ConversationState.CONFIRM and self._pending_args is not None:
-            reply = render_confirmation(
-                self._language,
-                self._pending_args,
-                self._read_args,
-                self._read_result,
-                self._read_record,
+            return self._ask(
+                confirmation_prompt(
+                    self._language,
+                    self._pending_args,
+                    self._read_args,
+                    self._read_result,
+                    self._read_record,
+                )
             )
-        else:
-            reply = render_recognition(
-                self._language, self._read_args, self._read_result, self._read_record
-            )
+        reply = render_recognition(
+            self._language, self._read_args, self._read_result, self._read_record
+        )
         return self._reply(reply)
 
     def _escalate(
@@ -615,10 +643,11 @@ class Agent:
         )
         self._pending_args = args
         self._state = ConversationState.CONFIRM
-        reply = render_confirmation(
-            self._language, args, self._read_args, self._read_result, self._read_record
+        return self._ask(
+            confirmation_prompt(
+                self._language, args, self._read_args, self._read_result, self._read_record
+            )
         )
-        return self._reply(reply)
 
     def _deflect(self, session: Session) -> AgentTurnOutput:
         self._record(session, StepKind.RENDER, ConversationState.RESPOND, StepOutcome.SUCCESS)
@@ -702,11 +731,11 @@ class Agent:
         if isinstance(written, AgentTurnOutput):
             return written
         self._pending_args = None
-        offer = self._offer_block(session)
-        if offer is None:
+        offered = self._offer_block(session)
+        if offered is None:
             return self._reply(written, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
         # The dispute is claimed now, and the conversation stays open for the block question.
-        return self._reply(f"{written} {offer}", claimed_actions=(ActionType.CREATE_DISPUTE,))
+        return self._ask(offered, lead=written, claimed_actions=(ActionType.CREATE_DISPUTE,))
 
     def _write[ArgsT: Contract, ResultT: Contract](
         self,
@@ -778,13 +807,14 @@ class Agent:
         self._record(session, StepKind.VERIFY, self._state, StepOutcome.SUCCESS, args=args)
         return reply
 
-    def _offer_block(self, session: Session) -> str | None:
+    def _offer_block(self, session: Session) -> ConfirmationPrompt | None:
         """The question offering to block the card, after a verified dispute; None for no offer.
 
         Plan step ACT: offer the block when the customer did not recognize the charge (or asked
         for a block). Only when the policy allows it: ``dispute-v1.1`` puts ``block_card`` in
         ``allowed_actions`` for the transaction's own Active card only (``DSP-ACT-01``) and binds
-        it with ``target_product_id``, which the ``block_card`` tool checks again.
+        it with ``target_product_id``, which the ``block_card`` tool checks again. Returns the
+        question with the block it asks to confirm.
         """
         decision = self._decision
         if (
@@ -809,7 +839,7 @@ class Agent:
             idempotency_key=self._block_key,
         )
         try:
-            offer = render_block_offer(self._language, args, cards_args, cards, record)
+            offer = block_offer_prompt(self._language, args, cards_args, cards, record)
         except UnverifiedRenderError:
             return None  # the card is no longer among the active ones: nothing to block
         self._pending_block = args
@@ -838,8 +868,8 @@ class Agent:
                 self._record(
                     session, StepKind.RENDER, ConversationState.CONFIRM, StepOutcome.SUCCESS
                 )
-                return self._reply(
-                    render_confirmation(
+                return self._ask(
+                    confirmation_prompt(
                         self._language,
                         args,
                         self._cards_args,
@@ -873,13 +903,19 @@ class Agent:
             return written
         return self._reply(written, ended=True, claimed_actions=(ActionType.BLOCK_CARD,))
 
-    def _follow_language(self, session: Session, text: str) -> None:
-        """Keep the conversation's language; switch only on a message clearly in the other one.
+    def _follow_language(
+        self, session: Session, text: str, preferred_language: Language | None = None
+    ) -> None:
+        """Honor a selected language; otherwise follow clear evidence in the message.
 
         The interpreter judges each message alone, and a message with no language markers
         ("Ok", "No", a number) used to fall back to Spanish mid-conversation. The first turn
         starts from the customer's profile language when the message itself does not tell.
         """
+        if preferred_language is not None:
+            self._language = preferred_language
+            self._language_known = True
+            return
         evidence = language_evidence(normalize(text))
         if evidence is not None:
             self._language = evidence
@@ -887,13 +923,15 @@ class Agent:
             self._language = session.language
         self._language_known = True
 
-    def handle_turn(self, session: Session, text: str, /) -> AgentTurnOutput:
+    def handle_turn(
+        self, session: Session, text: str, /, preferred_language: Language | None = None
+    ) -> AgentTurnOutput:
         self._records = []
         if self._ended:
             return self._reply(render_state(ConversationState.DONE, self._language), ended=True)
         # Before the expiry check, so even the re-authentication message is in the right language
         # (keyword markers only: nothing is read and no provider is called).
-        self._follow_language(session, text)
+        self._follow_language(session, text, preferred_language)
         if not session.is_active(self._clock()):
             self._record(
                 session,

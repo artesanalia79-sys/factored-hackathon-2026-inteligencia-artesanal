@@ -56,6 +56,11 @@ class Agent(Protocol):
 The HTTP endpoint (`POST /api/chat/turn`) can call the same method, but the harness uses the
 method directly: through HTTP it could not inject the tools and LLM provider.
 
+The proposed agent's output also carries `language` (of `reply_text`) and `confirmation` (a
+`bankagent.contracts.api.ConfirmationView` when the reply asks to confirm a write), which the
+endpoint returns for the web UI's confirmation panel (T14). The harness does not read them, and a
+system under evaluation does not need them.
+
 ## 3. What the records must show
 
 The scorer reads these fields. Everything else in the backend rules still applies.

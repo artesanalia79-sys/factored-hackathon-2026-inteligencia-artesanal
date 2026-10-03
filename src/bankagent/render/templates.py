@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import unicodedata
+from dataclasses import dataclass
 from datetime import UTC
 from zoneinfo import ZoneInfo
 
+from bankagent.contracts.api import ConfirmationView
 from bankagent.contracts.base import args_hash
 from bankagent.contracts.domain import TransactionView
 from bankagent.contracts.enums import (
+    ActionType,
     Channel,
     ConversationState,
     DisputeReason,
@@ -223,7 +226,18 @@ def _clean(value: str) -> str:
     return text[:59] + "…" if len(text) > 60 else text
 
 
-def _transaction_facts(txn: TransactionView, language: Language) -> str:
+@dataclass(frozen=True, slots=True)
+class _ChargeFacts:
+    """The display strings of one charge. Every sentence about a charge is built from these."""
+
+    merchant: str
+    date: str
+    channel: str
+    card_last4: str
+    amount: str  # with its currency: "2,450.00 MXN"
+
+
+def _charge_facts(txn: TransactionView, language: Language) -> _ChargeFacts:
     if not txn.card_last4:
         raise UnverifiedRenderError("transaction display requires card facts")
     merchant = _clean(txn.merchant_name or "")
@@ -236,15 +250,28 @@ def _transaction_facts(txn: TransactionView, language: Language) -> str:
     amount = f"{txn.amount:,.2f}"
     if txn.transaction_country in {"AR", "CO"}:
         amount = amount.replace(",", "_").replace(".", ",").replace("_", ".")
-    channel = CHANNELS[txn.channel][language]
+    return _ChargeFacts(
+        merchant=merchant,
+        date=date,
+        channel=CHANNELS[txn.channel][language],
+        card_last4=txn.card_last4,
+        amount=f"{amount} {txn.currency}",
+    )
+
+
+def _transaction_facts(txn: TransactionView, language: Language) -> str:
+    return _facts_sentence(_charge_facts(txn, language), language)
+
+
+def _facts_sentence(facts: _ChargeFacts, language: Language) -> str:
     if language == Language.ES:
         return (
-            f"comercio {merchant}, fecha {date}, canal {channel}, "
-            f"tarjeta terminada en {txn.card_last4}, importe {amount} {txn.currency}"
+            f"comercio {facts.merchant}, fecha {facts.date}, canal {facts.channel}, "
+            f"tarjeta terminada en {facts.card_last4}, importe {facts.amount}"
         )
     return (
-        f"estabelecimento {merchant}, data {date}, canal {channel}, "
-        f"cartão com final {txn.card_last4}, valor {amount} {txn.currency}"
+        f"estabelecimento {facts.merchant}, data {facts.date}, canal {facts.channel}, "
+        f"cartão com final {facts.card_last4}, valor {facts.amount}"
     )
 
 
@@ -335,14 +362,26 @@ def render_candidates(
     )
 
 
-def render_confirmation(
+@dataclass(frozen=True, slots=True)
+class ConfirmationPrompt:
+    """A confirmation question, and the same question as data for the UI's panel (T14).
+
+    Built together by one call from one verified read, so the panel cannot show a fact the
+    question does not: the view's values are the question's own display strings.
+    """
+
+    text: str
+    view: ConfirmationView
+
+
+def confirmation_prompt(
     language: Language,
     args: CreateDisputeArgs | BlockCardArgs,
     read_args: GetTransactionArgs | ListCardsArgs,
     read_result: GetTransactionResult | ListCardsResult,
     record: ExecutionRecord,
-) -> str:
-    """Show recognizable facts from a matching authenticated read before confirmation."""
+) -> ConfirmationPrompt:
+    """Ask to confirm the pending write, with recognizable facts from a matching verified read."""
     if isinstance(args, CreateDisputeArgs):
         if not isinstance(read_args, GetTransactionArgs) or not isinstance(
             read_result, GetTransactionResult
@@ -354,23 +393,61 @@ def render_confirmation(
             or read_result.transaction.transaction_id != args.transaction_id
         ):
             raise UnverifiedRenderError("transaction read does not match pending dispute")
-        facts = _transaction_facts(read_result.transaction, language)
+        charge = _charge_facts(read_result.transaction, language)
         reason = REASONS[args.reason][language]
-        if language == Language.ES:
-            return f"¿Confirmas crear un reclamo por {reason} para este movimiento: {facts}?"
-        return (
-            f"Você confirma a abertura de uma contestação por {reason} "
-            f"para esta transação: {facts}?"
+        view = ConfirmationView(
+            action=ActionType.CREATE_DISPUTE,
+            card_last4=charge.card_last4,
+            reason=reason,
+            merchant=charge.merchant,
+            date=charge.date,
+            channel=charge.channel,
+            amount=charge.amount,
         )
+        facts = _facts_sentence(charge, language)
+        if language == Language.ES:
+            text = f"¿Confirmas crear un reclamo por {reason} para este movimiento: {facts}?"
+        else:
+            text = (
+                f"Você confirma a abertura de uma contestação por {reason} "
+                f"para esta transação: {facts}?"
+            )
+        return ConfirmationPrompt(text, view)
     if not isinstance(read_args, ListCardsArgs) or not isinstance(read_result, ListCardsResult):
         raise UnverifiedRenderError("card confirmation requires a card read")
     _require_verified(record, ToolName.LIST_CARDS, expected_args_hash=args_hash(read_args))
     card = next((item for item in read_result.cards if item.product_id == args.product_id), None)
     if card is None:
         raise UnverifiedRenderError("card read does not match pending block")
+    view = ConfirmationView(action=ActionType.BLOCK_CARD, card_last4=card.card_last4)
     if language == Language.ES:
-        return f"¿Confirmas bloquear la tarjeta terminada en {card.card_last4}?"
-    return f"Você confirma o bloqueio do cartão com final {card.card_last4}?"
+        text = f"¿Confirmas bloquear la tarjeta terminada en {card.card_last4}?"
+    else:
+        text = f"Você confirma o bloqueio do cartão com final {card.card_last4}?"
+    return ConfirmationPrompt(text, view)
+
+
+def render_confirmation(
+    language: Language,
+    args: CreateDisputeArgs | BlockCardArgs,
+    read_args: GetTransactionArgs | ListCardsArgs,
+    read_result: GetTransactionResult | ListCardsResult,
+    record: ExecutionRecord,
+) -> str:
+    """The text of ``confirmation_prompt``, for a caller that shows no confirmation panel."""
+    return confirmation_prompt(language, args, read_args, read_result, record).text
+
+
+def block_offer_prompt(
+    language: Language,
+    args: BlockCardArgs,
+    read_args: ListCardsArgs,
+    read_result: ListCardsResult,
+    record: ExecutionRecord,
+) -> ConfirmationPrompt:
+    """Offer a card block: a neutral lead, then the block confirmation from a verified card read."""
+    question = confirmation_prompt(language, args, read_args, read_result, record)
+    return ConfirmationPrompt(f"{BLOCK_OFFER_COPY[language]} {question.text}", question.view)
 
 
 def render_block_offer(
@@ -380,9 +457,8 @@ def render_block_offer(
     read_result: ListCardsResult,
     record: ExecutionRecord,
 ) -> str:
-    """Offer a card block: a neutral lead, then the block confirmation from a verified card read."""
-    question = render_confirmation(language, args, read_args, read_result, record)
-    return f"{BLOCK_OFFER_COPY[language]} {question}"
+    """The text of ``block_offer_prompt``, for a caller that shows no confirmation panel."""
+    return block_offer_prompt(language, args, read_args, read_result, record).text
 
 
 def render_block_declined(language: Language) -> str:

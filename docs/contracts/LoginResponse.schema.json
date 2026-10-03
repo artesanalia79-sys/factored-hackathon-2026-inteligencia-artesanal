@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "challenge_id": {
+      "title": "Challenge Id",
+      "type": "string"
+    },
+    "delivery": {
+      "default": "mock",
+      "title": "Delivery",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "mock_otp": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the code itself, only with AUTH_EXPOSE_MOCK_OTP on synthetic data",
+      "title": "Mock Otp"
+    }
+  },
+  "required": [
+    "challenge_id",
+    "expires_at"
+  ],
+  "title": "LoginResponse",
+  "type": "object"
+}

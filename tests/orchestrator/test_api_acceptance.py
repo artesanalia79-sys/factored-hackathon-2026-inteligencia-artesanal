@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -98,9 +99,14 @@ def test_serve_factory_starts_with_configured_fixture_bank(
     monkeypatch.setenv("DATA_MODE", "synthetic")
     monkeypatch.setenv("AUTH_EXPOSE_MOCK_OTP", "true")
     monkeypatch.setenv("LLM_PROVIDER", "stub")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>Chat</title>", encoding="utf-8")
+    monkeypatch.setenv("WEB_DIST_DIR", str(dist))
     client = TestClient(create_default_app())
     assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/api/auth/personas").status_code == 200
+    assert "<title>Chat</title>" in client.get("/").text
 
 
 def test_fx001_unrecognized_charge_creates_verified_dispute(
@@ -544,3 +550,178 @@ def test_a_portuguese_conversation_stays_in_portuguese(system: tuple[TestClient,
     assert done["claimed_actions"] == ["create_dispute"]
     assert done["reply_text"].startswith("Abri a contestação")
     assert store.get_dispute("CUST-FX-004", transaction_id="TXN-FX-0401") is not None
+
+
+# -- the UI's confirmation panel (T14) ---------------------------------------------------------
+
+
+def test_confirmation_is_sent_exactly_when_a_write_is_asked(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    first = _turn(client, headers, "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    assert "¿Reconoces este movimiento?" in first["reply_text"]
+    assert first["confirmation"] is None
+    assert first["language"] == "es"
+    asked = _turn(client, headers, "No fui yo")
+    assert asked["confirmation"] == {
+        "action": "create_dispute",
+        "card_last4": "4821",
+        "reason": "movimiento no reconocido",
+        "merchant": "ELECTROMUNDO ONLINE",
+        "date": "12/06/2026",
+        "channel": "sitio web",
+        "amount": "2,450.00 MXN",
+    }
+    shown = [value for key, value in asked["confirmation"].items() if key != "action"]
+    assert all(value in asked["reply_text"] for value in shown)
+    # An unclear answer asks the same question again, with the same panel.
+    again = _turn(client, headers, "mmm")
+    assert again["reply_text"] == asked["reply_text"]
+    assert again["confirmation"] == asked["confirmation"]
+    assert store.count("disputes") == 0
+    created = _turn(client, headers, "Sí, confirmo")
+    assert created["claimed_actions"] == ["create_dispute"]
+    assert created["confirmation"] == {
+        "action": "block_card",
+        "card_last4": "4821",
+        "reason": None,
+        "merchant": None,
+        "date": None,
+        "channel": None,
+        "amount": None,
+    }
+    block_again = _turn(client, headers, "mmm")
+    assert block_again["confirmation"] == created["confirmation"]
+    declined = _turn(client, headers, "No")
+    assert declined["ended"]
+    assert declined["confirmation"] is None
+    assert store.count("card_blocks") == 0
+
+
+def test_confirmation_follows_the_conversation_language(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, _ = system
+    headers = _headers(client, "Rafael")
+    opening = _turn(
+        client, headers, "Não reconheço uma compra de 32.500 pesos na GAMESTORE DIGITAL"
+    )
+    assert opening["language"] == "pt"
+    asked = _turn(client, headers, "Não")
+    assert asked["language"] == "pt"
+    assert asked["confirmation"] == {
+        "action": "create_dispute",
+        "card_last4": "2208",
+        "reason": "transação não reconhecida",
+        "merchant": "GAMESTORE DIGITAL",
+        "date": "15/06/2026",
+        "channel": "site",
+        "amount": "32.500,00 ARS",
+    }
+
+
+def test_no_confirmation_on_a_recognized_charge_or_a_handoff(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, _ = system
+    headers = _headers(client, "Sofía")
+    _turn(client, headers, "Me aparece un cargo de PAYPAL SPOTIFYMX de 129 pesos y no sé qué es")
+    recognized = _turn(client, headers, "Sí, fui yo")
+    assert recognized["ended"]
+    assert recognized["confirmation"] is None
+    headers = _headers(client, "Carlos")
+    _turn(client, headers, "No reconozco el cargo de 9.800.000 COP en LUXURY WATCHES INTL")
+    handoff = _turn(client, headers, "No fui yo")
+    assert handoff["claimed_actions"] == ["create_handoff"]
+    assert handoff["confirmation"] is None
+
+
+# The web UI offers these first messages per demo persona and language; each must still reach
+# what it promises.
+SCENARIOS = json.loads(
+    (Path(__file__).parents[2] / "web" / "src" / "demo" / "scenarios.json").read_text("utf-8")
+)
+FIRST_QUESTION = {
+    "recognition": ("¿Reconoces este movimiento?", "Você reconhece esta transação?"),
+    "choice": ("¿Cuál de estos movimientos", "Qual destas transações"),
+}
+
+
+@pytest.mark.parametrize(
+    ("persona", "scenario"),
+    [
+        (persona, item)
+        for group in [SCENARIOS["personas"], *SCENARIOS["translations"].values()]
+        for persona, items in group.items()
+        for item in items
+    ],
+    ids=lambda value: value if isinstance(value, str) else value["label"],
+)
+def test_demo_scenarios_reach_their_first_question(
+    system: tuple[TestClient, OpsStore], persona: str, scenario: dict[str, str]
+) -> None:
+    client, _ = system
+    first_name, country = persona.split("/")
+    known = {
+        (item["first_name"], item["country"]) for item in client.get("/api/auth/personas").json()
+    }
+    assert (first_name, country) in known
+    reply = _turn(client, _headers(client, first_name), scenario["text"])
+    if scenario["expect"] == "handoff":
+        assert reply["claimed_actions"] == ["create_handoff"]
+        return
+    assert not reply["ended"]
+    assert any(question in reply["reply_text"] for question in FIRST_QUESTION[scenario["expect"]])
+
+
+CONFIRMATION_QUESTIONS = ("¿Confirmas", "Você confirma")
+
+
+@pytest.mark.parametrize(
+    ("persona", "turns"),
+    [
+        (
+            "Mariana",
+            (
+                "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco",
+                "No",
+                "mmm",
+                "Sí",
+                "mmm",
+                "Sí",
+            ),
+        ),
+        (
+            "Mariana",
+            (
+                "Tengo un cargo de Amazon que no reconozco",
+                "el segundo",
+                "No",
+                "No, ese no es, es el de 899 pesos",
+                "No",
+                "Sí",
+                "No",
+            ),
+        ),
+        ("Rafael", ("Não reconheço uma compra de 32.500 pesos na GAMESTORE DIGITAL", "Não", "Sim")),
+        ("Andrés", ("Me cobraron dos veces 85.900 pesos en Rappi", "Sí", "No")),
+        ("Diego", ("No reconozco un cargo de UBER EATS por 560 pesos", "No")),
+    ],
+    ids=["dispute-and-block", "choice-and-correction", "portuguese", "duplicate", "ineligible"],
+)
+def test_every_confirmation_question_and_only_those_carry_the_panel(
+    system: tuple[TestClient, OpsStore], persona: str, turns: tuple[str, ...]
+) -> None:
+    client, _ = system
+    headers = _headers(client, persona)
+    asked = 0
+    for text in turns:
+        reply = _turn(client, headers, text)
+        asks = any(question in reply["reply_text"] for question in CONFIRMATION_QUESTIONS)
+        assert asks == (reply["confirmation"] is not None), (text, reply["reply_text"])
+        asked += asks
+        if reply["ended"]:
+            break
+    assert asked > 0 or persona == "Diego"
