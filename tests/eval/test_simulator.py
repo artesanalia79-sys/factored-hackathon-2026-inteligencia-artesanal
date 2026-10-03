@@ -9,6 +9,22 @@ import pytest
 from bankagent.contracts.evaluation import EvalCase
 from bankagent.eval.simulator import QuestionKind, ScriptedUser, classify_question
 
+# What the proposed agent asks, as its templates render it (`bankagent.render.templates`).
+CONFIRM_DISPUTE_ES = (
+    "¿Confirmas crear un reclamo por movimiento no reconocido para este movimiento: comercio "
+    "ELECTROMUNDO ONLINE, fecha 12/06/2026, canal sitio web, tarjeta terminada en 4821, importe "
+    "2,450.00 MXN?"
+)
+CONFIRM_DISPUTE_PT = (
+    "Você confirma a abertura de uma contestação por transação não reconhecida para esta "
+    "transação: estabelecimento GAMESTORE DIGITAL, data 15/06/2026, canal site, cartão com final "
+    "2208, valor 32.500,00 ARS?"
+)
+OFFER_BLOCK_ES = (
+    "Creé el reclamo DSP-1 para el movimiento que confirmaste. También puedo bloquear la tarjeta "
+    "para evitar nuevos cargos. ¿Confirmas bloquear la tarjeta terminada en 4821?"
+)
+
 
 def make_case(language: str = "es", **facts: Any) -> EvalCase:
     return EvalCase.model_validate(
@@ -45,6 +61,53 @@ def make_case(language: str = "es", **facts: Any) -> EvalCase:
 )
 def test_classifies_agent_questions(agent_text: str, kind: QuestionKind) -> None:
     assert classify_question(agent_text) == kind
+
+
+@pytest.mark.parametrize(
+    ("agent_text", "kind"),
+    [
+        # A confirmation that names its action, although it mentions the "unrecognized" reason.
+        (CONFIRM_DISPUTE_ES, QuestionKind.CONFIRM),
+        (CONFIRM_DISPUTE_PT, QuestionKind.CONFIRM),
+        (
+            "¿Confirmas que quieres abrir una disputa por este cargo que no reconoces?",
+            QuestionKind.CONFIRM,
+        ),
+        ("¿Autorizas abrir la disputa por este cargo no reconocido?", QuestionKind.CONFIRM),
+        ("Posso prosseguir com a contestação da transação não reconhecida?", QuestionKind.CONFIRM),
+        (OFFER_BLOCK_ES, QuestionKind.CONFIRM),
+        ("¿Confirmas bloquear la tarjeta por el cargo no reconocido?", QuestionKind.CONFIRM),
+        ("¿Confirmas levantar la aclaración por el cargo no reconocido?", QuestionKind.CONFIRM),
+        ("¿Autorizas el contracargo de la compra no reconocida?", QuestionKind.CONFIRM),
+        # "Confirm" with no action named is still about recognizing the charge.
+        ("¿Puedes confirmar si reconoces este cargo?", QuestionKind.RECOGNIZE),
+        ("Pode confirmar se você reconhece essa compra?", QuestionKind.RECOGNIZE),
+        ("¿Reconocés el cobro o querés que lo reclamemos?", QuestionKind.RECOGNIZE),
+    ],
+)
+def test_a_confirmation_that_names_its_action_is_not_a_recognition_question(
+    agent_text: str, kind: QuestionKind
+) -> None:
+    assert classify_question(agent_text) == kind
+
+
+@pytest.mark.parametrize(
+    ("language", "confirmation", "yes"),
+    [("es", CONFIRM_DISPUTE_ES, "Sí, confirmo."), ("pt", CONFIRM_DISPUTE_PT, "Sim, confirmo.")],
+)
+def test_the_agents_dispute_confirmation_gets_a_yes_not_the_recognition_answer(
+    language: str, confirmation: str, yes: str
+) -> None:
+    user = ScriptedUser(make_case(language, recognizes_charge=False, confirms_actions=True))
+    assert user.next_message(confirmation, 2) == yes
+    assert [(e.kind, e.value) for e in user.events] == [(QuestionKind.CONFIRM, True)]
+
+
+def test_the_block_confirmation_follows_wants_card_block() -> None:
+    declines = ScriptedUser(make_case(confirms_actions=True, wants_card_block=False))
+    assert declines.next_message(OFFER_BLOCK_ES, 3) == "No, no lo confirmo."
+    accepts = ScriptedUser(make_case(confirms_actions=True, wants_card_block=True))
+    assert accepts.next_message(OFFER_BLOCK_ES, 3) == "Sí, confirmo."
 
 
 def test_statements_before_the_question_do_not_change_the_kind() -> None:

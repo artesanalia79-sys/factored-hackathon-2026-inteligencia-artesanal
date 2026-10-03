@@ -2,10 +2,15 @@
 
 from bankagent.render.templates import (
     UnverifiedRenderError,
+    render_block_declined,
+    render_block_offer,
     render_blocked_card,
+    render_candidates,
     render_confirmation,
     render_created_dispute,
     render_created_handoff,
+    render_ineligible,
+    render_opening_question,
     render_outcome,
     render_recognition,
     render_state,
@@ -13,10 +18,15 @@ from bankagent.render.templates import (
 
 __all__ = [
     "UnverifiedRenderError",
+    "render_block_declined",
+    "render_block_offer",
     "render_blocked_card",
+    "render_candidates",
     "render_confirmation",
     "render_created_dispute",
     "render_created_handoff",
+    "render_ineligible",
+    "render_opening_question",
     "render_outcome",
     "render_recognition",
     "render_state",
