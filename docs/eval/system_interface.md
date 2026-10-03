@@ -72,15 +72,42 @@ to the tool, so the confirmation, the tool call and the harness observation line
 
 ## 4. How the harness plugs it in
 
-When `create_agent` exists, the harness side is one line in `bankagent.eval.adapters.proposed_system`
-(`TODO(T12-followup, Santiago)`):
+Real runs use the real Task 8 tools through `RunConfig.backend_factory`
+(`bankagent.eval.backend.FixtureBackendFactory`): the fixture bank is shared and every case run
+gets a fresh, empty ops store, so one run's disputes never reach another run or repeat. The
+run's stores are in `EvalEnvironment.backend`; the T13 agent's policy evaluator and
+confirmation issuer must be bound to them, not to stores of their own.
+
+When T13 is on `main`, `bankagent.eval.adapters.proposed_system` becomes (`TODO(T13, Santiago)`):
 
 ```python
-TurnFunctionSystem(name="proposed", variant=SystemVariant.PROPOSED, factory=create_agent)
+class _ProposedSystem:
+    name = "proposed"
+    variant = SystemVariant.PROPOSED
+
+    def open_session(self, env: EvalEnvironment) -> _AgentSession:
+        backend = env.backend  # required: real tools
+        agent = create_agent(
+            llm=env.llm,
+            tools=env.tools,
+            clock=env.clock,
+            policy=build_policy_evaluator(backend.serving, backend.store, clock=env.clock),
+            issue_confirmation=build_confirmation_issuer(backend.store),
+        )
+        return _AgentSession(agent, env.session)
 ```
 
-Until then `uv run poe eval-smoke` runs the scripted fake in `bankagent.eval.fake`, which follows
-this interface and can serve as an executable example.
+The LLM-only baseline (`bankagent.eval.baseline`, decision D1) already runs this way:
+
+```bash
+uv run poe eval-run --system baseline                      # dev cases, StubProvider, 0 USD
+uv run poe eval-run --system baseline --system proposed \
+    --provider openai --repeats 3 --budget-usd 5          # real cost: owner approval first
+```
+
+With the `StubProvider` the baseline cannot act (the stub only produces interpretations), so a
+stub run checks the plumbing, not the baseline. `uv run poe eval-smoke` still runs the scripted
+fakes in `bankagent.eval.fake`, which follow this interface and serve as an executable example.
 
 ## 5. Quick self-check for Task 13
 

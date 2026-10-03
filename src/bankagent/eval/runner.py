@@ -22,6 +22,7 @@ from bankagent.contracts.evaluation import EvalCase
 from bankagent.contracts.llm import LLMProvider
 from bankagent.contracts.records import ExecutionRecord
 from bankagent.contracts.tools import Tool
+from bankagent.eval.backend import RunBackend
 from bankagent.eval.simulator import ScriptedUser, SimEvent
 from bankagent.eval.system import EvalEnvironment, System, SystemTurn, ToolObservation, ToolObserver
 from bankagent.eval.tools import instrument_tools
@@ -110,7 +111,14 @@ def utc_now() -> datetime:
 
 @dataclass(slots=True)
 class RunConfig:
+    """``backend_factory`` (real Task 8 tools, a fresh ops store per case run) replaces ``tools``.
+
+    ``tools`` stays for the scripted fakes and tests; real tools must come from the factory,
+    because a shared ops store would carry one run's disputes into the next.
+    """
+
     tools: Mapping[ToolName, Tool[Any, Any]] = field(default_factory=dict)
+    backend_factory: Callable[[], RunBackend] | None = None
     provider_factory: ProviderFactory = stub_provider_for
     clock: Callable[[], datetime] = utc_now
     max_user_turns: int = DEFAULT_MAX_USER_TURNS
@@ -125,15 +133,43 @@ def run_case(
     config: RunConfig,
     spend: SpendGuard,
 ) -> CaseTrace:
+    backend = config.backend_factory() if config.backend_factory is not None else None
+    try:
+        return _run_case(
+            system,
+            case,
+            run_id=run_id,
+            repeat_index=repeat_index,
+            config=config,
+            spend=spend,
+            backend=backend,
+        )
+    finally:
+        if backend is not None:
+            backend.close()
+
+
+def _run_case(
+    system: System,
+    case: EvalCase,
+    *,
+    run_id: str,
+    repeat_index: int,
+    config: RunConfig,
+    spend: SpendGuard,
+    backend: RunBackend | None,
+) -> CaseTrace:
     observer = ToolObserver()
     session = _session_for(case, run_id, config.clock())
+    tools = backend.tools if backend is not None else config.tools
     env = EvalEnvironment(
         case_id=case.case_id,
         session=session,
         llm=config.provider_factory(case),
-        tools=instrument_tools(config.tools, observer, case.fault_injections),
+        tools=instrument_tools(tools, observer, case.fault_injections),
         observer=observer,
         clock=config.clock,
+        backend=backend,
     )
     user = ScriptedUser(case)
     turns: list[TurnLog] = []

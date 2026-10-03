@@ -16,6 +16,7 @@ from bankagent.contracts.enums import ActionType, SystemVariant, ToolName
 from bankagent.contracts.llm import LLMProvider
 from bankagent.contracts.records import ExecutionRecord
 from bankagent.contracts.tools import Tool
+from bankagent.eval.baseline import BaselineSystem
 from bankagent.eval.system import EvalEnvironment, SystemTurn
 
 
@@ -88,15 +89,16 @@ class _AgentSession:
 
 
 def proposed_system() -> TurnFunctionSystem:
-    """The real proposed agent. Not available until Task 13 lands."""
-    # TODO(T12-followup, Santiago): import the Task 13 agent factory and return
-    # TurnFunctionSystem(name="proposed", variant=SystemVariant.PROPOSED, factory=...).
-    raise NotImplementedError("the proposed agent (Task 13) does not exist yet")
+    """The real proposed agent. Not available until Task 13 is merged into ``main``.
+
+    Its factory must bind the T9 policy and the confirmation issuer to the run's own stores
+    (``EvalEnvironment.backend``), see ``docs/eval/system_interface.md`` section 4.
+    """
+    # TODO(T13, Santiago): when PR #46 merges, wire create_agent here as documented in
+    # docs/eval/system_interface.md section 4 (one adapter, no change to the harness).
+    raise NotImplementedError("the proposed agent (Task 13) is not on main yet")
 
 
-def baseline_llm_only_system() -> TurnFunctionSystem:
-    """The real LLM-only baseline (D1). Needs the Task 8 tools."""
-    # TODO(T12-followup, Santiago): build the LLM-only tool-calling loop on the Task 8 tools
-    # (session-scoped, auto-issued confirmation tokens, customer_id in the prompt, no policy,
-    # router or templates), see eval/preregistration.md section "Baseline".
-    raise NotImplementedError("the LLM-only baseline needs the Task 8 tools")
+def baseline_llm_only_system() -> BaselineSystem:
+    """The real LLM-only baseline (D1): ``bankagent.eval.baseline``. Needs real tools."""
+    return BaselineSystem()

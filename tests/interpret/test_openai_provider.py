@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import Mock
 
 import pytest
@@ -17,6 +18,7 @@ from openai import (
     ContentFilterFinishReasonError,
     LengthFinishReasonError,
 )
+from pydantic import BaseModel
 
 from bankagent.contracts.decisions import InterpretationResult
 from bankagent.contracts.llm import (
@@ -188,3 +190,51 @@ def test_missing_parsed_output_is_malformed() -> None:
     with pytest.raises(LLMMalformedOutput):
         _complete(provider)
     assert provider.spent_usd == provider._price(100, 20)
+
+
+class _Task(BaseModel):
+    """A model that declares its own task, like the evaluation's LLM-only baseline step."""
+
+    LLM_INSTRUCTIONS: ClassVar[str] = "Pick the next step."
+    PROMPT_VERSION: ClassVar[str] = "task-v1"
+
+    answer: str
+
+
+def test_a_model_that_declares_its_task_is_parsed_with_its_own_instructions() -> None:
+    client = Mock()
+    client.responses.parse.return_value = SimpleNamespace(
+        output_parsed=_Task(answer="ok"),
+        usage=SimpleNamespace(input_tokens=1000, output_tokens=100),
+    )
+    provider = OpenAIProvider(client=client)
+    completion = provider.complete_structured(
+        system="Customer id of this conversation: CUST-FX-001.",
+        messages=[ChatMessage(role="user", content="hola")],
+        response_model=_Task,
+        timeout_s=5,
+    )
+    assert completion.output == _Task(answer="ok")
+    kwargs = client.responses.parse.call_args.kwargs
+    assert kwargs["text_format"] is _Task
+    assert kwargs["instructions"].startswith("Pick the next step.")
+    assert "Interpret the customer's latest message" not in kwargs["instructions"]
+    assert "CUST-FX-001" not in str(kwargs)
+    assert kwargs["store"] is False
+    assert provider.spent_usd == provider._price(1000, 100)
+
+
+def test_a_model_without_a_declared_task_is_refused_before_any_call() -> None:
+    class Undeclared(BaseModel):
+        answer: str
+
+    client = Mock()
+    provider = OpenAIProvider(client=client)
+    with pytest.raises(LLMMalformedOutput):
+        provider.complete_structured(
+            system="x",
+            messages=[ChatMessage(role="user", content="hola")],
+            response_model=Undeclared,
+            timeout_s=5,
+        )
+    client.responses.parse.assert_not_called()

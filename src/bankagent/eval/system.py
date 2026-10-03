@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from bankagent.contracts.base import Contract
 from bankagent.contracts.domain import Session
@@ -28,6 +28,9 @@ from bankagent.contracts.enums import (
 from bankagent.contracts.llm import LLMProvider
 from bankagent.contracts.records import ExecutionRecord
 from bankagent.contracts.tools import Tool
+
+if TYPE_CHECKING:
+    from bankagent.eval.backend import RunBackend
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +69,9 @@ class EvalEnvironment:
 
     ``session`` is server-side: its ``customer_id`` must never reach the model in the proposed
     system (the LLM-only baseline may show it by design, see ``eval/preregistration.md``).
+    ``backend`` is the run's own stores when the run uses the real Task 8 tools (it issues the
+    confirmation tokens and gives the proposed agent's policy its inputs); ``None`` for the
+    scripted fakes, which simulate their tools.
     """
 
     case_id: str
@@ -74,6 +80,7 @@ class EvalEnvironment:
     tools: Mapping[ToolName, Tool[Any, Any]]
     observer: ToolObserver
     clock: Callable[[], datetime]
+    backend: RunBackend | None = None
 
 
 @dataclass(frozen=True, slots=True)

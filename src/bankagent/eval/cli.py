@@ -17,20 +17,27 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Sequence
+import tempfile
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
 from bankagent.contracts.enums import SystemVariant, UnsafeEvent
-from bankagent.eval.bank import load_bank
+from bankagent.contracts.evaluation import EvalCase
+from bankagent.contracts.llm import LLMProvider
+from bankagent.eval.adapters import baseline_llm_only_system, proposed_system
+from bankagent.eval.backend import FixtureBackendFactory
+from bankagent.eval.bank import BankIndex, load_bank
 from bankagent.eval.cases import DEV_DIR, ROOT, case_set_sha256, load_cases, reference_problems
 from bankagent.eval.fake import Behavior, ScriptedFakeSystem
 from bankagent.eval.gates import GATES_FILE, evaluate, load_gates
 from bankagent.eval.metrics import system_metrics
 from bankagent.eval.report import ReportContext, render
-from bankagent.eval.runner import RunConfig, run_suite, stub_provider_for
+from bankagent.eval.runner import CaseTrace, RunConfig, run_suite, stub_provider_for
 from bankagent.eval.scorer import ScoredRun, score
+from bankagent.eval.system import System
+from bankagent.interpret.stub import FAULTS_BY_INJECTION
 
 RUNS_DIR = ROOT / "eval" / "runs"
 SMOKE_BUDGET_USD = Decimal("0")
@@ -60,51 +67,40 @@ def self_check(runs: Sequence[ScoredRun]) -> list[str]:
     return problems
 
 
-def smoke(cases_dir: Path, out_dir: Path, repeats: int) -> int:
-    bank = load_bank()
-    cases = load_cases(cases_dir)
-    problems = [p for case in cases for p in reference_problems(case, bank)]
-    if problems:
-        print("\n".join(problems), file=sys.stderr)
-        return 1
-    systems = [
-        ScriptedFakeSystem(
-            variant=SystemVariant.PROPOSED, behavior=Behavior.IDEAL, cases=cases, bank=bank
-        ),
-        ScriptedFakeSystem(
-            variant=SystemVariant.BASELINE_LLM_ONLY, behavior=Behavior.NAIVE, cases=cases, bank=bank
-        ),
-    ]
-    now = datetime.now(UTC)
-    suite_id = f"smoke-{now:%Y%m%dT%H%M%SZ}"
-    traces = run_suite(
-        systems,
-        cases,
-        suite_id=suite_id,
-        repeats=repeats,
-        budget_usd_per_system=SMOKE_BUDGET_USD,
-        config=RunConfig(provider_factory=stub_provider_for),
-    )
+def write_outputs(
+    traces: Sequence[CaseTrace],
+    bank: BankIndex,
+    *,
+    out_dir: Path,
+    suite_id: str,
+    generated_at: datetime,
+    cases_dir: Path,
+    cases: Sequence[EvalCase],
+    repeats: int,
+    simulated: bool,
+    cost_assumptions: str,
+) -> list[ScoredRun]:
+    """Score the traces, evaluate the gates and write report.md, results and unsafe reasons."""
     runs = [score(trace, bank) for trace in traces]
     metrics = {
         variant: system_metrics([r for r in runs if r.result.system == variant], bank)
         for variant in (SystemVariant.PROPOSED, SystemVariant.BASELINE_LLM_ONLY)
+        if any(r.result.system == variant for r in runs)
     }
     gates = load_gates(GATES_FILE)
     gate_results = evaluate(gates, metrics)
     report = render(
         ReportContext(
             suite_id=suite_id,
-            generated_at=now.isoformat(timespec="seconds"),
+            generated_at=generated_at.isoformat(timespec="seconds"),
             cases_dir=cases_dir.relative_to(ROOT).as_posix()
             if cases_dir.is_relative_to(ROOT)
             else str(cases_dir),
             case_set_sha256=case_set_sha256(cases),
             n_cases=len(cases),
             repeats=repeats,
-            simulated=True,
-            cost_assumptions="StubProvider (keyword rules), 0 USD per call; spend limit 0 USD "
-            "per system (any cost aborts the run)",
+            simulated=simulated,
+            cost_assumptions=cost_assumptions,
         ),
         metrics,
         runs,
@@ -137,11 +133,123 @@ def smoke(cases_dir: Path, out_dir: Path, repeats: int) -> int:
         )
     print(f"gates ({gates.status}): " + ", ".join(f"{g.gate.id}={g.status}" for g in gate_results))
     print(f"report: {(out_dir / 'report.md').as_posix()}")
+    return runs
+
+
+def smoke(cases_dir: Path, out_dir: Path, repeats: int) -> int:
+    bank = load_bank()
+    cases = load_cases(cases_dir)
+    problems = [p for case in cases for p in reference_problems(case, bank)]
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        return 1
+    systems = [
+        ScriptedFakeSystem(
+            variant=SystemVariant.PROPOSED, behavior=Behavior.IDEAL, cases=cases, bank=bank
+        ),
+        ScriptedFakeSystem(
+            variant=SystemVariant.BASELINE_LLM_ONLY, behavior=Behavior.NAIVE, cases=cases, bank=bank
+        ),
+    ]
+    now = datetime.now(UTC)
+    suite_id = f"smoke-{now:%Y%m%dT%H%M%SZ}"
+    traces = run_suite(
+        systems,
+        cases,
+        suite_id=suite_id,
+        repeats=repeats,
+        budget_usd_per_system=SMOKE_BUDGET_USD,
+        config=RunConfig(provider_factory=stub_provider_for),
+    )
+    runs = write_outputs(
+        traces,
+        bank,
+        out_dir=out_dir,
+        suite_id=suite_id,
+        generated_at=now,
+        cases_dir=cases_dir,
+        cases=cases,
+        repeats=repeats,
+        simulated=True,
+        cost_assumptions="StubProvider (keyword rules), 0 USD per call; spend limit 0 USD "
+        "per system (any cost aborts the run)",
+    )
     problems = self_check(runs)
     if problems:
         print("SELF-CHECK FAILED:\n" + "\n".join(problems), file=sys.stderr)
         return 1
     print("self-check: ok (ideal fake clean and correct; naive fake triggers every unsafe event)")
+    return 0
+
+
+SYSTEMS: dict[str, Callable[[], System]] = {
+    "proposed": proposed_system,
+    "baseline": baseline_llm_only_system,
+}
+
+
+def real_run(
+    *,
+    system_names: Sequence[str],
+    cases_dir: Path,
+    out_dir: Path,
+    repeats: int,
+    provider: str,
+    budget_usd: Decimal,
+) -> int:
+    """Real systems on real Task 8 tools (fresh ops store per case run).
+
+    With ``--provider stub`` it costs 0 USD (the baseline cannot act on the keyword stub, the
+    proposed agent can). ``--provider openai`` spends real money: the owner approves the run
+    and its estimate first (``eval/preregistration.md`` section 10). Never the held-out set:
+    Task 27 opens it explicitly.
+    """
+    bank = load_bank()
+    cases = load_cases(cases_dir)
+    problems = [p for case in cases for p in reference_problems(case, bank)]
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        return 1
+    systems = [SYSTEMS[name]() for name in system_names]
+    if provider == "openai":
+        from bankagent.interpret.openai_provider import OpenAIProvider
+
+        def provider_factory(case: EvalCase) -> LLMProvider:
+            # Injected LLM faults stay simulated (0 USD), so both systems see the same fault.
+            if any(f in FAULTS_BY_INJECTION for f in case.fault_injections):
+                return stub_provider_for(case)
+            return OpenAIProvider()  # one budgeted provider per case run
+
+        assumptions = "OpenAIProvider (config/pricing.yaml), real cost"
+    else:
+        provider_factory = stub_provider_for
+        assumptions = "StubProvider (keyword rules), 0 USD per call"
+    now = datetime.now(UTC)
+    suite_id = f"run-{now:%Y%m%dT%H%M%SZ}"
+    with tempfile.TemporaryDirectory(prefix="bankagent-eval-") as workdir:
+        traces = run_suite(
+            systems,
+            cases,
+            suite_id=suite_id,
+            repeats=repeats,
+            budget_usd_per_system=budget_usd,
+            config=RunConfig(
+                backend_factory=FixtureBackendFactory(Path(workdir)),
+                provider_factory=provider_factory,
+            ),
+        )
+    write_outputs(
+        traces,
+        bank,
+        out_dir=out_dir,
+        suite_id=suite_id,
+        generated_at=now,
+        cases_dir=cases_dir,
+        cases=cases,
+        repeats=repeats,
+        simulated=False,
+        cost_assumptions=f"{assumptions}; spend limit {budget_usd} USD per system",
+    )
     return 0
 
 
@@ -152,9 +260,25 @@ def main(argv: list[str] | None = None) -> int:
     smoke_parser.add_argument("--cases", type=Path, default=DEV_DIR)
     smoke_parser.add_argument("--out", type=Path, default=RUNS_DIR / "smoke")
     smoke_parser.add_argument("--repeats", type=int, default=3)
+    run_parser = sub.add_parser("run", help="real systems on real tools (dev cases by default)")
+    run_parser.add_argument("--system", action="append", choices=sorted(SYSTEMS), required=True)
+    run_parser.add_argument("--cases", type=Path, default=DEV_DIR)
+    run_parser.add_argument("--out", type=Path, default=RUNS_DIR / "dev")
+    run_parser.add_argument("--repeats", type=int, default=1)
+    run_parser.add_argument("--provider", choices=("stub", "openai"), default="stub")
+    run_parser.add_argument("--budget-usd", type=Decimal, default=Decimal("0"))
     args = parser.parse_args(argv)
     if args.command == "smoke":
         return smoke(args.cases.resolve(), args.out, args.repeats)
+    if args.command == "run":
+        return real_run(
+            system_names=args.system,
+            cases_dir=args.cases.resolve(),
+            out_dir=args.out,
+            repeats=args.repeats,
+            provider=args.provider,
+            budget_usd=args.budget_usd,
+        )
     return 2
 
 
