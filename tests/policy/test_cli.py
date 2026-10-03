@@ -47,7 +47,7 @@ def test_it_explains_a_proceed_decision_rule_by_rule(
     assert "[internal]" in _line(out, "DSP-ACT-01")
     assert "fired:" not in out
     assert out.count("    passed") == 7
-    assert "TODO(T9, Santiago)" in out  # the window placeholder carries its TODO
+    assert "TODO(T9, Juan José)" in out  # the window placeholder carries its TODO
 
 
 def test_it_explains_an_escalation_with_the_key_that_fired(
