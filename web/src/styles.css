@@ -1,6 +1,6 @@
 /*
  * Design tokens. Direction: a calm retail-banking messenger. Sage-tinted neutral canvas, charcoal
- * ink as the primary action colour, one terracotta accent for the brand mark and focus, and a
+ * ink as the primary action colour, a turquoise accent for the brand mark and focus, and a
  * semantic green kept for "verified" only. Inspired by (not copied from) Intercom's messenger
  * restraint and Wise's fintech surfaces. Contrast pairs were checked against WCAG AA.
  *
@@ -21,9 +21,10 @@
   --hairline: #cfd6cc;
   --field-border: #7a8378;
   --on-ink: #f4f6f2;
-  --accent: #b0431b;
-  --accent-soft: #f5e2d8;
-  --on-accent: #fff8f4;
+  --accent: #1ceae7;
+  --accent-ink: #006d6c;
+  --accent-soft: #d7f8f5;
+  --on-accent: #073332;
   --positive: #1d6b3f;
   --positive-soft: #dcefe2;
   --negative: #a8261b;
@@ -55,9 +56,10 @@
     --hairline: #2c342d;
     --field-border: #646d63;
     --on-ink: #121612;
-    --accent: #e9825b;
-    --accent-soft: #3a2219;
-    --on-accent: #1a0f0a;
+    --accent: #1ceae7;
+    --accent-ink: #65f3ef;
+    --accent-soft: #123b39;
+    --on-accent: #073332;
     --positive: #7fd6a1;
     --positive-soft: #173524;
     --negative: #ff998a;
@@ -107,7 +109,7 @@ svg {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
 
@@ -202,8 +204,12 @@ svg {
   place-items: center;
   flex: none;
   border-radius: var(--r-control);
-  background: var(--accent);
-  color: var(--on-accent);
+  background: #102726;
+}
+
+.mark svg {
+  width: 100%;
+  height: 100%;
 }
 
 .mark--md {
@@ -449,6 +455,16 @@ svg {
   padding-top: var(--s2);
 }
 
+.login__intro::before,
+.welcome::before {
+  content: '';
+  display: block;
+  width: 44px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
 .promises {
   display: grid;
   gap: var(--s3);
@@ -466,7 +482,7 @@ svg {
 
 .promises svg {
   margin-top: 3px;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .login__panel form {
@@ -535,16 +551,17 @@ svg {
 }
 
 .persona:has(input:checked) {
-  border-color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--ink);
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-ink);
 }
 
 .persona:has(input:checked)::after {
-  border: 5px solid var(--ink);
+  border: 5px solid var(--accent-ink);
 }
 
 .persona:has(input:focus-visible) {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
 
@@ -687,6 +704,151 @@ svg {
   padding-top: clamp(var(--s5), 6vh, var(--s7));
 }
 
+.transactions {
+  margin-top: var(--s5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.transactions__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s4);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.transactions__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-control);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.transactions__head h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.transactions__head p {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.transactions__state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s4);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.transactions__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.transactions__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 62px;
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.transactions__row:last-child {
+  border-bottom: 0;
+}
+
+.transactions__facts {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.transactions__facts strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transactions__facts span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transactions__facts .transactions__reference {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: -0.02em;
+}
+
+.transactions__amount {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.transactions__ask {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s1);
+  min-height: 36px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.transactions__ask:hover {
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.transactions__more {
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.transactions__more:hover {
+  background: var(--accent-soft);
+}
+
+.welcome::before {
+  margin-bottom: var(--s4);
+}
+
 .welcome__title {
   margin-bottom: var(--s2);
   font-size: clamp(1.75rem, 1.35rem + 1.5vw, 2.25rem);
@@ -730,7 +892,8 @@ svg {
 }
 
 .suggestion:hover {
-  border-color: var(--field-border);
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
 }
 
 .suggestion__label {
@@ -744,6 +907,10 @@ svg {
 
 .suggestion__label svg {
   color: var(--muted);
+}
+
+.suggestion:hover .suggestion__label svg {
+  color: var(--accent-ink);
 }
 
 .suggestion__text {
@@ -917,7 +1084,7 @@ svg {
   height: 40px;
   border-radius: var(--r-pill);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .confirm__title {
@@ -1016,10 +1183,14 @@ svg {
   height: 40px;
   border: 0;
   border-radius: var(--r-control);
-  background: var(--ink);
-  color: var(--on-ink);
+  background: var(--accent);
+  color: var(--on-accent);
   cursor: pointer;
   transition: background-color 0.15s ease;
+}
+
+.composer__send:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 82%, var(--ink));
 }
 
 .composer__send:disabled {
@@ -1052,6 +1223,18 @@ svg {
 }
 
 @media (max-width: 520px) {
+  .transactions__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .transactions__amount {
+    grid-column: 1;
+    grid-row: 2;
+    padding-bottom: var(--s2);
+  }
+  .transactions__ask {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
   .personas__grid {
     grid-template-columns: minmax(0, 1fr);
   }
