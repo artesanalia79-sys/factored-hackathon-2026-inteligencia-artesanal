@@ -251,7 +251,7 @@ not forgotten. Each line keeps its original task number. Nothing here blocks the
 | From | Pending work |
 |---|---|
 | T9 | Primary-source check of the dispute windows for AR, MX and CO (`DSP-WIN-01`); business sign-off on `DSP-ESC-02` and `DSP-ESC-03`; the two descoped rules (high amount, foreign transaction) if a threshold is ever signed off. |
-| T13 | Items of the PR #46 review that were not merged into the critical path: global lock across sessions, confirmation token issued at the "yes", handoff routing, rule ids on the attack record, conversation state persisted and expired for more than one worker (`docs/limitations.md`). |
+| T13 | What the T13 finish left open (`docs/limitations.md`): a lock per session instead of the global one, which first needs the OpenAI provider's spend accounting made atomic (T10); conversation state persisted and expired for more than one worker; the keyword limits at the new questions (a negated answer to "which charge?", dates, a correction typed at the card-block question); the refusal copy for a card block with no dispute and for a claim's status; a native review of the new Portuguese copy. Done or decided in the T13 finish (decision ledger, 2026-10-02): handoff routing, rule ids on the refusal records, and the confirmation token issued at the "yes" (kept). |
 | T17 | Grow the held-out set toward the pre-registered n ≥ 200. |
 | T18 | ONNX embeddings and the LLM zero-shot comparator. |
 | T19 | Agent on `DATA_MODE=curated` end to end, with evidence from a local run. |
