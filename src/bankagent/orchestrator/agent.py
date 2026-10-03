@@ -141,8 +141,9 @@ def _matching(
         matches = [txn for txn in matches if txn.transaction_id == slots.transaction_ref]
     if slots.amount is not None:
         matches = [txn for txn in matches if txn.amount == slots.amount]
-    else:
+    elif slots.date_text is None and slots.card_last4 is None:
         # "1,249" alone is not an amount for the interpreter, but here it answers the question.
+        # Not when the answer has a date or a card ending: "el del 11/06" is not 11 pesos.
         numbers = {parse_amount(raw) for raw in _NUMBERS.findall(normalize(text))}
         by_number = [txn for txn in matches if txn.amount in numbers]
         matches = by_number or matches
@@ -469,7 +470,7 @@ class Agent:
         return self._reply(render_opening_question(self._language))
 
     def _reask(self, session: Session) -> AgentTurnOutput:
-        """Repeat the recognition or confirmation question after an unclear answer.
+        """Repeat the recognition or dispute confirmation question after an unclear answer.
 
         A generic clarification here would send the next answer back to the transaction search,
         which loses the question the customer was answering. Counts as a clarification round.
@@ -483,20 +484,7 @@ class Agent:
         ):
             return self._abstain(session)
         self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
-        if (
-            self._pending_block is not None
-            and self._cards_args is not None
-            and self._cards_result is not None
-            and self._cards_record is not None
-        ):
-            reply = render_confirmation(
-                self._language,
-                self._pending_block,
-                self._cards_args,
-                self._cards_result,
-                self._cards_record,
-            )
-        elif self._state == ConversationState.CONFIRM and self._pending_args is not None:
+        if self._state == ConversationState.CONFIRM and self._pending_args is not None:
             reply = render_confirmation(
                 self._language,
                 self._pending_args,
@@ -835,17 +823,35 @@ class Agent:
         self, session: Session, interpreted: InterpretationResult
     ) -> AgentTurnOutput:
         act = interpreted.dialogue_act
-        if act == DialogueAct.DENY:
+        args = self._pending_block
+        if (
+            act not in {DialogueAct.AFFIRM, DialogueAct.DENY}
+            and args is not None
+            and self._cards_args is not None
+            and self._cards_result is not None
+            and self._cards_record is not None
+        ):
+            # Unclear: ask again while clarification rounds remain. Once they are used up the
+            # answer is read as a no below, since only an explicit yes blocks a card.
+            self._clarifications += 1
+            if self._clarifications <= 2:
+                self._record(
+                    session, StepKind.RENDER, ConversationState.CONFIRM, StepOutcome.SUCCESS
+                )
+                return self._reply(
+                    render_confirmation(
+                        self._language,
+                        args,
+                        self._cards_args,
+                        self._cards_result,
+                        self._cards_record,
+                    )
+                )
+        self._pending_block = None
+        if act != DialogueAct.AFFIRM or args is None or self._issue_confirmation is None:
             # The dispute was already claimed in the previous reply; nothing else is written.
-            self._pending_block = None
             self._record(session, StepKind.RENDER, ConversationState.RESPOND, StepOutcome.SUCCESS)
             return self._reply(render_block_declined(self._language), ended=True)
-        if act != DialogueAct.AFFIRM:
-            return self._reask(session)
-        args = self._pending_block
-        if args is None or self._issue_confirmation is None:
-            return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
-        self._pending_block = None
         written = self._write(
             session,
             ToolName.BLOCK_CARD,
@@ -853,13 +859,14 @@ class Agent:
             BlockCardResult,
             render_blocked_card,
             issue=self._issue_confirmation,
+            # (2) the person who picks this up must know the dispute is already filed
             not_done=(
-                "The confirmed card block was not completed; check the card's status, then "
-                "block it if it is still active"
+                "The dispute was created, but the confirmed card block was not completed; "
+                "check the card's status, then block it if it is still active"
             ),
             unverified=(
-                "The card block was not verified by read-back; check the card's status before "
-                "blocking it again"
+                "The dispute was created, but the card block was not verified by read-back; "
+                "check the card's status before blocking it again"
             ),
         )
         if isinstance(written, AgentTurnOutput):

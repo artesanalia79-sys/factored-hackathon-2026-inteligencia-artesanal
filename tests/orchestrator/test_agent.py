@@ -895,6 +895,32 @@ def test_an_answer_that_fits_both_or_neither_repeats_the_list_then_abstains() ->
     assert bank.lookups == []
 
 
+def test_a_date_in_the_answer_is_not_read_as_an_amount() -> None:
+    eleven = _transaction().model_copy(
+        update={"transaction_id": "TXN-FX-0111", "amount": Decimal("11.00")}
+    )
+    twenty = _transaction().model_copy(
+        update={"transaction_id": "TXN-FX-0120", "amount": Decimal("20.00")}
+    )
+    bank = Bank(eleven, twenty)
+    agent = create_agent(
+        llm=StubProvider(),
+        tools={
+            ToolName.SEARCH_TRANSACTIONS: bank.tool(ToolName.SEARCH_TRANSACTIONS),
+            ToolName.GET_TRANSACTION: bank.tool(ToolName.GET_TRANSACTION),
+        },
+        clock=lambda: NOW,
+    )
+    agent.handle_turn(_session(), "No reconozco un cargo de ELECTROMUNDO")
+    # "11/06" is a date: it must not pick the charge of 11.00.
+    again = agent.handle_turn(_session(), "el del 11/06")
+    assert "¿Cuál de estos movimientos quieres revisar?" in again.reply_text
+    assert bank.lookups == []
+    # A bare amount still answers the question.
+    agent.handle_turn(_session(), "11")
+    assert bank.lookups == ["TXN-FX-0111"]
+
+
 def test_a_position_outside_the_list_is_not_a_choice() -> None:
     _, bank, again = _answer("el tercero")
     assert "¿Cuál de estos movimientos quieres revisar?" in again.reply_text
@@ -1183,6 +1209,36 @@ def test_an_unclear_answer_repeats_the_block_question() -> None:
     assert block.calls == 0
 
 
+def test_unclear_answers_to_the_block_question_end_as_a_no_never_as_a_block() -> None:
+    agent, _, block, _ = _block_agent()
+    _dispute_created(agent)
+    agent.handle_turn(_session(), "¿Y eso cuánto tarda?")
+    agent.handle_turn(_session(), "Gracias")
+    last = agent.handle_turn(_session(), "Gracias")
+    # The rounds are used up: not blocking is the safe reading. The dispute stays claimed, so
+    # this is not the "no tengo información suficiente" abstention.
+    assert last.ended
+    assert last.reply_text == "Entendido, no bloquearé la tarjeta."
+    assert last.claimed_actions == ()
+    assert block.calls == 0
+    assert not any(record.state == "abstain" for record in last.records)
+
+
+def test_a_requested_block_is_offered_for_another_dispute_reason() -> None:
+    agent, cards, block, _ = _block_agent()
+    agent.handle_turn(
+        _session(),
+        "Me cobraron dos veces 2,450 pesos en ELECTROMUNDO y quiero bloquear la tarjeta",
+    )
+    agent.handle_turn(_session(), "Sí, fui yo")
+    output = agent.handle_turn(_session(), "Sí, confirmo")
+    assert output.claimed_actions == (ActionType.CREATE_DISPUTE,)
+    assert output.reply_text.endswith("¿Confirmas bloquear la tarjeta terminada en 1234?")
+    assert not output.ended
+    assert cards.calls == 1
+    assert block.calls == 0
+
+
 def _policy_without_block(
     _session: Session, _transaction: GetTransactionResult, _reason: DisputeReason
 ) -> PolicyDecision:
@@ -1234,7 +1290,10 @@ def test_a_failed_block_escalates_without_claiming_it() -> None:
     assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
     assert "Bloqueé" not in output.reply_text
     assert handoff.draft is not None
-    assert "card block was not completed" in handoff.draft.open_questions[0]
+    question = handoff.draft.open_questions[0]
+    # Whoever picks this up must know the dispute is filed and only the block is missing.
+    assert "The dispute was created" in question
+    assert "card block was not completed" in question
 
 
 class FailingCardsTool(CardsTool):
