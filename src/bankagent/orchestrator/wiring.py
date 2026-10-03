@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
+from pydantic import ValidationError
+
 from bankagent.contracts.base import Contract
 from bankagent.contracts.decisions import PolicyDecision
 from bankagent.contracts.domain import ConfirmationToken, Session
@@ -12,11 +14,11 @@ from bankagent.contracts.enums import DisputeReason, ToolName
 from bankagent.contracts.errors import ToolUnavailable
 from bankagent.contracts.tools import GetTransactionResult
 from bankagent.orchestrator.agent import ConfirmationIssuer, PolicyEvaluator
-from bankagent.policy.engine import PolicyInputs, evaluate
-from bankagent.policy.schema import PolicyConfig, load_policy
+from bankagent.policy import PolicyConfig, build_inputs, evaluate, load_policy
 from bankagent.store.ops import OpsStore
 from bankagent.store.serving import ServingDB
 from bankagent.tools import issue_confirmation_token
+from bankagent.tools.base import INFRASTRUCTURE_ERRORS
 
 
 def build_policy_evaluator(
@@ -32,29 +34,21 @@ def build_policy_evaluator(
     def decide(
         session: Session, read: GetTransactionResult, _reason: DisputeReason
     ) -> PolicyDecision:
+        # The shared T9 builder, so the agent and `poe policy-explain` read the same facts, each
+        # date against its own clock (bank history vs `as_of_date`, agent disputes vs filing day).
         try:
-            profile = serving.customer(session.customer_id)
-            if profile is None:
-                raise ToolUnavailable("policy inputs unavailable")
-            history = serving.last_claim_date(session.customer_id)
-            agent_history = store.last_dispute_date(session.customer_id)
-            last_claim = max(
-                (date for date in (history, agent_history) if date is not None), default=None
-            )
-            inputs = PolicyInputs(
-                transaction=read.transaction,
-                customer_country=profile.country,
-                as_of_date=serving.as_of_date(),
+            inputs = build_inputs(
+                serving,
+                store,
+                session.customer_id,
+                read.transaction.transaction_id,
                 filed_on=clock().date(),
-                open_dispute_id=read.open_dispute_id,
-                risk=serving.risk_signals(session.customer_id, read.transaction.transaction_id),
-                last_claim_date=last_claim,
             )
-            return evaluate(policy, inputs)
-        except ToolUnavailable:
-            raise
-        except Exception:
-            raise ToolUnavailable("policy inputs unavailable") from None
+        except (*INFRASTRUCTURE_ERRORS, ValidationError):
+            inputs = None  # raised below, outside the handler, so no row-quoting cause is kept
+        if inputs is None:
+            raise ToolUnavailable("policy inputs unavailable")
+        return evaluate(policy, inputs)
 
     return decide
 

@@ -21,11 +21,13 @@ from bankagent.fixtures.builder import build
 from bankagent.interpret.stub import StubFault, StubProvider
 from bankagent.orchestrator.agent import create_agent
 from bankagent.orchestrator.wiring import build_confirmation_issuer, build_policy_evaluator
+from bankagent.policy import load_policy
 from bankagent.store.ops import OpsStore
 from bankagent.store.serving import ServingDB
 from bankagent.tools import build_tools
 
 NOW = datetime(2026, 6, 17, 12, tzinfo=UTC)
+POLICY_VERSION = load_policy().policy_version
 SECRET = "test-only-" + "".join(chr(97 + index % 26) for index in range(40))
 
 
@@ -118,7 +120,7 @@ def test_fx001_unrecognized_charge_creates_verified_dispute(
     assert third["claimed_actions"] == ["create_dispute"]
     dispute = store.get_dispute("CUST-FX-001", transaction_id="TXN-FX-0101")
     assert dispute is not None
-    assert dispute.policy_version == "dispute-v1"
+    assert dispute.policy_version == POLICY_VERSION
     assert store.count("disputes") == 1
 
 
@@ -169,8 +171,9 @@ def test_fx006_high_risk_escalates_with_complete_handoff(
     packet = store.get_handoff("CUST-FX-006", reference.group())
     assert packet is not None
     assert packet.customer_id == "CUST-FX-006"
-    assert packet.policy_version == "dispute-v1"
-    assert packet.trigger_rule_ids
+    assert packet.policy_version == POLICY_VERSION
+    # High amount is not a rule (descoped in dispute-v1.1); the fraud score escalates it.
+    assert packet.trigger_rule_ids == ("DSP-ESC-01",)
     assert packet.verified_facts[0].ref == "TXN-FX-0601"
     assert packet.open_questions
     assert packet.routing.specialty.value == "disputes"
@@ -208,3 +211,30 @@ def test_attack_has_no_action_and_timeout_uses_fallback(
         assert "¿Reconoces este movimiento?" in output.reply_text
         assert any(record.outcome == StepOutcome.FALLBACK for record in output.records)
         assert timeout_store.count("disputes") == 0
+
+
+def test_fx007_open_claim_and_repeat_disputer_follow_the_policy(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Valentina")
+    # TXN-FX-0701 already has an open claim in the bank's history: ineligible, nothing written.
+    first = _turn(client, headers, "No reconozco el cargo de PEDIDOSYA de 15.200 pesos")
+    assert "¿Reconoces este movimiento?" in first["reply_text"]
+    refused = _turn(client, headers, "No fui yo")
+    assert refused["ended"]
+    assert refused["claimed_actions"] == []
+    assert store.count("disputes") == store.count("handoffs") == 0
+
+    # TXN-FX-0702 has no open case, but a claim from 2026-04-02 makes her a repeat disputer.
+    headers = _headers(client, "Valentina")
+    _turn(client, headers, "No reconozco una recarga de SUBE de 5.000 pesos")
+    escalated = _turn(client, headers, "No fui yo")
+    assert escalated["claimed_actions"] == ["create_handoff"]
+    assert store.count("disputes") == 0
+    reference = re.search(r"\bHND-[a-zA-Z0-9-]+\b", escalated["reply_text"])
+    assert reference is not None
+    packet = store.get_handoff("CUST-FX-007", reference.group())
+    assert packet is not None
+    assert packet.trigger_rule_ids == ("DSP-ESC-02",)
+    assert packet.verified_facts[0].ref == "TXN-FX-0702"

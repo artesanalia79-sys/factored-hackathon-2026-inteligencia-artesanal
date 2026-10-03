@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from bankagent.contracts.base import Contract, args_hash
 from bankagent.contracts.decisions import PolicyDecision
@@ -19,6 +20,7 @@ from bankagent.contracts.enums import (
     TransactionStatus,
     TransactionType,
 )
+from bankagent.contracts.errors import ToolUnavailable
 from bankagent.contracts.tools import (
     TOOL_SPECS,
     CreateDisputeArgs,
@@ -32,7 +34,7 @@ from bankagent.contracts.tools import (
     ToolContext,
 )
 from bankagent.interpret.stub import StubFault, StubProvider
-from bankagent.orchestrator.agent import create_agent
+from bankagent.orchestrator.agent import PolicyEvaluator, create_agent
 
 NOW = datetime(2026, 10, 2, 12, tzinfo=UTC)
 
@@ -392,6 +394,11 @@ def test_clarification_is_limited_to_two_rounds() -> None:
     assert not second.ended
     assert third.ended
     assert get.calls == 0
+    # Scored as an abstention: a policy/blocked record would make the scorer report "denied".
+    assert any(record.state == "abstain" for record in third.records)
+    assert not any(
+        record.step == "policy" and record.outcome == "blocked" for record in third.records
+    )
 
 
 def test_unavailable_search_fails_without_claim_or_retry_prompt() -> None:
@@ -400,3 +407,150 @@ def test_unavailable_search_fails_without_claim_or_retry_prompt() -> None:
     assert output.ended
     assert output.claimed_actions == ()
     assert any(record.error_code == "tool_unavailable" for record in output.records)
+
+
+class FailingDisputeTool(DisputeTool):
+    def run(self, ctx: ToolContext, args: CreateDisputeArgs, /) -> CreateDisputeResult:
+        self.calls += 1
+        raise ToolUnavailable("create_dispute is temporarily unavailable")
+
+
+def _dispute_agent(
+    write: DisputeTool | None = None,
+    *,
+    handoff: HandoffTool | None = None,
+    policy: PolicyEvaluator = _policy,
+):
+    _, search, get = _agent()
+    tools: dict[ToolName, Any] = {
+        ToolName.SEARCH_TRANSACTIONS: search,
+        ToolName.GET_TRANSACTION: get,
+    }
+    if write is not None:
+        tools[ToolName.CREATE_DISPUTE] = write
+    if handoff is not None:
+        tools[ToolName.CREATE_HANDOFF] = handoff
+    agent = create_agent(
+        llm=StubProvider(),
+        tools=tools,
+        clock=lambda: NOW,
+        policy=policy,
+        issue_confirmation=_issue_token,
+    )
+    return agent, search, get
+
+
+def test_unclear_confirmation_answer_repeats_the_confirmation() -> None:
+    write = DisputeTool()
+    agent, search, get = _dispute_agent(write)
+    agent.handle_turn(_session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    agent.handle_turn(_session(), "No fui yo")
+    unclear = agent.handle_turn(_session(), "No, no la reconozco")
+    # The pending question is asked again; the answer must not go back to the search.
+    assert "¿Confirmas crear un reclamo" in unclear.reply_text
+    assert not unclear.ended
+    assert search.calls == get.calls == 1
+    assert write.calls == 0
+    done = agent.handle_turn(_session(), "Sí, confirmo")
+    assert done.claimed_actions == (ActionType.CREATE_DISPUTE,)
+    assert write.calls == 1
+
+
+def test_unclear_recognition_answer_repeats_the_question() -> None:
+    agent, search, get = _agent()
+    agent.handle_turn(_session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    unclear = agent.handle_turn(_session(), "¿Cuánto tarda el trámite?")
+    assert "¿Reconoces este movimiento?" in unclear.reply_text
+    assert not unclear.ended
+    assert search.calls == get.calls == 1
+
+
+def test_repeated_unclear_answers_end_in_abstention() -> None:
+    write = DisputeTool()
+    agent, _, _ = _dispute_agent(write)
+    agent.handle_turn(_session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    agent.handle_turn(_session(), "No fui yo")
+    agent.handle_turn(_session(), "No, no la reconozco")
+    agent.handle_turn(_session(), "No, no la reconozco")
+    last = agent.handle_turn(_session(), "No, no la reconozco")
+    assert last.ended
+    assert write.calls == 0
+    assert last.claimed_actions == ()
+    assert any(record.state == "abstain" for record in last.records)
+
+
+def test_unavailable_search_escalates_with_an_open_question() -> None:
+    handoff = HandoffTool()
+    agent = create_agent(
+        llm=StubProvider(), tools={ToolName.CREATE_HANDOFF: handoff}, clock=lambda: NOW
+    )
+    output = agent.handle_turn(_session(), "Tengo un cargo de 2,450 pesos que no reconozco")
+    assert output.ended
+    assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
+    assert handoff.draft is not None
+    assert handoff.draft.verified_facts == ()
+    assert "search was unavailable" in handoff.draft.open_questions[0]
+
+
+def test_unverified_dispute_escalates_without_claiming_it() -> None:
+    handoff = HandoffTool()
+    agent, _, _ = _dispute_agent(DisputeTool(verified=False), handoff=handoff)
+    agent.handle_turn(_session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    agent.handle_turn(_session(), "No fui yo")
+    output = agent.handle_turn(_session(), "Sí, confirmo")
+    assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
+    assert "Creé el reclamo" not in output.reply_text
+    assert handoff.draft is not None
+    assert "read-back" in handoff.draft.open_questions[0]
+    assert handoff.draft.verified_facts[0].ref == "TXN-FX-0101"
+
+
+def test_failed_dispute_write_escalates_the_confirmed_request() -> None:
+    handoff = HandoffTool()
+    write = FailingDisputeTool()
+    agent, _, _ = _dispute_agent(write, handoff=handoff)
+    agent.handle_turn(_session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    agent.handle_turn(_session(), "No fui yo")
+    output = agent.handle_turn(_session(), "Sí, confirmo")
+    assert write.calls == 1
+    assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
+    assert handoff.draft is not None
+    assert "could not be created" in handoff.draft.open_questions[0]
+    assert handoff.draft.policy_version == "test-v1"
+
+
+def test_policy_failure_escalates_instead_of_failing() -> None:
+    handoff = HandoffTool()
+
+    def unavailable(
+        _session: Session, _transaction: GetTransactionResult, _reason: DisputeReason
+    ) -> PolicyDecision:
+        raise ToolUnavailable("policy inputs unavailable")
+
+    agent, _, _ = _dispute_agent(DisputeTool(), handoff=handoff, policy=unavailable)
+    agent.handle_turn(_session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    output = agent.handle_turn(_session(), "No fui yo")
+    assert output.ended
+    assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
+    assert handoff.draft is not None
+    assert "Policy inputs" in handoff.draft.open_questions[0]
+    assert any(record.step == "policy" and record.outcome == "failure" for record in output.records)
+
+
+def test_unavailable_transaction_read_escalates() -> None:
+    handoff = HandoffTool()
+    transaction = _transaction()
+    agent = create_agent(
+        llm=StubProvider(),
+        tools={
+            ToolName.SEARCH_TRANSACTIONS: ReadTool(ToolName.SEARCH_TRANSACTIONS, transaction),
+            ToolName.CREATE_HANDOFF: handoff,
+        },
+        clock=lambda: NOW,
+    )
+    output = agent.handle_turn(
+        _session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco"
+    )
+    assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
+    assert handoff.draft is not None
+    assert "lookup was unavailable" in handoff.draft.open_questions[0]

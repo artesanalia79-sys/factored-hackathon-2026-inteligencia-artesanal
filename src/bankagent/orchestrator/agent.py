@@ -234,17 +234,56 @@ class Agent:
             return None, call.record
         return call.result, call.record
 
+    def _abstain(self, session: Session) -> AgentTurnOutput:
+        # Not a policy step: a `policy`/`blocked` record would be scored as a refusal (denied).
+        self._state = ConversationState.ABSTAIN
+        self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
+        return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
+
     def _clarify(self, session: Session) -> AgentTurnOutput:
         self._clarifications += 1
         if self._clarifications > 2:
-            self._state = ConversationState.ABSTAIN
-            self._record(session, StepKind.POLICY, self._state, StepOutcome.BLOCKED)
-            return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
+            return self._abstain(session)
         self._state = ConversationState.CLARIFY
         self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
         return self._reply(render_state(self._state, self._language))
 
-    def _escalate(self, session: Session, *, rule_ids: tuple[str, ...] = ()) -> AgentTurnOutput:
+    def _reask(self, session: Session) -> AgentTurnOutput:
+        """Repeat the recognition or confirmation question after an unclear answer.
+
+        A generic clarification here would send the next answer back to the transaction search,
+        which loses the question the customer was answering. Counts as a clarification round.
+        """
+        self._clarifications += 1
+        if (
+            self._clarifications > 2
+            or self._read_args is None
+            or self._read_result is None
+            or self._read_record is None
+        ):
+            return self._abstain(session)
+        self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
+        if self._state == ConversationState.CONFIRM and self._pending_args is not None:
+            reply = render_confirmation(
+                self._language,
+                self._pending_args,
+                self._read_args,
+                self._read_result,
+                self._read_record,
+            )
+        else:
+            reply = render_recognition(
+                self._language, self._read_args, self._read_result, self._read_record
+            )
+        return self._reply(reply)
+
+    def _escalate(
+        self,
+        session: Session,
+        *,
+        rule_ids: tuple[str, ...] = (),
+        open_question: str = "Review eligibility and next steps",
+    ) -> AgentTurnOutput:
         self._state = ConversationState.ESCALATE
         if ToolName.CREATE_HANDOFF not in self._tools:
             self._record(session, StepKind.HANDOFF, self._state, StepOutcome.FAILURE)
@@ -274,7 +313,7 @@ class Agent:
             ),
             intent=self._intent or Intent.HUMAN_REQUEST,
             verified_facts=facts,
-            open_questions=("Review eligibility and next steps",),
+            open_questions=(open_question,),
             trigger_rule_ids=rule_ids,
             policy_version=self._decision.policy_version if self._decision else "pending-policy",
             routing=HandoffRouting(
@@ -306,7 +345,9 @@ class Agent:
             decision = self._policy(session, self._read_result, self._reason)
         except ToolError:
             self._record(session, StepKind.POLICY, self._state, StepOutcome.FAILURE)
-            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+            return self._escalate(
+                session, open_question="Policy inputs were unavailable; check eligibility"
+            )
         self._decision = decision
         self._record(
             session,
@@ -345,10 +386,11 @@ class Agent:
         if interpreted.dialogue_act == DialogueAct.DENY:
             return self._reply(render_outcome(Outcome.INCOMPLETE, self._language), ended=True)
         if interpreted.dialogue_act != DialogueAct.AFFIRM:
-            return self._clarify(session)
+            return self._reask(session)
         if self._pending_args is None or self._issue_confirmation is None:
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
         args = self._pending_args
+        not_created = "The confirmed dispute could not be created; file it for the customer"
         tool = self._tools.get(ToolName.CREATE_DISPUTE)
         if tool is None:
             self._record(
@@ -360,11 +402,11 @@ class Agent:
                 args=args,
                 error_code=ToolErrorCode.TOOL_UNAVAILABLE,
             )
-            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+            return self._escalate(session, open_question=not_created)
         try:
             token = self._issue_confirmation(session, ToolName.CREATE_DISPUTE, args, self._clock())
         except ToolError:
-            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+            return self._escalate(session, open_question=not_created)
         self._record(
             session,
             StepKind.CONFIRMATION,
@@ -390,13 +432,21 @@ class Agent:
         )
         self._records.append(call.record)
         result = call.result
+        # A refused or failed write commits nothing (T8); an unverified one may exist. Either
+        # way a person must finish the confirmed request (T8 ledger: the tool-failure path).
         if call.error is not None or not isinstance(result, CreateDisputeResult):
-            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+            return self._escalate(session, open_question=not_created)
         self._state = ConversationState.VERIFY
         try:
             reply = render_created_dispute(self._language, args, result, call.record)
         except UnverifiedRenderError:
-            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+            return self._escalate(
+                session,
+                open_question=(
+                    "The dispute write was not verified by read-back; check whether it exists "
+                    "before filing it again"
+                ),
+            )
         self._record(session, StepKind.VERIFY, self._state, StepOutcome.SUCCESS, args=args)
         return self._reply(reply, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
 
@@ -436,7 +486,7 @@ class Agent:
                 return self._check_policy(session)
             if interpreted.dialogue_act == DialogueAct.NOT_RECOGNIZE_CHARGE:
                 return self._check_policy(session)
-            return self._clarify(session)
+            return self._reask(session)
         if self._state != ConversationState.CLARIFY and interpreted.intent not in {
             Intent.DISPUTE_UNRECOGNIZED,
             Intent.DISPUTE_DUPLICATE,
@@ -477,7 +527,10 @@ class Agent:
             )
             if found is None:
                 if search_record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
-                    return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+                    return self._escalate(
+                        session,
+                        open_question="Transaction search was unavailable; identify the charge",
+                    )
                 return self._clarify(session)
             if not found.transactions:
                 return self._clarify(session)
@@ -507,8 +560,12 @@ class Agent:
             ConversationState.RECOGNIZE,
         )
         if read is None or not record.verified:
-            self._state = ConversationState.ABSTAIN
-            return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
+            if record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
+                return self._escalate(
+                    session,
+                    open_question="Transaction lookup was unavailable; identify the charge",
+                )
+            return self._abstain(session)
         self._transaction = read.transaction
         self._read_args = read_args
         self._read_result = read
