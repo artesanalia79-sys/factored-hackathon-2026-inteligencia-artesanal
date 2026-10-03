@@ -15,7 +15,8 @@ process.env.E2E_RUN ??= `${process.pid}-${Date.now()}`
 const RUN = process.env.E2E_RUN
 // `stub` unless asked: E2E_LLM_PROVIDER=openai runs the servers on the real model, which costs
 // money, so pick one spec with -g and pass OPENAI_API_KEY in the environment (for example
-// `uv run --env-file ../.env -- npx playwright test -g "happy path"`). Capped at 2 cents a run.
+// `uv run --env-file ../.env -- npx playwright test -g "happy path"`). Two servers are capped
+// independently at 1 cent each, for a 2-cent maximum across the run.
 const LLM_PROVIDER = process.env.E2E_LLM_PROVIDER ?? 'stub'
 // Workers evaluate this file again: set once in the main process, inherited by the workers.
 process.env.E2E_ACCESS_CODE ??= randomBytes(12).toString('base64url')
@@ -32,7 +33,7 @@ function server(port: number, accessCode: string) {
       DATA_MODE: 'synthetic',
       DEMO_ACCESS_CODE: accessCode,
       LLM_PROVIDER,
-      LLM_SPEND_LIMIT_USD: '0.02',
+      LLM_SPEND_LIMIT_USD: '0.01',
       OPS_DB_PATH: join(tmpdir(), `bankagent-e2e-${RUN}-${port}.sqlite`),
       WEB_DIST_DIR: 'web/dist',
     },

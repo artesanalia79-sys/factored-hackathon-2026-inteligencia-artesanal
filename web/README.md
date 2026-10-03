@@ -35,6 +35,16 @@ hot reload and proxies `/api` and `/health` to :8000.
 | `uv run poe web-e2e` | Playwright against the real API serving `web/dist` (stub LLM, fixture bank, a fresh ops store and a random signing secret per run). First time: `npx --prefix web playwright install chromium` |
 | `E2E_LLM_PROVIDER=openai uv run --env-file ../.env -- npx playwright test -g "happy path"` (in `web/`) | One spec on the real model; costs money (capped at 2 cents a run), so never the whole suite |
 
+In PowerShell, from `web/`, run the live spec with:
+
+```powershell
+$env:E2E_LLM_PROVIDER = "openai"
+uv run --env-file ../.env -- npx playwright test -g "happy path"
+Remove-Item Env:E2E_LLM_PROVIDER
+```
+
+Playwright starts two API servers, each capped at 1 cent, for a 2-cent total maximum.
+
 The Playwright suite (`e2e/`, 17 tests) covers the happy path (login, dispute, confirmation, a
 second click on the card-block question as it appears), a keyboard-only run in Portuguese that
 also blocks the card, a handoff, a wrong code, a revoked session, failures injected in the
