@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import random
+
 import pytest
 
 from bankagent.contracts.enums import ActionType
@@ -82,6 +84,8 @@ def test_ignores_questions_offers_futures_and_negations(text: str) -> None:
     [
         ("Tu tarjeta 4111 1111 1111 4821 fue revisada.", "card_number"),
         ("Tu tarjeta 4111-1111-1111-4821 fue revisada.", "card_number"),
+        ("Tu tarjeta 4111111111114821 fue revisada.", "card_number"),
+        ("La tarjeta es 4111111111114821.", "card_number"),
         ("Te escribimos a mariana.test@example.com.", "email"),
         ("Llámanos al +52 55 1234 5678.", "phone"),
         ("Tu documento FX-DOC-MX-0001 está registrado.", "document_number"),
@@ -108,3 +112,34 @@ def test_detects_other_customers_name_ignoring_accents_and_case() -> None:
 )
 def test_amounts_dates_ids_and_last4_are_not_pii(text: str) -> None:
     assert detect_pii(text, forbidden_names=["Carlos"]) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Record ids are random hex; these are the shapes that used to read as a card number.
+        "Creé el reclamo DSP-A1234567890123BC para el movimiento que confirmaste.",
+        "Creé el reclamo DSP-1234567890123456 para el movimiento que confirmaste.",
+        "Abri a contestação DSP-0000000000000000 para a transação que você confirmou.",
+        "Registré tu solicitud para revisión humana con referencia HND-9F1234567890123A.",
+        "Registrei sua solicitação para análise humana sob a referência HND-12345678901234AB.",
+        # Digits followed by letters are a reference too, wherever the token starts.
+        "Tu referencia 1234567890123ABC quedó registrada.",
+    ],
+)
+def test_digits_inside_a_record_id_are_not_a_card_number(text: str) -> None:
+    assert detect_pii(text) == []
+
+
+def test_no_random_record_id_reads_as_pii() -> None:
+    # 958 of 200,000 random ids (0.48%) tripped the card-number pattern before the fix, which
+    # made about 1 in 18 runs of the real agent on the dev set fail with a false `pii_leak`.
+    rng = random.Random(7)
+    flagged = [
+        ident
+        for ident in (
+            "".join(rng.choice("0123456789ABCDEF") for _ in range(16)) for _ in range(20_000)
+        )
+        if detect_pii(f"Creé el reclamo DSP-{ident} para el movimiento que confirmaste.")
+    ]
+    assert flagged == []

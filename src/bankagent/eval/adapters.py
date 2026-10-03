@@ -18,6 +18,8 @@ from bankagent.contracts.records import ExecutionRecord
 from bankagent.contracts.tools import Tool
 from bankagent.eval.baseline import BaselineSystem
 from bankagent.eval.system import EvalEnvironment, SystemTurn
+from bankagent.orchestrator.agent import create_agent
+from bankagent.orchestrator.wiring import build_confirmation_issuer, build_policy_evaluator
 
 
 class AgentTurnOutput(Protocol):
@@ -88,15 +90,42 @@ class _AgentSession:
         )
 
 
-def proposed_system() -> TurnFunctionSystem:
-    """The real proposed agent. Not available until Task 13 is merged into ``main``.
+class ProposedSystem:
+    """``System`` over the real Task 13 agent, wired per case run.
 
-    Its factory must bind the T9 policy and the confirmation issuer to the run's own stores
-    (``EvalEnvironment.backend``), see ``docs/eval/system_interface.md`` section 4.
+    ``create_agent(llm, tools, clock)`` alone has no policy and no confirmation issuer: such an
+    agent abstains on every dispute and never writes. Both are bound here to the run's own
+    stores (``EvalEnvironment.backend``), on the run's clock: the write tools spend the tokens
+    this issuer saves on that store, and the repeat-disputer rule reads the disputes those
+    tools create there. So the run needs real tools (``RunConfig.backend_factory``).
     """
-    # TODO(T13, Santiago): when PR #46 merges, wire create_agent here as documented in
-    # docs/eval/system_interface.md section 4 (one adapter, no change to the harness).
-    raise NotImplementedError("the proposed agent (Task 13) is not on main yet")
+
+    @property
+    def name(self) -> str:
+        return "proposed"
+
+    @property
+    def variant(self) -> SystemVariant:
+        return SystemVariant.PROPOSED
+
+    def open_session(self, env: EvalEnvironment, /) -> _AgentSession:
+        backend = env.backend
+        if backend is None:
+            # A loud configuration error, never a run that quietly abstains on every dispute.
+            raise ValueError("the proposed agent needs real tools (RunConfig.backend_factory)")
+        agent = create_agent(
+            llm=env.llm,
+            tools=env.tools,
+            clock=env.clock,
+            policy=build_policy_evaluator(backend.serving, backend.store, clock=env.clock),
+            issue_confirmation=build_confirmation_issuer(backend.store),
+        )
+        return _AgentSession(agent, env.session)
+
+
+def proposed_system() -> ProposedSystem:
+    """The real proposed agent (Task 13). Needs real tools, like the baseline."""
+    return ProposedSystem()
 
 
 def baseline_llm_only_system() -> BaselineSystem:

@@ -43,13 +43,23 @@ from bankagent.contracts.tools import (
     GetTransactionResult,
     ListCardsArgs,
     ListCardsResult,
+    SearchTransactionsArgs,
+    SearchTransactionsResult,
 )
+from bankagent.eval.detectors import detect_claims
+from bankagent.eval.simulator import QuestionKind, classify_question
+from bankagent.policy import load_policy
 from bankagent.render import (
     UnverifiedRenderError,
+    render_block_declined,
+    render_block_offer,
     render_blocked_card,
+    render_candidates,
     render_confirmation,
     render_created_dispute,
     render_created_handoff,
+    render_ineligible,
+    render_opening_question,
     render_outcome,
     render_recognition,
     render_state,
@@ -157,6 +167,187 @@ def test_confirmation_snapshots(language: Language, transaction: TransactionView
         )
         == SNAPSHOT["confirm_block"][language.value]
     )
+
+
+def _candidates(transaction: TransactionView, count: int = 2) -> SearchTransactionsResult:
+    names = ("Mercado Sol", "Mercado Luna", "Mercado Mar", "Mercado Rio")
+    amounts = ("42.50", "99.00", "7.00", "8.00")
+    return SearchTransactionsResult(
+        transactions=tuple(
+            transaction.model_copy(
+                update={
+                    "transaction_id": f"txn-{index + 1}",
+                    "merchant_name": names[index],
+                    "amount": Decimal(amounts[index]),
+                }
+            )
+            for index in range(count)
+        )
+    )
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_candidates_snapshot_is_a_question_the_scripted_user_can_answer(
+    language: Language, transaction: TransactionView
+) -> None:
+    args = SearchTransactionsArgs(merchant_query="mercado")
+    copy = render_candidates(
+        language, args, _candidates(transaction), _record(ToolName.SEARCH_TRANSACTIONS, args)
+    )
+    assert copy == SNAPSHOT["candidates"][language.value]
+    assert detect_claims(copy) == frozenset()
+    assert classify_question(copy) == QuestionKind.CLARIFY
+    # Internal ids never reach the customer; the options are numbered instead.
+    assert "txn-" not in copy
+
+
+def test_candidates_reject_unverified_or_mismatched_search(transaction: TransactionView) -> None:
+    args = SearchTransactionsArgs(merchant_query="mercado")
+    found = _candidates(transaction)
+    with pytest.raises(UnverifiedRenderError):
+        render_candidates(
+            Language.ES, args, found, _record(ToolName.SEARCH_TRANSACTIONS, args, verified=False)
+        )
+    other = SearchTransactionsArgs(merchant_query="otro")
+    with pytest.raises(UnverifiedRenderError):  # the record of another search
+        render_candidates(Language.ES, args, found, _record(ToolName.SEARCH_TRANSACTIONS, other))
+    with pytest.raises(UnverifiedRenderError):  # a read that is not a search
+        render_candidates(Language.ES, args, found, _record(ToolName.GET_TRANSACTION, args))
+
+
+@pytest.mark.parametrize("count", [1, 4])
+def test_candidates_list_only_two_or_three_matches(
+    count: int, transaction: TransactionView
+) -> None:
+    args = SearchTransactionsArgs(merchant_query="mercado")
+    with pytest.raises(UnverifiedRenderError):
+        render_candidates(
+            Language.ES,
+            args,
+            _candidates(transaction, count),
+            _record(ToolName.SEARCH_TRANSACTIONS, args),
+        )
+
+
+@pytest.mark.parametrize("language", list(Language))
+@pytest.mark.parametrize("reason", list(DisputeReason))
+def test_the_scripted_user_reads_each_question_as_the_agent_means_it(
+    language: Language, reason: DisputeReason, transaction: TransactionView
+) -> None:
+    txn_args = GetTransactionArgs(transaction_id="txn-1")
+    read = GetTransactionResult(transaction=transaction)
+    record = _record(ToolName.GET_TRANSACTION, txn_args)
+    recognition = render_recognition(language, txn_args, read, record)
+    assert classify_question(recognition) == QuestionKind.RECOGNIZE
+    # The confirmation names the reason ("movimiento no reconocido") and is still a confirmation.
+    dispute = CreateDisputeArgs(transaction_id="txn-1", reason=reason, idempotency_key="request-1")
+    confirmation = render_confirmation(language, dispute, txn_args, read, record)
+    assert classify_question(confirmation) == QuestionKind.CONFIRM
+    block = BlockCardArgs(
+        product_id="card-1", reason="customer request", idempotency_key="request-2"
+    )
+    card_args = ListCardsArgs()
+    offer = render_block_offer(
+        language, block, card_args, _active_card(), _record(ToolName.LIST_CARDS, card_args)
+    )
+    assert classify_question(offer) == QuestionKind.CONFIRM
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_the_generic_clarification_is_a_question_the_scripted_user_can_answer(
+    language: Language,
+) -> None:
+    copy = render_state(ConversationState.CLARIFY, language)
+    assert copy.endswith("?")
+    assert classify_question(copy) == QuestionKind.CLARIFY
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_opening_question_snapshot_is_a_question_the_scripted_user_can_answer(
+    language: Language,
+) -> None:
+    copy = render_opening_question(language)
+    assert copy == SNAPSHOT["opening_question"][language.value]
+    assert copy.endswith("?")
+    assert detect_claims(copy) == frozenset()
+    # Without a question the scripted user stops; an unclassified one gets "No estoy seguro".
+    assert classify_question(copy) == QuestionKind.CLARIFY
+
+
+@pytest.mark.parametrize("language", list(Language))
+@pytest.mark.parametrize("key", sorted(SNAPSHOT["ineligible"]))
+def test_ineligible_snapshots_claim_nothing(key: str, language: Language) -> None:
+    copy = render_ineligible(key, language)
+    assert copy == SNAPSHOT["ineligible"][key][language.value]
+    # "Ya tiene un reclamo abierto" is about the bank's records, not an action of this agent.
+    assert detect_claims(copy) == frozenset()
+
+
+def test_every_eligibility_rule_of_the_policy_has_copy() -> None:
+    keys = {rule.explanation_key for rule in load_policy().eligibility_rules()}
+    assert keys == set(SNAPSHOT["ineligible"])
+
+
+@pytest.mark.parametrize("language", list(Language))
+@pytest.mark.parametrize("key", [None, "dispute.rule_added_later"])
+def test_ineligible_without_copy_is_a_refusal_not_an_abstention(
+    key: str | None, language: Language
+) -> None:
+    assert render_ineligible(key, language) == render_outcome(Outcome.DENIED, language)
+
+
+def _active_card(product_id: str = "card-1") -> ListCardsResult:
+    return ListCardsResult(
+        cards=(
+            CardView(
+                product_id=product_id,
+                card_type=CardType.CREDIT,
+                card_last4="1234",
+                currency="USD",
+                product_status=ProductStatus.ACTIVE,
+            ),
+        )
+    )
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_block_offer_snapshots_claim_nothing(language: Language) -> None:
+    args = BlockCardArgs(
+        product_id="card-1", reason="customer request", idempotency_key="request-2"
+    )
+    card_args = ListCardsArgs()
+    offer = render_block_offer(
+        language, args, card_args, _active_card(), _record(ToolName.LIST_CARDS, card_args)
+    )
+    assert offer == SNAPSHOT["block_offer"][language.value]
+    declined = render_block_declined(language)
+    assert declined == SNAPSHOT["block_declined"][language.value]
+    # An offer and a refusal to act are not statements that the card was blocked.
+    assert detect_claims(offer) == frozenset()
+    assert detect_claims(declined) == frozenset()
+
+
+def test_block_offer_rejects_unverified_or_foreign_card_read() -> None:
+    args = BlockCardArgs(
+        product_id="card-1", reason="customer request", idempotency_key="request-2"
+    )
+    card_args = ListCardsArgs()
+    with pytest.raises(UnverifiedRenderError):
+        render_block_offer(
+            Language.ES,
+            args,
+            card_args,
+            _active_card(),
+            _record(ToolName.LIST_CARDS, card_args, verified=False),
+        )
+    with pytest.raises(UnverifiedRenderError):
+        render_block_offer(
+            Language.ES,
+            args,
+            card_args,
+            _active_card("card-2"),
+            _record(ToolName.LIST_CARDS, card_args),
+        )
 
 
 @pytest.mark.parametrize("language", list(Language))
