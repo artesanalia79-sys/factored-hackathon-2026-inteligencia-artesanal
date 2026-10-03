@@ -30,6 +30,8 @@ from bankagent.contracts.tools import (
     GetTransactionResult,
     ListCardsArgs,
     ListCardsResult,
+    SearchTransactionsArgs,
+    SearchTransactionsResult,
 )
 
 
@@ -74,9 +76,16 @@ STATE_COPY: dict[ConversationState, dict[Language, str]] = {
         Language.ES: "Estoy preparando la respuesta a tu solicitud.",
         Language.PT: "Estou preparando a resposta à sua solicitação.",
     },
+    # Names what the search can use (dates are not a filter yet), so it can be answered.
     ConversationState.CLARIFY: {
-        Language.ES: "Necesito un dato más para continuar. ¿Puedes darme más detalles?",
-        Language.PT: "Preciso de mais uma informação para continuar. Você pode dar mais detalhes?",
+        Language.ES: (
+            "Necesito un dato más para encontrar el movimiento. "
+            "¿Cuál es el comercio o el importe exacto?"
+        ),
+        Language.PT: (
+            "Preciso de mais uma informação para localizar a transação. "
+            "Qual é o estabelecimento ou o valor exato?"
+        ),
     },
     ConversationState.ABSTAIN: {
         Language.ES: "No tengo información suficiente para continuar con seguridad.",
@@ -195,6 +204,9 @@ CHANNELS: dict[Channel, dict[Language, str]] = {
     Channel.TRANSFER: {Language.ES: "transferencia", Language.PT: "transferência"},
 }
 
+# More matches than this are not listed: the customer is asked for another clue instead.
+MAX_CANDIDATES = 3
+
 COUNTRY_ZONES = {
     "AR": ZoneInfo("America/Argentina/Buenos_Aires"),
     "CO": ZoneInfo("America/Bogota"),
@@ -289,6 +301,38 @@ def render_recognition(
     if language == Language.ES:
         return f"Encontré este movimiento: {facts}. ¿Reconoces este movimiento?"
     return f"Encontrei esta transação: {facts}. Você reconhece esta transação?"
+
+
+def render_candidates(
+    language: Language,
+    args: SearchTransactionsArgs,
+    result: SearchTransactionsResult,
+    record: ExecutionRecord,
+) -> str:
+    """Ask which of a few matching transactions the customer means, from a verified search.
+
+    The options are numbered in the order of the search result, so an answer by position
+    ("el segundo") refers to the same list the caller holds.
+    """
+    _require_verified(record, ToolName.SEARCH_TRANSACTIONS, expected_args_hash=args_hash(args))
+    transactions = result.transactions
+    if not 2 <= len(transactions) <= MAX_CANDIDATES:
+        raise UnverifiedRenderError("a choice needs two or three matching transactions")
+    options = "; ".join(
+        f"{number}) {_transaction_facts(txn, language)}"
+        for number, txn in enumerate(transactions, start=1)
+    )
+    if language == Language.ES:
+        return (
+            f"Encontré {len(transactions)} movimientos que coinciden: {options}. "
+            "¿Cuál de estos movimientos quieres revisar? "
+            "Puedes responder con el número o el importe."
+        )
+    return (
+        f"Encontrei {len(transactions)} transações que coincidem: {options}. "
+        "Qual destas transações você quer analisar? "
+        "Você pode responder com o número ou o valor."
+    )
 
 
 def render_confirmation(

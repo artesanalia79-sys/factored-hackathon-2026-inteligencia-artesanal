@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -48,12 +49,19 @@ from bankagent.contracts.tools import (
     Tool,
     ToolContext,
 )
-from bankagent.interpret.keywords import interpret_text, language_evidence, normalize
+from bankagent.interpret.keywords import (
+    interpret_text,
+    language_evidence,
+    normalize,
+    parse_amount,
+)
 from bankagent.render.templates import (
+    MAX_CANDIDATES,
     UnverifiedRenderError,
     render_block_declined,
     render_block_offer,
     render_blocked_card,
+    render_candidates,
     render_confirmation,
     render_created_dispute,
     render_created_handoff,
@@ -87,9 +95,76 @@ BLOCK_REASONS = {
 }
 
 
+# An answer that only names a position in the list of matching charges: "2", "el segundo",
+# "opción 1", "o último". Runs on normalized text; anchored, so "dos veces" is not a position.
+_POSITION = re.compile(
+    r"^(?:(?:es|e|el|la|o|a|opcion|opcao|numero|nro|#)\s*)*"
+    r"(?:(?P<p0>1|uno|una|um|uma|primer[oa]?|primeir[oa])"
+    r"|(?P<p1>2|dos|dois|duas|segund[oa])"
+    r"|(?P<p2>3|tres|tercer[oa]?|terceir[oa])"
+    r"|(?P<last>ultim[oa]))"
+    r"(?:\s+(?:opcion|opcao|movimiento|cargo|cobro|compra|transacao|cobranca))?[.!)]*$"
+)
+_NUMBERS = re.compile(r"\d[\d.,]*\d|\d")
+_WORDS = re.compile(r"[a-z]{4,}")
+
+
 def _compact(text: str) -> str:
     """No case, accents, spaces or punctuation: "Electro Mundo" is in "ELECTROMUNDO ONLINE"."""
     return "".join(char for char in normalize(text) if char.isalnum())
+
+
+def _position(text: str, count: int) -> int | None:
+    """The 0-based position an answer names in a list of ``count`` options, if it names one."""
+    match = _POSITION.match(normalize(text))
+    if match is None:
+        return None
+    if match.group("last"):
+        return count - 1
+    index = next(i for i, group in enumerate(("p0", "p1", "p2")) if match.group(group))
+    return index if index < count else None
+
+
+def _matching(
+    choices: tuple[TransactionView, ...], slots: DisputeSlots, text: str
+) -> tuple[TransactionView, ...]:
+    """The listed charges an answer describes: by reference, amount, card and merchant."""
+    matches = list(choices)
+    if slots.transaction_ref is not None:
+        matches = [txn for txn in matches if txn.transaction_id == slots.transaction_ref]
+    if slots.amount is not None:
+        matches = [txn for txn in matches if txn.amount == slots.amount]
+    else:
+        # "1,249" alone is not an amount for the interpreter, but here it answers the question.
+        numbers = {parse_amount(raw) for raw in _NUMBERS.findall(normalize(text))}
+        by_number = [txn for txn in matches if txn.amount in numbers]
+        matches = by_number or matches
+    if slots.card_last4 is not None:
+        matches = [txn for txn in matches if txn.card_last4 == slots.card_last4]
+    if slots.merchant_query is not None:
+        query = _compact(slots.merchant_query)
+        matches = [txn for txn in matches if query in _compact(txn.merchant_name or "")]
+    if len(matches) > 1:
+        # A word only one of them has in its merchant name: "el de marketplace".
+        names = {
+            txn.transaction_id: set(_WORDS.findall(normalize(txn.merchant_name or "")))
+            for txn in matches
+        }
+        named = {
+            holders[0]
+            for word in _WORDS.findall(normalize(text))
+            if len(holders := [key for key, words in names.items() if word in words]) == 1
+        }
+        if len(named) == 1:
+            matches = [txn for txn in matches if txn.transaction_id in named]
+    return tuple(matches)
+
+
+def _has_clues(slots: DisputeSlots) -> bool:
+    return any(
+        value is not None
+        for value in (slots.transaction_ref, slots.amount, slots.card_last4, slots.merchant_query)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +214,12 @@ class Agent:
         self._cards_args: ListCardsArgs | None = None
         self._cards_result: ListCardsResult | None = None
         self._cards_record: ExecutionRecord | None = None
+        # A few matching charges the customer was asked to choose from, and the search behind
+        # the question (kept to ask it again).
+        self._choices: tuple[TransactionView, ...] = ()
+        self._choice_args: SearchTransactionsArgs | None = None
+        self._choice_result: SearchTransactionsResult | None = None
+        self._choice_record: ExecutionRecord | None = None
         self._clarifications = 0
         self._ended = False
 
@@ -275,6 +356,81 @@ class Agent:
         self._state = ConversationState.CLARIFY
         self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
         return self._reply(render_state(self._state, self._language))
+
+    def _ask_which(
+        self,
+        session: Session,
+        args: SearchTransactionsArgs,
+        found: SearchTransactionsResult,
+        record: ExecutionRecord,
+    ) -> AgentTurnOutput:
+        """Ask which of two or three matching charges the customer means.
+
+        The generic clarification named nothing a customer could answer. This one lists the
+        verified facts of each match, and `_pick` resolves the answer. Counts as a
+        clarification round, the first time and every time it is asked again.
+        """
+        try:
+            question = render_candidates(self._language, args, found, record)
+        except UnverifiedRenderError:
+            return self._clarify(session)
+        self._clarifications += 1
+        if self._clarifications > 2:
+            return self._abstain(session)
+        self._choices = found.transactions
+        self._choice_args = args
+        self._choice_result = found
+        self._choice_record = record
+        self._state = ConversationState.CLARIFY
+        self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
+        return self._reply(question)
+
+    def _pick(
+        self, session: Session, interpreted: InterpretationResult, text: str
+    ) -> AgentTurnOutput | None:
+        """Resolve the answer to "which one?" by position, amount, card, reference or merchant.
+
+        One match: that charge goes to the recognition question. An answer that describes a
+        charge outside the list is a correction, as in `_start_over`: this returns None and
+        the turn searches again with only the new clues. Anything else repeats the list.
+        """
+        choices = self._choices
+        position = _position(text, len(choices))
+        if position is not None:
+            matches: tuple[TransactionView, ...] = (choices[position],)
+        else:
+            matches = _matching(choices, interpreted.slots, text)
+        if len(matches) == 1:
+            self._choices = ()
+            return self._show(session, GetTransactionArgs(transaction_id=matches[0].transaction_id))
+        if not matches and _has_clues(interpreted.slots):
+            return self._start_over(session)
+        if self._choice_args is None or self._choice_result is None or self._choice_record is None:
+            return self._abstain(session)
+        return self._ask_which(session, self._choice_args, self._choice_result, self._choice_record)
+
+    def _show(self, session: Session, read_args: GetTransactionArgs) -> AgentTurnOutput:
+        """Read one transaction and ask the recognition question about it."""
+        read, record = self._read(
+            session,
+            ToolName.GET_TRANSACTION,
+            read_args,
+            GetTransactionResult,
+            ConversationState.RECOGNIZE,
+        )
+        if read is None or not record.verified:
+            if record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
+                return self._escalate(
+                    session,
+                    open_question="Transaction lookup was unavailable; identify the charge",
+                )
+            return self._abstain(session)
+        self._transaction = read.transaction
+        self._read_args = read_args
+        self._read_result = read
+        self._read_record = record
+        self._state = ConversationState.RECOGNIZE
+        return self._reply(render_recognition(self._language, read_args, read, record))
 
     def _merged(self, supplied: DisputeSlots) -> DisputeSlots:
         """The clues of this message on top of the ones the customer gave before."""
@@ -489,6 +645,7 @@ class Agent:
         self._read_record = None
         self._decision = None
         self._pending_args = None
+        self._choices = ()
         # The correction describes the charge afresh: an old amount would filter out a merchant
         # named now, so only the card-block request carries over.
         self._slots = DisputeSlots(card_block_requested=self._slots.card_block_requested)
@@ -730,6 +887,10 @@ class Agent:
         if self._pending_block is not None:
             # Before the intent check below: "Sí, bloquéala" is a card_block intent, not a dispute.
             return self._confirm_block(session, interpreted)
+        if self._choices:
+            answered = self._pick(session, interpreted, text)
+            if answered is not None:
+                return answered
         if self._state in {ConversationState.RECOGNIZE, ConversationState.CONFIRM}:
             if not self._points_elsewhere(interpreted.slots):
                 if self._state == ConversationState.CONFIRM:
@@ -764,62 +925,42 @@ class Agent:
             card_last4=slots.card_last4,
         )
         if slots.transaction_ref is not None:
-            read_args = GetTransactionArgs(transaction_id=slots.transaction_ref)
-        else:
-            found, search_record = self._read(
-                session,
-                ToolName.SEARCH_TRANSACTIONS,
-                search_args,
-                SearchTransactionsResult,
-                ConversationState.IDENTIFY_TXN,
-            )
-            if found is None:
-                if search_record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
-                    return self._escalate(
-                        session,
-                        open_question="Transaction search was unavailable; identify the charge",
-                    )
-                return self._clarify(session)
-            if not found.transactions:
-                return self._clarify(session)
-            candidates = found.transactions
-            if len(candidates) == 1:
-                chosen = candidates[0]
-            elif self._reason == DisputeReason.DUPLICATE and len(candidates) == 2:
-                earlier, later = sorted(candidates, key=lambda txn: txn.transaction_ts)
-                same_charge = (
-                    earlier.product_id == later.product_id
-                    and earlier.merchant_name == later.merchant_name
-                    and earlier.amount == later.amount
-                    and earlier.currency == later.currency
-                    and (later.transaction_ts - earlier.transaction_ts).total_seconds() <= 120
-                )
-                if not same_charge:
-                    return self._clarify(session)
-                chosen = later
-            else:
-                return self._clarify(session)
-            read_args = GetTransactionArgs(transaction_id=chosen.transaction_id)
-        read, record = self._read(
+            return self._show(session, GetTransactionArgs(transaction_id=slots.transaction_ref))
+        found, search_record = self._read(
             session,
-            ToolName.GET_TRANSACTION,
-            read_args,
-            GetTransactionResult,
-            ConversationState.RECOGNIZE,
+            ToolName.SEARCH_TRANSACTIONS,
+            search_args,
+            SearchTransactionsResult,
+            ConversationState.IDENTIFY_TXN,
         )
-        if read is None or not record.verified:
-            if record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
+        if found is None:
+            if search_record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
                 return self._escalate(
                     session,
-                    open_question="Transaction lookup was unavailable; identify the charge",
+                    open_question="Transaction search was unavailable; identify the charge",
                 )
-            return self._abstain(session)
-        self._transaction = read.transaction
-        self._read_args = read_args
-        self._read_result = read
-        self._read_record = record
-        self._state = ConversationState.RECOGNIZE
-        return self._reply(render_recognition(self._language, read_args, read, record))
+            return self._clarify(session)
+        candidates = found.transactions
+        chosen: TransactionView | None = None
+        if len(candidates) == 1:
+            chosen = candidates[0]
+        elif self._reason == DisputeReason.DUPLICATE and len(candidates) == 2:
+            earlier, later = sorted(candidates, key=lambda txn: txn.transaction_ts)
+            same_charge = (
+                earlier.product_id == later.product_id
+                and earlier.merchant_name == later.merchant_name
+                and earlier.amount == later.amount
+                and earlier.currency == later.currency
+                and (later.transaction_ts - earlier.transaction_ts).total_seconds() <= 120
+            )
+            if same_charge:
+                chosen = later
+        if chosen is not None:
+            return self._show(session, GetTransactionArgs(transaction_id=chosen.transaction_id))
+        if 2 <= len(candidates) <= MAX_CANDIDATES and not found.truncated:
+            return self._ask_which(session, search_args, found, search_record)
+        # No match, or too many to list: ask for another clue.
+        return self._clarify(session)
 
 
 def create_agent(

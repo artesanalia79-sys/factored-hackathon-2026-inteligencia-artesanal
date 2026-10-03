@@ -37,8 +37,8 @@
       "pt": "Estou preparando a resposta à sua solicitação."
     },
     "clarify": {
-      "es": "Necesito un dato más para continuar. ¿Puedes darme más detalles?",
-      "pt": "Preciso de mais uma informação para continuar. Você pode dar mais detalhes?"
+      "es": "Necesito un dato más para encontrar el movimiento. ¿Cuál es el comercio o el importe exacto?",
+      "pt": "Preciso de mais uma informação para localizar a transação. Qual é o estabelecimento ou o valor exato?"
     },
     "abstain": {
       "es": "No tengo información suficiente para continuar con seguridad.",
@@ -148,5 +148,9 @@
   "opening_question": {
     "es": "Puedo ayudarte con un cargo que no reconoces, un cobro duplicado o una compra que no recibiste. ¿Qué pasó y cuál es el comercio o el importe del movimiento?",
     "pt": "Posso ajudar com uma cobrança que você não reconhece, uma cobrança duplicada ou uma compra que não chegou. O que aconteceu e qual é o estabelecimento ou o valor da transação?"
+  },
+  "candidates": {
+    "es": "Encontré 2 movimientos que coinciden: 1) comercio Mercado Sol, fecha 17/06/2026, canal compra presencial, tarjeta terminada en 1234, importe 42,50 USD; 2) comercio Mercado Luna, fecha 17/06/2026, canal compra presencial, tarjeta terminada en 1234, importe 99,00 USD. ¿Cuál de estos movimientos quieres revisar? Puedes responder con el número o el importe.",
+    "pt": "Encontrei 2 transações que coincidem: 1) estabelecimento Mercado Sol, data 17/06/2026, canal compra presencial, cartão com final 1234, valor 42,50 USD; 2) estabelecimento Mercado Luna, data 17/06/2026, canal compra presencial, cartão com final 1234, valor 99,00 USD. Qual destas transações você quer analisar? Você pode responder com o número ou o valor."
   }
 }

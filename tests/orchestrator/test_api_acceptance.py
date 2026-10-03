@@ -409,6 +409,49 @@ def test_bare_yes_or_no_answers_the_recognition_question(
     assert "Você confirma a abertura de uma contestação" in nao["reply_text"]
 
 
+def test_two_amazon_charges_are_listed_and_the_chosen_one_is_disputed(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    asked = _turn(client, headers, "Tengo un cargo de Amazon que no reconozco")
+    assert "1) comercio AMAZON MX, fecha 11/06/2026" in asked["reply_text"]
+    assert "2) comercio AMAZON MX MARKETPLACE, fecha 10/06/2026" in asked["reply_text"]
+    assert "¿Cuál de estos movimientos quieres revisar?" in asked["reply_text"]
+    shown = _turn(client, headers, "El de 1,249 pesos")
+    assert "importe 1,249.00 MXN. ¿Reconoces este movimiento?" in shown["reply_text"]
+    _turn(client, headers, "No")
+    done = _turn(client, headers, "Sí")
+    assert done["claimed_actions"] == ["create_dispute"]
+    assert store.get_dispute("CUST-FX-001", transaction_id="TXN-FX-0105") is not None
+    assert store.get_dispute("CUST-FX-001", transaction_id="TXN-FX-0104") is None
+    assert store.count("disputes") == 1
+
+
+def test_the_choice_can_be_a_position_in_the_list(system: tuple[TestClient, OpsStore]) -> None:
+    client, _ = system
+    for answer, amount in (("el segundo", "899.00 MXN"), ("1", "1,249.00 MXN")):
+        headers = _headers(client, "Mariana")
+        _turn(client, headers, "Tengo un cargo de Amazon que no reconozco")
+        shown = _turn(client, headers, answer)
+        assert f"importe {amount}. ¿Reconoces este movimiento?" in shown["reply_text"]
+
+
+def test_another_customers_reference_as_the_choice_discloses_nothing(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    _turn(client, headers, "Tengo un cargo de Amazon que no reconozco")
+    # TXN-FX-0601 is Carlos's charge at LUXURY WATCHES INTL.
+    answer = _turn(client, headers, "Es la TXN-FX-0601")
+    assert answer["ended"]
+    assert answer["claimed_actions"] == []
+    assert "LUXURY" not in answer["reply_text"]
+    assert "9.800.000" not in answer["reply_text"]
+    assert store.count("disputes") == store.count("handoffs") == 0
+
+
 def test_a_correction_searches_again_instead_of_answering_for_the_wrong_charge(
     system: tuple[TestClient, OpsStore],
 ) -> None:

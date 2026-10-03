@@ -43,6 +43,8 @@ from bankagent.contracts.tools import (
     GetTransactionResult,
     ListCardsArgs,
     ListCardsResult,
+    SearchTransactionsArgs,
+    SearchTransactionsResult,
 )
 from bankagent.eval.detectors import detect_claims
 from bankagent.eval.simulator import QuestionKind, classify_question
@@ -52,6 +54,7 @@ from bankagent.render import (
     render_block_declined,
     render_block_offer,
     render_blocked_card,
+    render_candidates,
     render_confirmation,
     render_created_dispute,
     render_created_handoff,
@@ -164,6 +167,75 @@ def test_confirmation_snapshots(language: Language, transaction: TransactionView
         )
         == SNAPSHOT["confirm_block"][language.value]
     )
+
+
+def _candidates(transaction: TransactionView, count: int = 2) -> SearchTransactionsResult:
+    names = ("Mercado Sol", "Mercado Luna", "Mercado Mar", "Mercado Rio")
+    amounts = ("42.50", "99.00", "7.00", "8.00")
+    return SearchTransactionsResult(
+        transactions=tuple(
+            transaction.model_copy(
+                update={
+                    "transaction_id": f"txn-{index + 1}",
+                    "merchant_name": names[index],
+                    "amount": Decimal(amounts[index]),
+                }
+            )
+            for index in range(count)
+        )
+    )
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_candidates_snapshot_is_a_question_the_scripted_user_can_answer(
+    language: Language, transaction: TransactionView
+) -> None:
+    args = SearchTransactionsArgs(merchant_query="mercado")
+    copy = render_candidates(
+        language, args, _candidates(transaction), _record(ToolName.SEARCH_TRANSACTIONS, args)
+    )
+    assert copy == SNAPSHOT["candidates"][language.value]
+    assert detect_claims(copy) == frozenset()
+    assert classify_question(copy) == QuestionKind.CLARIFY
+    # Internal ids never reach the customer; the options are numbered instead.
+    assert "txn-" not in copy
+
+
+def test_candidates_reject_unverified_or_mismatched_search(transaction: TransactionView) -> None:
+    args = SearchTransactionsArgs(merchant_query="mercado")
+    found = _candidates(transaction)
+    with pytest.raises(UnverifiedRenderError):
+        render_candidates(
+            Language.ES, args, found, _record(ToolName.SEARCH_TRANSACTIONS, args, verified=False)
+        )
+    other = SearchTransactionsArgs(merchant_query="otro")
+    with pytest.raises(UnverifiedRenderError):  # the record of another search
+        render_candidates(Language.ES, args, found, _record(ToolName.SEARCH_TRANSACTIONS, other))
+    with pytest.raises(UnverifiedRenderError):  # a read that is not a search
+        render_candidates(Language.ES, args, found, _record(ToolName.GET_TRANSACTION, args))
+
+
+@pytest.mark.parametrize("count", [1, 4])
+def test_candidates_list_only_two_or_three_matches(
+    count: int, transaction: TransactionView
+) -> None:
+    args = SearchTransactionsArgs(merchant_query="mercado")
+    with pytest.raises(UnverifiedRenderError):
+        render_candidates(
+            Language.ES,
+            args,
+            _candidates(transaction, count),
+            _record(ToolName.SEARCH_TRANSACTIONS, args),
+        )
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_the_generic_clarification_is_a_question_the_scripted_user_can_answer(
+    language: Language,
+) -> None:
+    copy = render_state(ConversationState.CLARIFY, language)
+    assert copy.endswith("?")
+    assert classify_question(copy) == QuestionKind.CLARIFY
 
 
 @pytest.mark.parametrize("language", list(Language))

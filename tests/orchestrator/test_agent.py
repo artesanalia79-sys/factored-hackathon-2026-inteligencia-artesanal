@@ -20,6 +20,7 @@ from bankagent.contracts.enums import (
     ActionType,
     CardType,
     Channel,
+    ConversationState,
     DecisionType,
     DisputeReason,
     DisputeStatus,
@@ -51,9 +52,11 @@ from bankagent.interpret.keywords import interpret_text
 from bankagent.interpret.stub import StubFault, StubProvider
 from bankagent.orchestrator.agent import PolicyEvaluator, create_agent
 from bankagent.render.templates import (
+    render_candidates,
     render_ineligible,
     render_opening_question,
     render_outcome,
+    render_state,
 )
 
 NOW = datetime(2026, 10, 2, 12, tzinfo=UTC)
@@ -692,6 +695,202 @@ def test_a_request_the_agent_knows_and_does_not_serve_is_refused_at_once() -> No
             record.step == "policy" and record.outcome == "blocked" for record in output.records
         )
         assert search.calls == get.calls == 0
+
+
+# -- two or three matching charges: ask which one, then resolve the answer ---------------------
+
+
+class Bank:
+    """Search and lookup over a fixed list; the search returns what the filters leave."""
+
+    def __init__(self, *transactions: TransactionView) -> None:
+        self.transactions = transactions
+        self.searches: list[SearchTransactionsArgs] = []
+        self.lookups: list[str] = []
+
+    def tool(self, name: ToolName) -> Any:
+        bank = self
+
+        class _Tool:
+            spec = TOOL_SPECS[name]
+
+            def run(
+                self, ctx: ToolContext, args: SearchTransactionsArgs | GetTransactionArgs, /
+            ) -> SearchTransactionsResult | GetTransactionResult:
+                if isinstance(args, GetTransactionArgs):
+                    bank.lookups.append(args.transaction_id)
+                    return GetTransactionResult(
+                        transaction=next(
+                            txn
+                            for txn in bank.transactions
+                            if txn.transaction_id == args.transaction_id
+                        )
+                    )
+                bank.searches.append(args)
+                found = tuple(
+                    txn
+                    for txn in bank.transactions
+                    if (args.amount_min is None or txn.amount == args.amount_min)
+                    and (
+                        args.merchant_query is None
+                        or args.merchant_query.lower() in (txn.merchant_name or "").lower()
+                    )
+                    and (args.card_last4 is None or txn.card_last4 == args.card_last4)
+                )
+                return SearchTransactionsResult(transactions=found)
+
+        return _Tool()
+
+
+def _amazon_pair() -> tuple[TransactionView, TransactionView]:
+    newer = _transaction().model_copy(
+        update={
+            "transaction_id": "TXN-FX-0105",
+            "merchant_name": "AMAZON MX",
+            "amount": Decimal("1249.00"),
+        }
+    )
+    older = _transaction().model_copy(
+        update={
+            "transaction_id": "TXN-FX-0104",
+            "merchant_name": "AMAZON MX MARKETPLACE",
+            "amount": Decimal("899.00"),
+            "card_last4": "0937",
+            "transaction_ts": NOW - timedelta(days=2),
+        }
+    )
+    return newer, older
+
+
+def _choice_agent(*extra: TransactionView):
+    bank = Bank(*_amazon_pair(), *extra)
+    agent = create_agent(
+        llm=StubProvider(),
+        tools={
+            ToolName.SEARCH_TRANSACTIONS: bank.tool(ToolName.SEARCH_TRANSACTIONS),
+            ToolName.GET_TRANSACTION: bank.tool(ToolName.GET_TRANSACTION),
+        },
+        clock=lambda: NOW,
+        policy=_policy,
+    )
+    return agent, bank
+
+
+AMBIGUOUS = "Tengo un cargo de Amazon que no reconozco"
+
+
+def test_two_matching_charges_are_listed_from_the_verified_search() -> None:
+    agent, bank = _choice_agent()
+    asked = agent.handle_turn(_session(), AMBIGUOUS)
+    search = next(record for record in asked.records if record.tool == "search_transactions")
+    assert search.verified
+    assert asked.reply_text == render_candidates(
+        Language.ES,
+        bank.searches[0],
+        SearchTransactionsResult(transactions=_amazon_pair()),
+        search,
+    )
+    assert "1) comercio AMAZON MX," in asked.reply_text
+    assert "2) comercio AMAZON MX MARKETPLACE," in asked.reply_text
+    assert "¿Cuál de estos movimientos quieres revisar?" in asked.reply_text
+    assert not asked.ended
+    assert asked.claimed_actions == ()
+    assert bank.lookups == []  # nothing is shown as "the" charge before the customer chooses
+
+
+def _answer(text: str) -> tuple[Any, Bank, Any]:
+    agent, bank = _choice_agent()
+    agent.handle_turn(_session(), AMBIGUOUS)
+    return agent, bank, agent.handle_turn(_session(), text)
+
+
+def test_the_answer_is_resolved_by_amount() -> None:
+    agent, bank, shown = _answer("El de 1,249 pesos")
+    assert bank.lookups == ["TXN-FX-0105"]
+    assert "importe 1,249.00 MXN. ¿Reconoces este movimiento?" in shown.reply_text
+    # The request keeps its reason: the next "no" goes to the dispute confirmation.
+    confirm = agent.handle_turn(_session(), "No")
+    assert "¿Confirmas crear un reclamo por movimiento no reconocido" in confirm.reply_text
+
+
+def test_the_answer_is_resolved_by_a_bare_number_position_card_or_merchant() -> None:
+    for text, chosen in (
+        ("1,249", "TXN-FX-0105"),  # the interpreter sees no amount in a bare number
+        ("899", "TXN-FX-0104"),
+        ("1", "TXN-FX-0105"),
+        ("El primero", "TXN-FX-0105"),
+        ("el segundo", "TXN-FX-0104"),
+        ("Opción 2.", "TXN-FX-0104"),
+        ("el último", "TXN-FX-0104"),
+        ("a segunda", "TXN-FX-0104"),
+        ("El de la tarjeta terminada en 0937", "TXN-FX-0104"),
+        ("el de marketplace", "TXN-FX-0104"),
+        ("Es la TXN-FX-0104", "TXN-FX-0104"),
+    ):
+        _, bank, shown = _answer(text)
+        assert bank.lookups == [chosen], text
+        assert "¿Reconoces este movimiento?" in shown.reply_text, text
+
+
+def test_an_answer_that_fits_both_or_neither_repeats_the_list_then_abstains() -> None:
+    agent, bank, again = _answer("el de Amazon")  # both are Amazon
+    assert "¿Cuál de estos movimientos quieres revisar?" in again.reply_text
+    assert not again.ended
+    assert bank.lookups == []
+    # Asking and asking again were the two rounds.
+    last = agent.handle_turn(_session(), "no sé")
+    assert last.ended
+    assert any(record.state == "abstain" for record in last.records)
+    assert bank.lookups == []
+
+
+def test_a_position_outside_the_list_is_not_a_choice() -> None:
+    _, bank, again = _answer("el tercero")
+    assert "¿Cuál de estos movimientos quieres revisar?" in again.reply_text
+    assert bank.lookups == []
+
+
+def test_an_answer_naming_another_charge_searches_again_with_only_the_new_clues() -> None:
+    other = _transaction()  # ELECTROMUNDO, 2,450
+    agent, bank = _choice_agent(other)
+    agent.handle_turn(_session(), AMBIGUOUS)
+    shown = agent.handle_turn(_session(), "No, es el de ELECTROMUNDO")
+    assert bank.searches[-1].merchant_query == "ELECTROMUNDO"
+    assert bank.lookups == ["TXN-FX-0101"]
+    assert "comercio ELECTROMUNDO" in shown.reply_text
+    # The list is gone: the next answer is about the charge on screen.
+    confirm = agent.handle_turn(_session(), "No")
+    assert "¿Confirmas crear un reclamo" in confirm.reply_text
+    assert "comercio ELECTROMUNDO" in confirm.reply_text
+    # Asking which one and the correction used the two rounds.
+    assert agent.handle_turn(_session(), "¿Y eso cuánto tarda?").ended
+
+
+def test_more_matches_than_can_be_listed_get_the_generic_clarification() -> None:
+    extras = tuple(
+        _transaction().model_copy(
+            update={"transaction_id": f"TXN-FX-02{index}", "merchant_name": f"AMAZON PRIME {index}"}
+        )
+        for index in range(2)
+    )
+    agent, bank = _choice_agent(*extras)
+    asked = agent.handle_turn(_session(), AMBIGUOUS)
+    assert asked.reply_text == render_state(ConversationState.CLARIFY, Language.ES)
+    assert bank.lookups == []
+
+
+def test_a_correction_after_the_choice_still_searches_again() -> None:
+    agent, bank, _ = _answer("El de 1,249 pesos")
+    corrected = agent.handle_turn(_session(), "No, ese no es, es el de 899 pesos")
+    assert bank.lookups == ["TXN-FX-0105", "TXN-FX-0104"]
+    assert "importe 899.00 MXN" in corrected.reply_text
+
+
+def test_two_different_charges_under_a_duplicate_request_are_listed_too() -> None:
+    agent, bank = _choice_agent()
+    asked = agent.handle_turn(_session(), "Me cobraron dos veces en Amazon")
+    assert "¿Cuál de estos movimientos quieres revisar?" in asked.reply_text
+    assert bank.lookups == []
 
 
 # -- an ineligible decision says why -----------------------------------------------------------
