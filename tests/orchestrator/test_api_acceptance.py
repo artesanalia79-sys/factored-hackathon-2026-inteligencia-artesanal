@@ -263,11 +263,13 @@ def test_bare_yes_or_no_answers_the_recognition_question(
     assert store.count("disputes") == 1
 
     headers = _headers(client, "Rafael")
-    _turn(
+    opening = _turn(
         client,
         headers,
-        "Oi, apareceu uma compra de 32.500 pesos na GAMESTORE DIGITAL que eu não fiz.",
+        "Oi, apareceu uma compra de 32.500 pesos na GAMESTORE DIGITAL que eu não fiz. "
+        "Não reconheço essa compra.",
     )
+    assert "Você reconhece esta transação?" in opening["reply_text"]
     nao = _turn(client, headers, "Não")
     assert "Você confirma a abertura de uma contestação" in nao["reply_text"]
 
