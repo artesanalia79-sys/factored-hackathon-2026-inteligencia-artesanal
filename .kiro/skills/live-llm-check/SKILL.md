@@ -37,8 +37,22 @@ confirming a fix. A few cents answer most questions when the calls are chosen on
 | 1 | One call with the smallest input that exercises the change | 1 |
 | 2 | The few inputs the change is about (for example the four answers of the confirmation buttons) | 2 to 5 |
 | 3 | One conversation over HTTP: `TestClient` on `create_app`, with the provider from `api.wiring.build_llm` | about 4 |
-| 4 | One browser spec of the web UI (T14): in `web/`, `E2E_LLM_PROVIDER=openai uv run --env-file ../.env -- npx playwright test -g "<one spec>"` (capped at 2 cents) | about 4 |
+| 4 | One browser spec of the web UI (T14): from `web/`, use the command below (2-cent total cap across both servers) | about 4 |
 | 5 | A broader run, such as `uv run poe eval-run --system proposed --provider openai` on the dev cases: only when asked, estimated first, logged in the ledger | tens |
+
+For step 4, run one named spec. In Bash:
+
+```bash
+E2E_LLM_PROVIDER=openai uv run --env-file ../.env -- npx playwright test -g "<one spec>"
+```
+
+In PowerShell:
+
+```powershell
+$env:E2E_LLM_PROVIDER = "openai"
+uv run --env-file ../.env -- npx playwright test -g "<one spec>"
+Remove-Item Env:E2E_LLM_PROVIDER
+```
 
 Never run a whole test suite on a paid model. Go up a step only when the one below is clean.
 
