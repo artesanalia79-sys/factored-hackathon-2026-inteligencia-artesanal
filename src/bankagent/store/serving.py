@@ -11,7 +11,7 @@ Rules that hold here so callers cannot get them wrong:
   no tool result or template ever carries ``fraud_score`` or ``dq_flags``.
 
 Timestamps are naive UTC in the file and are returned as aware UTC datetimes.
-Owner: Juan José (T7, T8, T19); policy inputs: Santiago (T9).
+Owner: Juan José (T7, T8, T9, T19); the policy inputs were first written by Santiago (PR #44).
 """
 
 from __future__ import annotations
@@ -80,10 +80,14 @@ WHERE customer_id = ? AND transaction_id = ?
 """
 
 # Any status, any transaction: a repeat disputer is a property of the customer, not of one
-# transaction. A dispute is T16's strict definition (`t16_dispute_definition.sql`): a
-# Complaint or Claim in category Transactions. Not `case_type = 'Claim'` alone: on the curated
-# data 81% of the customers with a recent Claim had only Fees, app, branch or service claims,
-# and most unrecognized-charge cases are filed as Complaint (PR #44 review).
+# transaction. A dispute is a Complaint or Claim (T16's case types, `t16_dispute_definition.sql`)
+# in category Transactions. T16's strict definition also requires the subcategory
+# 'Cargo no reconocido'; the category is used instead because the fixture's subcategories are
+# in English and a Transactions case with no subcategory may still be a disputed charge (curated,
+# 90 days before as_of_date: 963 customers flagged, 876 with the strict subcategory).
+# Not `case_type = 'Claim'` alone: on the curated data, for 1,115 of the 1,379 customers with a
+# recent Claim (81%) none of those claims was a 'Cargo no reconocido', and 765 customers with a
+# recent 'Cargo no reconocido' case had no recent Claim at all (PR #44 review).
 _LAST_DISPUTE_SQL = """
 SELECT max(created_at) FROM dispute_history
 WHERE customer_id = ? AND category = 'Transactions' AND case_type IN ('Complaint', 'Claim')
