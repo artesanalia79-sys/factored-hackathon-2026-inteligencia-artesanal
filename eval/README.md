@@ -12,8 +12,14 @@ Owner: Santiago. Rules: `docs/rules/eval.md`. Skill: `eval-case-authoring`. Code
 | `runs/` | local run outputs (`results.jsonl`, `unsafe_reasons.jsonl`, `report.md`), gitignored | T12 |
 | `reports/` | final evaluation reports | T27 |
 
-`preregistration.md` and `gates.yaml` are **drafts** until the team freezes them, before the
-held-out set is unsealed.
+`preregistration.md` and `gates.yaml` were **frozen on 2026-10-03**, before the held-out set was
+written; any later change is a deviation (`preregistration.md`, section 11).
+
+## Real systems (`uv run poe eval-run`)
+
+Runs `baseline` (built) and `proposed` (once Task 13 is on `main`) on the real Task 8 tools, a
+fresh ops store per case run. `--provider stub` costs 0 USD; `--provider openai` costs money and
+needs the owner's approval of an estimate first. See `docs/eval/system_interface.md`.
 
 ## Smoke run (CI, 0 USD)
 

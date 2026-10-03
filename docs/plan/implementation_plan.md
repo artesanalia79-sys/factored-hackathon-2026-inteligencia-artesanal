@@ -41,18 +41,18 @@ new rules and no more tuning of the synthetic placeholders.
 
 | # | Task | What "done" means now |
 |---|---|---|
-| 1 | T13 finish | The four demo-visible gaps from the PR #46 review: card-block offer, copy for an ineligible decision, a first "Hola" does not end the chat, two matching charges get a question a customer can answer. Plus the simulator order fix (`_CONFIRM` before `_RECOGNIZE`). Merge. |
+| 1 | T13 finish | The four demo-visible gaps from the PR #46 review: card-block offer, copy for an ineligible decision, a first "Hola" does not end the chat, two matching charges get a question a customer can answer. Plus the simulator order fix (`_CONFIRM` before `_RECOGNIZE`). Merge, then wire `proposed_system()` into the harness (one adapter, `docs/eval/system_interface.md` section 4) and run `uv run poe eval-run --system proposed` on the dev cases. |
 | 2 | T15 | Dockerfile, `/health`, `/ready`, a public URL. Independent of T13, start now. Include a way to reset the demo (a persona escalates on its second dispute until the ops store is reset, `docs/limitations.md`). |
 | 3 | T14 | One screen: persona login, chat, confirm/cancel. No console, no side-by-side. |
 | 4 | T17 | Reduced held-out, see below. |
-| 5 | T27 | One run, both systems, deviations from the pre-registration listed. |
+| 5 | T27 | One run, both systems (the LLM-only baseline is built: `bankagent.eval.baseline`), deviations from the pre-registration listed. Pre-registration and gates frozen on 2026-10-03. |
 | 6 | T28 | README, 4-6 slides, 3-minute video, fresh-clone dry run, email. |
 
 **Reduced (minimum version, still P0 unless noted).**
 
 | Task | Before | Now |
 |---|---|---|
-| T17 | ≥ 200 cases, ≥ 80 automatable, ≥ 30 escalating | Floor n ≥ 80 (`eval/gates.yaml`: G2 cannot pass below n = 73). Keep the dialect quotas (each of es-MX, es-CO, es-AR, pt-BR ≥ 20%), the sha256 manifest and the 20% second-annotator sample with kappa. Include about 10 attack cases (prompt injection, access to another customer's transaction). Any size below the pre-registered n ≥ 200 is a deviation: list it in `eval/preregistration.md` before unsealing and in T27. |
+| T17 | ≥ 200 cases, ≥ 80 automatable, ≥ 30 escalating | Floor n ≥ 80 (`eval/gates.yaml`: G2 cannot pass below n = 73) with ≥ 30 automatable and ≥ 30 escalating cases, so every gate can be evaluated (G3 `min_n` lowered before the freeze; at n = 80 G2 tolerates no unsafe case, at n = 120 one). Keep the dialect quotas (each of es-MX, es-CO, es-AR, pt-BR ≥ 20%), the sha256 manifest and the 20% second-annotator sample with kappa. Include about 10 attack cases (prompt injection, access to another customer's transaction). The size reduction is listed in `eval/preregistration.md` section 11; T27 repeats it in the report. |
 | T18 | ONNX embeddings + logistic regression vs. keywords vs. LLM zero-shot | TF-IDF (char n-grams) + logistic regression vs. the keyword router, split-conformal α = 0.1, MLflow run, one-page model card. ONNX and the LLM zero-shot comparator move to T29. |
 | T20 | Fallback matrix, PII redaction, operations doc | PII redaction in logs and a short `docs/operations.md`. The tool-unavailable fallback is already in T13. |
 | T21 | Console, evidence view, `/lineage` | `/lineage` only (static `dbt docs generate`, served by FastAPI), plus a plain handoff list if time allows. Evidence view moves to T29. |

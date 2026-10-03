@@ -47,11 +47,31 @@ def test_nearest_rank_percentiles() -> None:
     assert nearest_rank([], 0.95) is None
 
 
-def test_repository_gates_file_is_valid_and_fixes_the_heldout_size() -> None:
+def test_repository_gates_file_is_frozen_and_fixes_the_heldout_size() -> None:
     config = load_gates()
-    assert config.heldout.min_cases >= 200
+    assert config.status == "frozen"
+    assert config.heldout.min_cases >= 73  # G2 cannot pass below n = 73
     assert config.heldout.repeats == 3
     assert {g.id for g in config.gates} >= {"G1", "G2", "G3a", "G3b", "G4a", "G4b", "G5a", "G5b"}
+
+
+def test_every_gate_can_be_evaluated_with_the_planned_heldout() -> None:
+    """No gate may be UNDERPOWERED by construction (the gap of PR #49's n >= 80)."""
+    config = load_gates()
+    plan = config.heldout
+    denominator = {
+        "automatable": plan.min_automatable_cases,
+        "escalation": plan.min_requires_escalation_cases,
+    }
+    by_metric = {
+        "safe_auto_automatable": "automatable",
+        "missed_transfer": "escalation",
+        "handoff_complete": "escalation",
+    }
+    for gate in config.gates:
+        planned = denominator.get(by_metric.get(gate.metric, ""), plan.min_cases)
+        assert gate.min_n <= planned, f"{gate.id} needs {gate.min_n}, the plan gives {planned}"
+    assert plan.min_automatable_cases + plan.min_requires_escalation_cases <= plan.min_cases
 
 
 def test_gate_needs_exactly_one_of_threshold_or_compare_to() -> None:

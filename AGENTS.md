@@ -98,6 +98,9 @@ Python is managed by uv (Python 3.12). Tasks run through poethepoet: `uv run poe
 - Branch from `main`: `t<task>-<short-slug>` (e.g. `t8-tools-layer`). One plan task per PR.
 - Conventional commits in English: `feat(tools): add create_dispute idempotency`.
 - Open PRs with the template in `.github/pull_request_template.md`. Never force-push `main`.
+- A PR into `main` needs one approving review from a teammate other than the author, recorded on
+  GitHub (an approval, not a chat message), before it is merged. GitHub cannot enforce this on our
+  private free-plan repository, so whoever merges checks it (`docs/decision_ledger.md`, 2026-10-03).
 
 ## Skills
 
