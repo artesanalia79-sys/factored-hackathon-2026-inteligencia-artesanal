@@ -1,0 +1,51 @@
+{
+  "$defs": {
+    "Language": {
+      "enum": [
+        "es",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "first_name": {
+      "title": "First Name",
+      "type": "string"
+    },
+    "language": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Language"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "token": {
+      "title": "Token",
+      "type": "string"
+    },
+    "token_type": {
+      "default": "bearer",
+      "title": "Token Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "token",
+    "expires_at",
+    "first_name",
+    "language"
+  ],
+  "title": "VerifyResponse",
+  "type": "object"
+}

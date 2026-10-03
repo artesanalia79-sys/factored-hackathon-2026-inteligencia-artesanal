@@ -21,6 +21,7 @@ from bankagent.api.app import create_app
 from bankagent.auth.service import AuthService
 from bankagent.auth.settings import AuthSettings, Secret
 from bankagent.contracts.domain import Session
+from bankagent.contracts.enums import Language
 from bankagent.fixtures.builder import build
 from bankagent.orchestrator.agent import AgentTurnOutput
 from bankagent.store.ops import OpsStore
@@ -116,7 +117,9 @@ def test_both_failures_are_listed(served: Served, tmp_path: Path) -> None:
 
 
 class _NoAgent:
-    def handle_turn(self, session: Session, text: str, /) -> AgentTurnOutput:
+    def handle_turn(
+        self, session: Session, text: str, /, preferred_language: Language | None = None
+    ) -> AgentTurnOutput:
         raise AssertionError("not used")
 
 

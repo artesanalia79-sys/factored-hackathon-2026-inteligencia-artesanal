@@ -172,3 +172,13 @@ def test_non_ascii_persona_gets_401(client: TestClient) -> None:
     response = client.post("/api/auth/login", json={"persona_id": "per-ñandú"})
     assert response.status_code == 401
     assert response.json() == {"detail": {"error": "invalid_credentials"}}
+
+
+def test_a_login_may_carry_the_demo_access_code(client: TestClient) -> None:
+    """The UI sends `access_code` once a deployment asked for it (T15): not an unknown field."""
+    persona = client.get("/api/auth/personas").json()[0]
+    body = {"persona_id": persona["persona_id"], "access_code": "shared-demo-code"}
+    assert client.post("/api/auth/login", json=body).status_code == 200
+    refused = client.post("/api/auth/login", json={**body, "access_code": ""})
+    assert refused.status_code == 422
+    assert "shared-demo-code" not in refused.text

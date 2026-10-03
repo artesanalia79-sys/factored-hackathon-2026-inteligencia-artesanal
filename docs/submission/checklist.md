@@ -1,8 +1,32 @@
 # Submission checklist
 
-Skeleton from Task 15; Task 28 fills it in. Deadline: **Mon Oct 5 2026**, by email to
-`hackathon.admin@factored.ai`. The organizers require all four items below
-(`docs/challenge/kickoff.md`, "Submission").
+Skeleton from Task 15; Task 28 fills it in. Deadline: **Mon Oct 5 2026, 11:59 PM Colombia time
+(UTC-5)**, by email to `hackathon.admin@factored.ai`. The organizers require all four items
+below (`docs/challenge/kickoff.md`, "Submission"; the Participant Hub,
+<https://www.factored.ai/careers/ai-data-hackathon>).
+
+## What the organizers answered
+
+Read on 2026-10-03 in the hackathon's Slack (answers by Factored staff) and on the Participant
+Hub. Read them again before sending: an answer in a chat can be corrected later.
+
+| Topic | Answer | Where |
+|---|---|---|
+| Deadline | October 5, 11:59 PM Colombia time (UTC-5) | `#challenge-help` 2026-09-28, `#general` 2026-10-02 |
+| Language | All deliverables in English, the video included. The prototype itself must show customer interactions in Spanish and Portuguese. | `#general` 2026-10-01; Hub FAQ |
+| Video | No longer than 3 minutes | `#challenge-help` 2026-09-28; Hub |
+| Where | Email to `hackathon.admin@factored.ai`. It bounced for another team on 2026-10-01 ("the account does not exist") and was fixed the next day. | Hub; `#general` 2026-10-01 and 10-02 |
+| Who is on the team | The people who contributed to the GitHub repository when it is submitted. At most 4, each registered individually. A shared or machine account that commits is fine as long as every member appears in the contributor list. | `#general` 2026-09-25 and 09-28; `#announcements` 2026-09-15 |
+| Emails | A registration email different from the GitHub one is no problem: say so in the submission. | `#general` 2026-09-28 |
+| Tools | External LLM APIs are allowed; paid cloud tiers too. Cloud deployment is not required: a credible path to production is. | `#challenge-help` 2026-09-25; `#technical-help` 2026-09-25; `#general` 2026-09-28 |
+| Learned component | A prompted or fine-tuned LLM counts if it is defined and evaluated rigorously. The baseline can be rules, TF-IDF with logistic regression or a zero-shot LLM, on the same held-out data, with valid labels and no leakage. | `#technical-help` 2026-09-25; `#general` 2026-09-29 |
+| Data | Not all the supplied data has to be used, with a reason. Mock data: "you can use mock data you generate if it's not used for testing" (a mentor, who said he lacked context). | `#general` 2026-09-29 |
+| Judged on | Technical Judgment, AI Engineering, Data Engineering, Machine Learning, Data Analytics. "Quality over quantity." | Hub |
+
+Mentors' tips, in their words: quantify why the business problem matters ("juries want to
+understand why this is actually a problem worth solving"); branches, small pull requests,
+clear commits and tagged versions "show up clearly in the best-practices evaluation"; "depth
+beats breadth".
 
 Owners marked "T28" are not assigned yet: Santiago assigns them when T28 starts.
 
@@ -13,7 +37,7 @@ Owners marked "T28" are not assigned yet: Santiago assigns them when T28 starts.
 | 1 | Link to the **public** GitHub repository `factored-hackathon-2026-inteligencia-artesanal` | The repository, made public after the checks in "Before the repository goes public" | Santiago (T28) | [ ] |
 | 2 | Link to where the tool is **deployed** | The Render service of `docs/operations.md` | Santiago (T15, T26) | [ ] |
 | 3 | A **4-6 slide** presentation | `docs/submission/slides_outline.md` | T28 | [ ] |
-| 4 | A short **video pitch** showing the working solution and the core architecture decisions | `docs/submission/video_script.md` | T28 | [ ] |
+| 4 | A **video pitch of at most 3 minutes, in English**, showing the working solution and the core architecture decisions | `docs/submission/video_script.md` | T28 | [ ] |
 
 ## Before the repository goes public
 
@@ -26,6 +50,28 @@ Making it public publishes the whole git history, not only the current files.
 - [ ] The held-out set is represented only by its sha256 manifest.
 - [ ] The access code of the public service is in no committed file (the pre-commit hook
       compares staged files with the local `.env` value of `DEMO_ACCESS_CODE`).
+
+## The team in the repository
+
+The organizers take the team from the repository's contributors, so the list must show it.
+
+- [ ] Every member named in `README.md` has at least one commit of their own on `main`. A
+      `Co-authored-by` line is not enough: GitHub's contributor list counts authored commits.
+      Check with `gh api repos/<owner>/<repo>/contributors --jq '.[].login'`.
+- [ ] A member who cannot push yet is added as a collaborator by the owner account first.
+- [ ] The list also shows two accounts that are not people: the team's shared account, which
+      owns the repository and made its initial commit, and the AI coding assistant, which
+      authored one commit. The email names them so nobody counts six members.
+- [ ] The freeze commit is tagged (Task 26); the tag is what the email and the slides cite.
+
+## Open decision: the data behind the evaluation
+
+- [ ] Owner Santiago (T27). The held-out evaluation runs on the synthetic fixture bank, and a
+      mentor said generated data is fine "if it's not used for testing". Either ask a mentor
+      with our context (public repository, no restricted data in it, a labeled test fixture
+      for write correctness as the problem statement allows) or run part of the evaluation on
+      the curated data locally (T19, now in T29). Write the choice and its reason on the
+      evaluation slide and in `docs/limitations.md`.
 
 ## The deployed service (Task 15, Task 26)
 
@@ -52,7 +98,11 @@ Making it public publishes the whole git history, not only the current files.
 
 ## The email
 
-- [ ] To `hackathon.admin@factored.ai`, sent in the morning with margin before the deadline.
-- [ ] Contains: repository link, deployed URL, access code, slides, video link, team name and
+- [ ] To `hackathon.admin@factored.ai`, in English, sent in the morning with margin before
+      11:59 PM Colombia time. Watch the inbox for a bounce: the address has bounced before.
+- [ ] Contains: repository link, deployed URL, access code, slides, video link, team name.
+- [ ] Lists each member with the email they registered with and their GitHub username, and
+      says so where the two emails differ.
+- [ ] Says that the shared account and the AI assistant in the contributor list are not
       members.
 - [ ] Someone other than the sender opened every link from a browser with no session.

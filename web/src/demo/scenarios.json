@@ -1,0 +1,174 @@
+{
+  "personas": {
+    "Mariana/MX": [
+      {
+        "label": "Cargo no reconocido",
+        "text": "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco",
+        "expect": "recognition"
+      },
+      {
+        "label": "Dos cargos parecidos",
+        "text": "Tengo un cargo de Amazon que no reconozco",
+        "expect": "choice"
+      }
+    ],
+    "Andrés/CO": [
+      {
+        "label": "Cobro duplicado",
+        "text": "Me cobraron dos veces 85.900 pesos en Rappi",
+        "expect": "recognition"
+      }
+    ],
+    "Lucía/AR": [
+      {
+        "label": "Compra que no llegó",
+        "text": "No me llegó una compra de 45.999 pesos en MERCADOLIBRE",
+        "expect": "recognition"
+      },
+      {
+        "label": "Hablar con una persona",
+        "text": "Quiero hablar con una persona, no con un bot",
+        "expect": "handoff"
+      }
+    ],
+    "Rafael/AR": [
+      {
+        "label": "Compra não reconhecida",
+        "text": "Não reconheço uma compra de 32.500 pesos na GAMESTORE DIGITAL",
+        "expect": "recognition"
+      },
+      {
+        "label": "Cobrança duplicada",
+        "text": "Fui cobrado duas vezes na STARBUCKS PALERMO, 6.800 pesos",
+        "expect": "recognition"
+      }
+    ],
+    "Sofía/MX": [
+      {
+        "label": "Cargo que no ubico",
+        "text": "Me aparece un cargo de PAYPAL SPOTIFYMX de 129 pesos y no sé qué es",
+        "expect": "recognition"
+      }
+    ],
+    "Carlos/CO": [
+      {
+        "label": "Cargo de alto riesgo",
+        "text": "No reconozco el cargo de 9.800.000 pesos en LUXURY WATCHES INTL",
+        "expect": "recognition"
+      }
+    ],
+    "Valentina/AR": [
+      {
+        "label": "Cargo ya reclamado",
+        "text": "No reconozco el cargo de PEDIDOSYA de 15.200 pesos",
+        "expect": "recognition"
+      }
+    ],
+    "Diego/MX": [
+      {
+        "label": "Cargo pendiente",
+        "text": "No reconozco un cargo de UBER EATS por 560 pesos",
+        "expect": "recognition"
+      },
+      {
+        "label": "Cargo de hace meses",
+        "text": "No reconozco el cargo de LIVERPOOL de 3,200 pesos",
+        "expect": "recognition"
+      }
+    ]
+  },
+  "translations": {
+    "es": {
+      "Rafael/AR": [
+        {
+          "label": "Compra no reconocida",
+          "text": "No reconozco una compra de 32.500 pesos en GAMESTORE DIGITAL",
+          "expect": "recognition"
+        },
+        {
+          "label": "Cobro duplicado",
+          "text": "Me cobraron dos veces en STARBUCKS PALERMO, 6.800 pesos",
+          "expect": "recognition"
+        }
+      ]
+    },
+    "pt": {
+      "Mariana/MX": [
+        {
+          "label": "Compra não reconhecida",
+          "text": "Não reconheço uma compra de 2.450 pesos na ELECTROMUNDO",
+          "expect": "recognition"
+        },
+        {
+          "label": "Duas compras parecidas",
+          "text": "Não reconheço uma compra na Amazon",
+          "expect": "choice"
+        }
+      ],
+      "Andrés/CO": [
+        {
+          "label": "Cobrança duplicada",
+          "text": "Fui cobrado duas vezes 85.900 pesos no Rappi",
+          "expect": "recognition"
+        }
+      ],
+      "Lucía/AR": [
+        {
+          "label": "Compra que não chegou",
+          "text": "Não recebi uma compra de 45.999 pesos no MERCADOLIBRE",
+          "expect": "recognition"
+        },
+        {
+          "label": "Falar com uma pessoa",
+          "text": "Quero falar com uma pessoa, não com um robô",
+          "expect": "handoff"
+        }
+      ],
+      "Sofía/MX": [
+        {
+          "label": "Compra que não reconheço",
+          "text": "Apareceu uma compra de 129 pesos na PAYPAL SPOTIFYMX que não reconheço",
+          "expect": "recognition"
+        }
+      ],
+      "Carlos/CO": [
+        {
+          "label": "Compra de alto risco",
+          "text": "Não reconheço a compra de 9.800.000 pesos na LUXURY WATCHES INTL",
+          "expect": "recognition"
+        }
+      ],
+      "Valentina/AR": [
+        {
+          "label": "Compra já contestada",
+          "text": "Não reconheço a compra de 15.200 pesos na PEDIDOSYA",
+          "expect": "recognition"
+        }
+      ],
+      "Diego/MX": [
+        {
+          "label": "Compra pendente",
+          "text": "Não reconheço uma compra de 560 pesos na UBER EATS",
+          "expect": "recognition"
+        },
+        {
+          "label": "Compra de meses atrás",
+          "text": "Não reconheço a compra de 3.200 pesos na LIVERPOOL",
+          "expect": "recognition"
+        }
+      ]
+    }
+  },
+  "fallback": {
+    "es": [
+      { "label": "Cargo no reconocido", "text": "No reconozco un cargo de " },
+      { "label": "Cobro duplicado", "text": "Me cobraron dos veces " },
+      { "label": "Compra que no llegó", "text": "No me llegó una compra de " }
+    ],
+    "pt": [
+      { "label": "Compra não reconhecida", "text": "Não reconheço uma compra de " },
+      { "label": "Cobrança duplicada", "text": "Fui cobrado duas vezes " },
+      { "label": "Compra que não chegou", "text": "Não recebi uma compra de " }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc", "jsx-a11y"],
+  "ignorePatterns": ["dist", "src/api/contracts.gen.ts"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "react/no-danger": "error",
+    "jsx-a11y/no-noninteractive-tabindex": ["error", { "tags": ["section"], "roles": ["tabpanel"] }]
+  }
+}

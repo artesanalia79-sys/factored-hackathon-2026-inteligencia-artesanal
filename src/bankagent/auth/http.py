@@ -2,8 +2,9 @@
 
 ``build_auth_router(service)`` is mounted by the app (T13); ``session_dependency(service)``
 gives every protected endpoint its server-side ``Session`` from the ``Authorization: Bearer``
-header. Request models forbid unknown fields, so a body carrying ``customer_id`` is rejected
-with 422 before it reaches any logic. No response ever contains ``customer_id``.
+header. Request models (``bankagent.contracts.api``, the UI's contract) forbid unknown fields, so
+a body carrying ``customer_id`` is rejected with 422 before it reaches any logic. No response ever
+contains ``customer_id``.
 
 Validation errors go through ``SafeValidationRoute``: FastAPI's default handler echoes the
 rejected input back, which would repeat a submitted code or id and fails with a 500 on input
@@ -14,7 +15,6 @@ are closed over inside ``build_auth_router`` when it reads the endpoint signatur
 """
 
 from collections.abc import Callable, Coroutine
-from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -22,7 +22,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field
 
 from bankagent.auth.service import (
     AccessCodeRequired,
@@ -30,8 +29,15 @@ from bankagent.auth.service import (
     InvalidCredentials,
     TooManyAttempts,
 )
+from bankagent.contracts.api import (
+    LoginRequest,
+    LoginResponse,
+    PersonaResponse,
+    SessionResponse,
+    VerifyRequest,
+    VerifyResponse,
+)
 from bankagent.contracts.domain import Session
-from bankagent.contracts.enums import Language
 from bankagent.contracts.errors import SessionExpired, Unauthorized
 
 _bearer = HTTPBearer(auto_error=False)
@@ -56,48 +62,6 @@ class SafeValidationRoute(APIRoute):
                 )
 
         return safe_handler
-
-
-class _Request(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class LoginRequest(_Request):
-    persona_id: str = Field(min_length=1, max_length=64)
-    # Needed only where the deployment sets a shared access code (403 without it).
-    access_code: str | None = Field(default=None, min_length=1, max_length=128)
-
-
-class VerifyRequest(_Request):
-    challenge_id: str = Field(min_length=1, max_length=64)
-    code: str = Field(min_length=1, max_length=12)
-
-
-class PersonaResponse(BaseModel):
-    persona_id: str
-    first_name: str
-    country: str
-    language: Language | None
-
-
-class LoginResponse(BaseModel):
-    challenge_id: str
-    expires_at: datetime
-    delivery: str = "mock"
-    mock_otp: str | None = None
-
-
-class VerifyResponse(BaseModel):
-    token: str
-    token_type: str = "bearer"  # noqa: S105 - OAuth token type, not a credential
-    expires_at: datetime
-    first_name: str
-    language: Language | None
-
-
-class SessionResponse(BaseModel):
-    expires_at: datetime
-    language: Language | None
 
 
 def _unauthorized(code: str) -> HTTPException:

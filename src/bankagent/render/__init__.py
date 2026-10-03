@@ -1,7 +1,10 @@
 """Deterministic ES/PT customer copy from verified results. Owner: Jacobo (T11)."""
 
 from bankagent.render.templates import (
+    ConfirmationPrompt,
     UnverifiedRenderError,
+    block_offer_prompt,
+    confirmation_prompt,
     render_block_declined,
     render_block_offer,
     render_blocked_card,
@@ -17,7 +20,10 @@ from bankagent.render.templates import (
 )
 
 __all__ = [
+    "ConfirmationPrompt",
     "UnverifiedRenderError",
+    "block_offer_prompt",
+    "confirmation_prompt",
     "render_block_declined",
     "render_block_offer",
     "render_blocked_card",
