@@ -15,7 +15,9 @@ Applies to `web/**`. Owner: Jacobo (Tasks 14, 21, 22).
 - Show only what the backend returns as verified. Do not render optimistic "dispute created"
   states before the API confirms `verified=true`.
 - Confirmation prompts must show the exact action and its arguments (merchant, amount, date, card
-  last4) before the customer confirms.
+  last4) before the customer confirms. They come from `ChatTurnResponse.confirmation`
+  (`ConfirmationView`, built from the same verified read as the question); never parse facts out
+  of the reply text, and never format or derive the values in the UI.
 - Customer-facing copy is Spanish or Portuguese and comes from the backend templates; UI chrome may
   be bilingual. Code and comments stay in English.
 
@@ -23,5 +25,6 @@ Applies to `web/**`. Owner: Jacobo (Tasks 14, 21, 22).
 
 - Semantic HTML, labeled inputs, keyboard navigation, visible focus, sufficient contrast,
   `aria-live="polite"` for new assistant messages. Full WCAG validation needs manual testing.
-- Keep a Playwright smoke test for the happy path (login → dispute → confirmation).
+- Keep a Playwright smoke test for the happy path (login → dispute → confirmation). Before a PR:
+  `uv run poe web-check`, `uv run poe web-build` and `uv run poe web-e2e` (CI job `web`).
 - No secrets or API keys in frontend code or `.env` files under `web/`.

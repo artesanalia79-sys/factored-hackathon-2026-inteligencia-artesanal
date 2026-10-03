@@ -18,7 +18,8 @@ adds logging and PII redaction to this file.
 |---|---|
 | `GET /health` | Liveness: the process answers. |
 | `GET /ready` | Readiness: 200 `{"status": "ready"}` when the serving DB and the ops store both answer; otherwise 503 with the names that failed (`serving_db`, `ops_store`) and nothing else. Render's health check uses it. |
-| `GET /docs` | OpenAPI page, usable as a manual client until the web UI (Task 14) is in the image. |
+| `GET /` | The customer chat UI (Task 14), the production build in `web/dist`, with a Content Security Policy that keeps it to its own origin. Mounted after every route, so it never shadows `/ready` or the API. |
+| `GET /docs` | OpenAPI page, a manual client for the API. |
 | `/api/auth/*`, `POST /api/chat/turn` | Login and chat. |
 
 ## Environment variables
@@ -168,12 +169,17 @@ cases, but it was never called in the container), and memory on Render itself.
   progress and resets the demo.
 - One instance only, which is what this service needs.
 
-## Adding the web UI to the image (Task 14)
+## The web UI in the image (Task 14)
 
-1. `.dockerignore`: add `!web`, and exclude `web/node_modules` and `web/dist` after it.
-2. `Dockerfile`: a stage from a node image pinned by tag and digest that copies `web/`, runs
-   `npm ci` and `npm run build`; then in the runtime stage
-   `COPY --from=<that stage> /app/web/dist ./web/dist`.
-3. `scripts/image_smoke.sh`: add `web/` to the allowlist of the build context and `web` to the
-   expected entries of `/app`.
-4. Serve `web/dist` from FastAPI (Task 14 decides the mount).
+- `.dockerignore` lets `web/` in and keeps `web/node_modules`, `web/dist` and the Playwright
+  outputs out: the image builds the UI itself.
+- `Dockerfile`, stage `web`: a Node image pinned by tag and digest runs `npm ci` and
+  `npm run build` (`tsc -b`, then Vite). Only `web/dist` is copied into the runtime stage,
+  at `/app/web/dist`, where `WEB_DIST_DIR` points by default. The UI adds under 1 MB: the
+  image measured 228 MB locally both with and without it (227 MB in CI).
+- `scripts/image_smoke.sh` allows `web/` in the build context, plants `web/node_modules` and
+  `web/dist` decoys that must stay out, expects `/app/web` to hold only `dist`, and checks that
+  `GET /` answers the UI with its Content Security Policy.
+- With `DEMO_ACCESS_CODE` set, the login screen asks for the code after the first 403
+  `access_code_required` and keeps it in memory for the tab (a password field, so a screen
+  recording of the demo does not show it).
