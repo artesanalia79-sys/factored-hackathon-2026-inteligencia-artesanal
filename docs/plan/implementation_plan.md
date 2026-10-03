@@ -193,7 +193,9 @@ State machine end to end, `POST /api/chat/turn`, max 2 clarification rounds, han
 React + Vite + TS served by FastAPI; login, chat, confirmation dialog; Playwright smoke test.
 
 **T15. Container + Render staging + submission skeleton** [P0] (Santiago)
-One Docker image under 512 MB; Render deploy hook; `/health` and `/ready`;
+One Docker image under 512 MB; Render deploys a commit after its CI checks pass (`render.yaml`;
+this replaced the deploy hook, decision ledger 2026-10-03); `/health` and `/ready`; a shared demo
+access code; `docs/operations.md`;
 `docs/submission/{slides_outline,video_script,checklist}.md`.
 
 ### M2 Real data + learned router (D4-5)
@@ -259,6 +261,7 @@ not forgotten. Each line keeps its original task number. Nothing here blocks the
 | T21 | Agent console and evidence view per case. |
 | T22-T25 | Side-by-side UI, load test, promptfoo red team (plugins listed in T24), external pilot. |
 | T8 | Customer-local date parsing and a one-day search window (`docs/limitations.md`). |
+| T15 | Rate limiting per client behind the platform's proxy (the access code replaced it for the demo); a paid instance and an ops store outside the container; memory and latency measured on Render itself with the real model on. |
 
 ## P2 backlog
 
