@@ -230,6 +230,30 @@ def test_candidates_list_only_two_or_three_matches(
 
 
 @pytest.mark.parametrize("language", list(Language))
+@pytest.mark.parametrize("reason", list(DisputeReason))
+def test_the_scripted_user_reads_each_question_as_the_agent_means_it(
+    language: Language, reason: DisputeReason, transaction: TransactionView
+) -> None:
+    txn_args = GetTransactionArgs(transaction_id="txn-1")
+    read = GetTransactionResult(transaction=transaction)
+    record = _record(ToolName.GET_TRANSACTION, txn_args)
+    recognition = render_recognition(language, txn_args, read, record)
+    assert classify_question(recognition) == QuestionKind.RECOGNIZE
+    # The confirmation names the reason ("movimiento no reconocido") and is still a confirmation.
+    dispute = CreateDisputeArgs(transaction_id="txn-1", reason=reason, idempotency_key="request-1")
+    confirmation = render_confirmation(language, dispute, txn_args, read, record)
+    assert classify_question(confirmation) == QuestionKind.CONFIRM
+    block = BlockCardArgs(
+        product_id="card-1", reason="customer request", idempotency_key="request-2"
+    )
+    card_args = ListCardsArgs()
+    offer = render_block_offer(
+        language, block, card_args, _active_card(), _record(ToolName.LIST_CARDS, card_args)
+    )
+    assert classify_question(offer) == QuestionKind.CONFIRM
+
+
+@pytest.mark.parametrize("language", list(Language))
 def test_the_generic_clarification_is_a_question_the_scripted_user_can_answer(
     language: Language,
 ) -> None:

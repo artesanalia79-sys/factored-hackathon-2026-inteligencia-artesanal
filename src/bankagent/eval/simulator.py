@@ -46,6 +46,9 @@ _CONFIRM = re.compile(
     r"\bconfirm|\bprocedo\b|\bpuedo proceder\b|\bposso (?:prosseguir|seguir)\b|\bautoriz"
     r"|\bdeseas continuar\b|\bdeseja continuar\b"
 )
+# The action a confirmation question names: a dispute (reclamo, disputa, contestação, aclaración,
+# contracargo) or a card block.
+_ACTION = re.compile(r"\breclam|\bdisput|\bcontest|\baclaracion|\bcontracargo|\bbloque")
 _CARD_BLOCK = re.compile(r"\bbloque")
 _HUMAN_OFFER = re.compile(r"\basesor|\bagente\b|\bpersona\b|\batendente\b|\bhumano\b|\bejecutivo\b")
 _CLARIFY = re.compile(
@@ -85,6 +88,12 @@ def classify_question(agent_text: str, clarification_keys: tuple[str, ...] = ())
     norm = normalize(" ".join(questions))
     if not norm:
         return QuestionKind.UNCLASSIFIED
+    # A question that asks to confirm a named action is a confirmation even when it mentions the
+    # reason: "¿Confirmas crear un reclamo por movimiento no reconocido?" is not asking whether
+    # the customer recognizes the charge. "¿Puedes confirmar si reconoces este cargo?" names no
+    # action and stays a recognition question.
+    if _CONFIRM.search(norm) and _ACTION.search(norm):
+        return QuestionKind.CONFIRM
     if _RECOGNIZE.search(norm):
         return QuestionKind.RECOGNIZE
     if _CONFIRM.search(norm):

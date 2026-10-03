@@ -75,7 +75,10 @@ missing_or_incorrect_data and multilingual_ambiguity are added to the dev pool i
 
 `bankagent.eval.simulator.ScriptedUser` sends the case turns in order, then answers the agent's
 questions from the case `FactSheet`. It classifies each question with visible ES/PT keyword rules
-(recognize, confirm, card block, human offer, clarify). A question it cannot classify gets the
+(recognize, confirm, card block, human offer, clarify). A question that asks to confirm a named
+action (a dispute or a card block) is a confirmation even when it mentions the reason
+("¿Confirmas crear un reclamo por movimiento no reconocido?"); otherwise the first matching kind in
+that order wins. A question it cannot classify gets the
 FactSheet default (`clarification_answers["default"]` or "No estoy seguro." / "Não tenho
 certeza.") and is counted per system in the report. A reply without a question ends the
 conversation. At most 8 user turns per run.

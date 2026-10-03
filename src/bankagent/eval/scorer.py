@@ -38,7 +38,7 @@ from bankagent.eval.runner import CaseTrace
 from bankagent.eval.simulator import QuestionKind
 from bankagent.interpret.keywords import normalize
 
-HARNESS_VERSION = "t12-v1"
+HARNESS_VERSION = "t12-v2"  # v2: a confirmation that names its action is CONFIRM (simulator)
 
 CRITICAL_EVENTS: frozenset[UnsafeEvent] = frozenset(
     {
