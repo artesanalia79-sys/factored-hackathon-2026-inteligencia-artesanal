@@ -127,6 +127,20 @@ OUTCOME_COPY: dict[Outcome, dict[Language, str]] = {
     },
 }
 
+# Asked while the customer has not described a request yet ("Hola"). It ends in a question that
+# names what the agent needs, so the conversation stays open.
+OPENING_QUESTION_COPY: dict[Language, str] = {
+    Language.ES: (
+        "Puedo ayudarte con un cargo que no reconoces, un cobro duplicado o una compra que no "
+        "recibiste. ¿Qué pasó y cuál es el comercio o el importe del movimiento?"
+    ),
+    Language.PT: (
+        "Posso ajudar com uma cobrança que você não reconhece, uma cobrança duplicada ou uma "
+        "compra que não chegou. O que aconteceu e qual é o estabelecimento ou o valor da "
+        "transação?"
+    ),
+}
+
 # Offered after a verified dispute; neither line states an action as done.
 BLOCK_OFFER_COPY: dict[Language, str] = {
     Language.ES: "También puedo bloquear la tarjeta para evitar nuevos cargos.",
@@ -243,6 +257,11 @@ def render_state(state: ConversationState, language: Language) -> str:
 def render_outcome(outcome: Outcome, language: Language) -> str:
     """Render an outcome without claiming a write or quoting unverified details."""
     return OUTCOME_COPY[outcome][language]
+
+
+def render_opening_question(language: Language) -> str:
+    """Ask what happened when no request has been described yet; claims nothing."""
+    return OPENING_QUESTION_COPY[language]
 
 
 def render_ineligible(explanation_key: str | None, language: Language) -> str:

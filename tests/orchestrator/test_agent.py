@@ -50,7 +50,11 @@ from bankagent.contracts.tools import (
 from bankagent.interpret.keywords import interpret_text
 from bankagent.interpret.stub import StubFault, StubProvider
 from bankagent.orchestrator.agent import PolicyEvaluator, create_agent
-from bankagent.render.templates import render_ineligible, render_outcome
+from bankagent.render.templates import (
+    render_ineligible,
+    render_opening_question,
+    render_outcome,
+)
 
 NOW = datetime(2026, 10, 2, 12, tzinfo=UTC)
 
@@ -589,6 +593,105 @@ def test_the_merchant_spelled_differently_is_still_the_charge_on_screen() -> Non
     output = agent.handle_turn(_session(), "No reconozco ese cargo de Electro Mundo")
     assert "¿Confirmas crear un reclamo" in output.reply_text
     assert search.calls == get.calls == 1
+
+
+# -- a first message that names no request ("Hola") --------------------------------------------
+
+
+def test_a_greeting_gets_a_question_and_keeps_the_conversation_open() -> None:
+    agent, search, get = _agent()
+    hello = agent.handle_turn(_session(), "Hola")
+    assert hello.reply_text == render_opening_question(Language.ES)
+    assert hello.reply_text.endswith("?")
+    assert not hello.ended
+    assert hello.claimed_actions == ()
+    assert search.calls == get.calls == 0
+    # Not a refusal: a policy/blocked record is scored "denied".
+    assert not any(
+        record.step == "policy" and record.outcome == "blocked" for record in hello.records
+    )
+    assert not any(record.state == "abstain" for record in hello.records)
+    request = agent.handle_turn(_session(), "No reconozco el cargo de 2,450 pesos en ELECTROMUNDO")
+    assert "¿Reconoces este movimiento?" in request.reply_text
+    assert search.calls == get.calls == 1
+
+
+def test_a_portuguese_greeting_is_answered_in_portuguese() -> None:
+    agent, _, _ = _agent()
+    hello = agent.handle_turn(_session(), "Oi, boa tarde")
+    assert hello.reply_text == render_opening_question(Language.PT)
+    assert not hello.ended
+
+
+def test_a_request_that_stays_out_of_scope_ends_after_two_rounds() -> None:
+    agent, search, get = _agent()
+    first = agent.handle_turn(_session(), "¿Cuál es mi saldo?")
+    second = agent.handle_turn(_session(), "Quiero saber mi saldo")
+    third = agent.handle_turn(_session(), "Mi saldo, por favor")
+    assert not first.ended
+    assert not second.ended
+    assert third.ended
+    assert third.reply_text == render_outcome(Outcome.ABSTAINED, Language.ES)
+    assert any(record.state == "abstain" for record in third.records)
+    assert search.calls == get.calls == 0
+
+
+def test_a_greeting_uses_one_of_the_two_clarification_rounds() -> None:
+    agent, search, get = _agent()
+    search.run = lambda ctx, args: SearchTransactionsResult(transactions=())  # type: ignore[method-assign]
+    agent.handle_turn(_session(), "Hola")
+    second = agent.handle_turn(_session(), "No reconozco un cargo de 999 pesos")
+    third = agent.handle_turn(_session(), "Fue en ELECTROMUNDO")
+    assert not second.ended
+    assert third.ended
+    assert get.calls == 0
+
+
+class RecordingSearch(ReadTool):
+    def __init__(self, transaction: TransactionView) -> None:
+        super().__init__(ToolName.SEARCH_TRANSACTIONS, transaction)
+        self.searches: list[SearchTransactionsArgs] = []
+
+    def run(
+        self, ctx: ToolContext, args: SearchTransactionsArgs | GetTransactionArgs, /
+    ) -> SearchTransactionsResult | GetTransactionResult:
+        assert isinstance(args, SearchTransactionsArgs)
+        self.searches.append(args)
+        return super().run(ctx, args)
+
+
+def test_clues_given_before_the_request_are_kept_for_the_search() -> None:
+    transaction = _transaction()
+    search = RecordingSearch(transaction)
+    agent = create_agent(
+        llm=StubProvider(),
+        tools={
+            ToolName.SEARCH_TRANSACTIONS: search,
+            ToolName.GET_TRANSACTION: ReadTool(ToolName.GET_TRANSACTION, transaction),
+        },
+        clock=lambda: NOW,
+    )
+    # No dispute word the keyword interpreter knows, but the charge is described.
+    asked = agent.handle_turn(
+        _session(), "Quiero reclamar una compra de 2,450 pesos en ELECTROMUNDO"
+    )
+    assert asked.reply_text == render_opening_question(Language.ES)
+    assert search.searches == []
+    shown = agent.handle_turn(_session(), "No la reconozco")
+    assert "¿Reconoces este movimiento?" in shown.reply_text
+    assert search.searches[0].amount_min == Decimal("2450.00")
+    assert search.searches[0].merchant_query == "ELECTROMUNDO"
+
+
+def test_a_request_the_agent_knows_and_does_not_serve_is_refused_at_once() -> None:
+    for text in ("Quiero bloquear mi tarjeta", "¿Cómo va mi reclamo?"):
+        agent, search, get = _agent()
+        output = agent.handle_turn(_session(), text)
+        assert output.ended
+        assert any(
+            record.step == "policy" and record.outcome == "blocked" for record in output.records
+        )
+        assert search.calls == get.calls == 0
 
 
 # -- an ineligible decision says why -----------------------------------------------------------

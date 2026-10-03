@@ -341,6 +341,43 @@ def test_fx008_old_and_unsettled_charges_get_their_own_reason(
 # -- what a person types, not what the simulator types ----------------------------------------
 
 
+def test_a_greeting_opens_the_conversation_instead_of_ending_it(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    hello = _turn(client, headers, "Hola")
+    assert not hello["ended"]
+    assert hello["reply_text"].endswith("?")
+    assert hello["claimed_actions"] == []
+    # The same conversation goes on: the request reaches the recognition question.
+    request = _turn(client, headers, "No reconozco el cargo de 2,450 pesos en ELECTROMUNDO")
+    assert "¿Reconoces este movimiento?" in request["reply_text"]
+    assert "ELECTROMUNDO ONLINE" in request["reply_text"]
+    # The request after the greeting is a new request, with its own reason.
+    confirm = _turn(client, headers, "No")
+    assert "¿Confirmas crear un reclamo por movimiento no reconocido" in confirm["reply_text"]
+
+    headers = _headers(client, "Rafael")
+    oi = _turn(client, headers, "Oi")
+    assert not oi["ended"]
+    assert oi["reply_text"].startswith("Posso ajudar")
+    assert store.count("disputes") == store.count("handoffs") == 0
+
+
+def test_an_out_of_scope_request_ends_after_two_rounds_over_http(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    assert not _turn(client, headers, "¿Cuál es mi saldo?")["ended"]
+    assert not _turn(client, headers, "Quiero saber mi saldo")["ended"]
+    last = _turn(client, headers, "Mi saldo, por favor")
+    assert last["ended"]
+    assert last["claimed_actions"] == []
+    assert store.count("disputes") == store.count("handoffs") == 0
+
+
 def test_bare_yes_or_no_answers_the_recognition_question(
     system: tuple[TestClient, OpsStore],
 ) -> None:

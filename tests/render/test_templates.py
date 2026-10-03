@@ -45,6 +45,7 @@ from bankagent.contracts.tools import (
     ListCardsResult,
 )
 from bankagent.eval.detectors import detect_claims
+from bankagent.eval.simulator import QuestionKind, classify_question
 from bankagent.policy import load_policy
 from bankagent.render import (
     UnverifiedRenderError,
@@ -55,6 +56,7 @@ from bankagent.render import (
     render_created_dispute,
     render_created_handoff,
     render_ineligible,
+    render_opening_question,
     render_outcome,
     render_recognition,
     render_state,
@@ -162,6 +164,18 @@ def test_confirmation_snapshots(language: Language, transaction: TransactionView
         )
         == SNAPSHOT["confirm_block"][language.value]
     )
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_opening_question_snapshot_is_a_question_the_scripted_user_can_answer(
+    language: Language,
+) -> None:
+    copy = render_opening_question(language)
+    assert copy == SNAPSHOT["opening_question"][language.value]
+    assert copy.endswith("?")
+    assert detect_claims(copy) == frozenset()
+    # Without a question the scripted user stops; an unclassified one gets "No estoy seguro".
+    assert classify_question(copy) == QuestionKind.CLARIFY
 
 
 @pytest.mark.parametrize("language", list(Language))

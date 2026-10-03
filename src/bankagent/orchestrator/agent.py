@@ -58,6 +58,7 @@ from bankagent.render.templates import (
     render_created_dispute,
     render_created_handoff,
     render_ineligible,
+    render_opening_question,
     render_outcome,
     render_recognition,
     render_state,
@@ -274,6 +275,35 @@ class Agent:
         self._state = ConversationState.CLARIFY
         self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
         return self._reply(render_state(self._state, self._language))
+
+    def _merged(self, supplied: DisputeSlots) -> DisputeSlots:
+        """The clues of this message on top of the ones the customer gave before."""
+        kept = self._slots
+        return DisputeSlots(
+            amount=supplied.amount or kept.amount,
+            currency=supplied.currency or kept.currency,
+            merchant_query=supplied.merchant_query or kept.merchant_query,
+            card_last4=supplied.card_last4 or kept.card_last4,
+            date_text=supplied.date_text or kept.date_text,
+            transaction_ref=supplied.transaction_ref or kept.transaction_ref,
+            card_block_requested=supplied.card_block_requested or kept.card_block_requested,
+        )
+
+    def _ask_what_happened(self, session: Session, slots: DisputeSlots) -> AgentTurnOutput:
+        """Open the conversation when the message names no request yet ("Hola").
+
+        The interpreter's ``out_of_scope`` is a fallback, not a judgement: a greeting and a
+        request the agent cannot serve look the same. Ending here closed the chat on "Hola", so
+        the agent asks instead. It counts as a clarification round, so a request that really is
+        out of scope still ends after the limit. Clues given without a request ("2,450 pesos en
+        ELECTROMUNDO") are kept for the search.
+        """
+        self._clarifications += 1
+        if self._clarifications > 2:
+            return self._abstain(session)
+        self._slots = self._merged(slots)
+        self._record(session, StepKind.RENDER, ConversationState.CLARIFY, StepOutcome.SUCCESS)
+        return self._reply(render_opening_question(self._language))
 
     def _reask(self, session: Session) -> AgentTurnOutput:
         """Repeat the recognition or confirmation question after an unclear answer.
@@ -715,21 +745,16 @@ class Agent:
             Intent.DISPUTE_DUPLICATE,
             Intent.DISPUTE_NOT_RECEIVED,
         }:
+            if interpreted.intent == Intent.OUT_OF_SCOPE:
+                return self._ask_what_happened(session, interpreted.slots)
+            # A request the agent recognizes and does not serve (a claim's status, a card block
+            # with no dispute) is refused at once.
             self._record(session, StepKind.POLICY, ConversationState.ABSTAIN, StepOutcome.BLOCKED)
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
         if self._state != ConversationState.CLARIFY:
             self._intent = interpreted.intent
             self._reason = REASONS[interpreted.intent]
-        supplied = interpreted.slots
-        slots = DisputeSlots(
-            amount=supplied.amount or self._slots.amount,
-            currency=supplied.currency or self._slots.currency,
-            merchant_query=supplied.merchant_query or self._slots.merchant_query,
-            card_last4=supplied.card_last4 or self._slots.card_last4,
-            date_text=supplied.date_text or self._slots.date_text,
-            transaction_ref=supplied.transaction_ref or self._slots.transaction_ref,
-            card_block_requested=supplied.card_block_requested or self._slots.card_block_requested,
-        )
+        slots = self._merged(interpreted.slots)
         self._slots = slots
         search_args = SearchTransactionsArgs(
             amount_min=slots.amount,
