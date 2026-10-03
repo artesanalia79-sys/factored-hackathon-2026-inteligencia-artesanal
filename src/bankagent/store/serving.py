@@ -7,8 +7,8 @@ Rules that hold here so callers cannot get them wrong:
   filters by it, so another customer's card or transaction is indistinguishable from a missing
   one. Not scoped to one customer: the persona picker of the login (``active_customers``, T7).
 - Views exclude ``fraud_score`` and ``dq_flags`` (ADR 0003); the policy engine (T9) reads its own
-  inputs below (``risk_signals``, ``last_claim_date``, ``as_of_date``): no tool calls them, and
-  no tool result or template ever carries ``fraud_score``.
+  inputs below (``risk_signals``, ``last_dispute_date``, ``as_of_date``): no tool calls them, and
+  no tool result or template ever carries ``fraud_score`` or ``dq_flags``.
 
 Timestamps are naive UTC in the file and are returned as aware UTC datetimes.
 Owner: Juan José (T7, T8, T19); policy inputs: Santiago (T9).
@@ -73,15 +73,20 @@ ORDER BY created_at DESC, complaint_id
 LIMIT 1
 """
 
-# Policy-only (T9): fraud_score is excluded from every other statement in this module.
+# Policy-only (T9): fraud_score and dq_flags are excluded from every other statement here.
 _RISK_SQL = """
-SELECT fraud_score FROM transactions_enriched WHERE customer_id = ? AND transaction_id = ?
+SELECT fraud_score, dq_flags FROM transactions_enriched
+WHERE customer_id = ? AND transaction_id = ?
 """
 
 # Any status, any transaction: a repeat disputer is a property of the customer, not of one
-# transaction. `Claim` only: a Service/Branch `Complaint` (e.g. CMP-FX-101) is not a dispute.
-_LAST_CLAIM_SQL = """
-SELECT max(created_at) FROM dispute_history WHERE customer_id = ? AND case_type = 'Claim'
+# transaction. A dispute is T16's strict definition (`t16_dispute_definition.sql`): a
+# Complaint or Claim in category Transactions. Not `case_type = 'Claim'` alone: on the curated
+# data 81% of the customers with a recent Claim had only Fees, app, branch or service claims,
+# and most unrecognized-charge cases are filed as Complaint (PR #44 review).
+_LAST_DISPUTE_SQL = """
+SELECT max(created_at) FROM dispute_history
+WHERE customer_id = ? AND category = 'Transactions' AND case_type IN ('Complaint', 'Claim')
 """
 
 
@@ -279,23 +284,23 @@ class ServingDB:
         return date.fromisoformat(str(row[0]))
 
     def risk_signals(self, customer_id: str, transaction_id: str) -> TransactionRiskSignals | None:
-        """``fraud_score`` for one of the customer's transactions (ADR 0003). ``None`` for a
-        missing or a foreign id, exactly like the tools' reads."""
+        """``fraud_score`` and ``dq_flags`` for one of the customer's transactions (ADR 0003).
+        ``None`` for a missing or a foreign id, exactly like the tools' reads."""
         with duckdb.connect(self._path, read_only=True) as con:
             row = con.execute(_RISK_SQL, [customer_id, transaction_id]).fetchone()
         if row is None:
             return None
-        return TransactionRiskSignals(transaction_id=transaction_id, fraud_score=row[0])
+        return TransactionRiskSignals(
+            transaction_id=transaction_id, fraud_score=row[0], dq_flags=tuple(row[1] or ())
+        )
 
-    def last_claim_date(self, customer_id: str) -> date | None:
-        """Date of this customer's most recent pre-agent claim (any status, any transaction), or
-        ``None``. Input to the repeat-disputer escalation trigger (T9): a dispute the agent
-        itself created is not here, only in ``OpsStore.last_dispute_date``; combine both (the
-        newer date) before building ``PolicyInputs.last_claim_date``, or a customer who disputes
-        repeatedly through the agent, with no prior complaint in the source data, is never
-        flagged as a repeat disputer.
+    def last_dispute_date(self, customer_id: str) -> date | None:
+        """Date of this customer's most recent dispute in the bank's history (any status, any
+        transaction), or ``None``. Input to the repeat-disputer trigger (T9), compared to
+        ``as_of_date``; the agent's own disputes are in ``OpsStore.last_dispute_date`` and are
+        compared to the filing day instead (``bankagent.policy.inputs.build_inputs``).
         """
         with duckdb.connect(self._path, read_only=True) as con:
-            row = con.execute(_LAST_CLAIM_SQL, [customer_id]).fetchone()
+            row = con.execute(_LAST_DISPUTE_SQL, [customer_id]).fetchone()
         value = row[0] if row else None
         return None if value is None else value.date()

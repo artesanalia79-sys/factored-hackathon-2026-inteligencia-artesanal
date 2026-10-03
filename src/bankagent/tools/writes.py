@@ -3,8 +3,9 @@
 ``create_dispute`` and ``block_card`` follow one sequence:
 
 1. the policy decision in the context must allow the action;
-2. ``create_dispute`` also refuses a decision bound to a different transaction (a policy
-   evaluated for A must not authorize, or stamp its SLA and rule ids onto, a dispute on B);
+2. a decision bound to a different target is refused: ``create_dispute`` checks the decision's
+   transaction and ``block_card`` its card (a policy evaluated for A must not authorize, or
+   stamp its SLA and rule ids onto, a write on B);
 3. the target must be the session customer's (otherwise ``NotFound``);
 4. ``create_dispute`` also refuses when the transaction already has an open case, agent-made or
    from before the agent existed (``InvalidArguments``, no token spent);
@@ -52,6 +53,7 @@ KEY_REUSED = "idempotency key already used for a different request"
 ALREADY_DISPUTED = "this transaction already has a dispute"
 ALREADY_BLOCKED = "this card is already blocked"
 WRONG_TARGET = "the policy decision was evaluated for a different transaction"
+WRONG_CARD = "the policy decision was evaluated for a different card"
 
 
 class CreateDispute(BaseTool[CreateDisputeArgs, CreateDisputeResult]):
@@ -105,6 +107,9 @@ class BlockCard(BaseTool[BlockCardArgs, BlockCardResult]):
 
     def _run(self, ctx: ToolContext, args: BlockCardArgs) -> BlockCardResult:
         self._require_allowed_by_policy(ctx)
+        policy = ctx.policy
+        if policy is not None and policy.target_product_id not in (None, args.product_id):
+            raise InvalidArguments(WRONG_CARD)
         customer_id = ctx.session.customer_id
         store = self._deps.store
         cards = self._deps.serving.cards(customer_id, args.product_id)

@@ -86,10 +86,15 @@ class TransactionView(Contract):
 
 
 class TransactionRiskSignals(Contract):
-    """Risk inputs for the policy engine only. Never rendered or sent to the LLM."""
+    """Risk inputs for the policy engine only. Never rendered or sent to the LLM.
+
+    ``dq_flags`` are the serving table's data-quality flags for this transaction (ADR 0003: the
+    views never carry them; only the policy reads them).
+    """
 
     transaction_id: Identifier
     fraud_score: float | None = Field(default=None, ge=0.0, le=100.0)
+    dq_flags: tuple[str, ...] = ()
 
 
 class DisputeCase(Contract):

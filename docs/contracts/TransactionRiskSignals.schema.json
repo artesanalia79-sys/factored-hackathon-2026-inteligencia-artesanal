@@ -1,7 +1,15 @@
 {
   "additionalProperties": false,
-  "description": "Risk inputs for the policy engine only. Never rendered or sent to the LLM.",
+  "description": "Risk inputs for the policy engine only. Never rendered or sent to the LLM.\n\n``dq_flags`` are the serving table's data-quality flags for this transaction (ADR 0003: the\nviews never carry them; only the policy reads them).",
   "properties": {
+    "dq_flags": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Dq Flags",
+      "type": "array"
+    },
     "fraud_score": {
       "anyOf": [
         {
