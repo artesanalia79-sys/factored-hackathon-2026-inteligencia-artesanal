@@ -9,9 +9,11 @@ export interface Scenario {
 }
 
 const personas: Record<string, readonly Scenario[]> = data.personas
+const translations: Record<Language, Record<string, readonly Scenario[]>> = data.translations
 const fallback: Record<Language, readonly Scenario[]> = data.fallback
 
 /** The persona's own examples, or generic openings to complete when the persona is unknown. */
 export function scenariosFor(firstName: string, country: string, language: Language) {
-  return personas[`${firstName}/${country}`] ?? fallback[language]
+  const key = `${firstName}/${country}`
+  return translations[language][key] ?? personas[key] ?? fallback[language]
 }

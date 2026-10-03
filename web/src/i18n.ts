@@ -5,8 +5,10 @@ import type { ActionType, Language } from './api/contracts.gen.ts'
 export interface Copy {
   locale: string
   product: string
+  pageDescription: string
   demoNotice: string
   languageName: Record<Language, string>
+  profileLanguageName: Record<Language, string>
   chooseLanguage: string
   // login
   loginTitle: string
@@ -45,6 +47,23 @@ export interface Copy {
   greetingLead: string
   tryLabel: string
   tryAgainLabel: string
+  transactionsTitle: string
+  transactionsLead: string
+  transactionsLoading: string
+  transactionsEmpty: string
+  transactionsFailed: string
+  transactionsRetry: string
+  transactionsMore: string
+  transactionsAsk: string
+  transactionsAskShort: string
+  transactionsCard: (last4: string) => string
+  transactionsReference: (reference: string) => string
+  transactionsQuestion: (
+    reference: string,
+    merchant: string | null,
+    amount: string,
+    date: string,
+  ) => string
   conversationLabel: string
   messagesLabel: string
   you: string
@@ -81,8 +100,11 @@ export interface Copy {
 const es: Copy = {
   locale: 'es',
   product: 'Asistente de reclamos',
+  pageDescription:
+    'Asistente de reclamos de tarjeta: revisa un cargo, confirma la acción y recibe solo resultados verificados.',
   demoNotice: 'Demo con clientes y movimientos sintéticos',
   languageName: { es: 'Español', pt: 'Português' },
+  profileLanguageName: { es: 'Español', pt: 'Portugués' },
   chooseLanguage: 'Idioma',
   loginTitle: 'Revisa un cargo de tu tarjeta',
   loginLead:
@@ -127,6 +149,19 @@ const es: Copy = {
   greetingLead: 'Cuéntale al asistente qué pasó con el movimiento que quieres revisar.',
   tryLabel: 'Ejemplos para la demo',
   tryAgainLabel: 'Prueba otra consulta',
+  transactionsTitle: 'Tus movimientos recientes',
+  transactionsLead: 'Elige un movimiento para preguntarle al asistente.',
+  transactionsLoading: 'Cargando movimientos',
+  transactionsEmpty: 'No hay movimientos para mostrar.',
+  transactionsFailed: 'No pudimos cargar los movimientos.',
+  transactionsRetry: 'Reintentar',
+  transactionsMore: 'Ver más movimientos',
+  transactionsAsk: 'Preguntar por este movimiento',
+  transactionsAskShort: 'Preguntar',
+  transactionsCard: (last4) => `Tarjeta terminada en ${last4}`,
+  transactionsReference: (reference) => `Ref. ${reference}`,
+  transactionsQuestion: (reference, merchant, amount, date) =>
+    `Tengo un problema con el cargo de la transacción ${reference}${merchant ? ` en ${merchant}` : ''}, por ${amount}, del ${date}.`,
   conversationLabel: 'Conversación',
   messagesLabel: 'Mensajes',
   you: 'Tú',
@@ -166,8 +201,11 @@ const es: Copy = {
 const pt: Copy = {
   locale: 'pt-BR',
   product: 'Assistente de contestações',
-  demoNotice: 'Demo com clientes e transações sintéticos',
+  pageDescription:
+    'Assistente de contestações de cartão: analise uma cobrança, confirme a ação e receba apenas resultados verificados.',
+  demoNotice: 'Demo com clientes de teste e transações sintéticas',
   languageName: { es: 'Español', pt: 'Português' },
+  profileLanguageName: { es: 'Espanhol', pt: 'Português' },
   chooseLanguage: 'Idioma',
   loginTitle: 'Analise uma cobrança do seu cartão',
   loginLead:
@@ -186,7 +224,7 @@ const pt: Copy = {
   accessCodeRequired: 'Esta demo pede um código de acesso. Digite-o e envie de novo.',
   accessCodeWrong: 'O código de acesso não está correto.',
   retry: 'Tentar de novo',
-  sendCode: 'Enviar código',
+  sendCode: 'Solicitar código',
   sendingCode: 'Enviando código',
   codeTitle: (name) => `Código de acesso de ${name}`,
   codeLead: 'Nesta demo não há SMS: o código aparece aqui embaixo.',
@@ -212,6 +250,19 @@ const pt: Copy = {
   greetingLead: 'Conte ao assistente o que aconteceu com a transação que você quer analisar.',
   tryLabel: 'Exemplos para a demo',
   tryAgainLabel: 'Tente outra consulta',
+  transactionsTitle: 'Suas transações recentes',
+  transactionsLead: 'Escolha uma transação para perguntar ao assistente.',
+  transactionsLoading: 'Carregando transações',
+  transactionsEmpty: 'Não há transações para mostrar.',
+  transactionsFailed: 'Não conseguimos carregar as transações.',
+  transactionsRetry: 'Tentar de novo',
+  transactionsMore: 'Ver mais transações',
+  transactionsAsk: 'Perguntar sobre esta transação',
+  transactionsAskShort: 'Perguntar',
+  transactionsCard: (last4) => `Cartão com final ${last4}`,
+  transactionsReference: (reference) => `Ref. ${reference}`,
+  transactionsQuestion: (reference, merchant, amount, date) =>
+    `Tenho um problema com a cobrança da transação ${reference}${merchant ? ` em ${merchant}` : ''}, no valor de ${amount}, de ${date}.`,
   conversationLabel: 'Conversa',
   messagesLabel: 'Mensagens',
   you: 'Você',

@@ -141,7 +141,7 @@ export function LoginScreen({
         expiresAt: verified.expires_at,
         firstName: verified.first_name,
         country: selected.country,
-        language: verified.language ?? language,
+        language,
       })
     } catch (failure) {
       setError(loginError(failure, 'code'))
@@ -273,7 +273,8 @@ export function LoginScreen({
                           <span className="persona__name">{persona.first_name}</span>
                           <span className="persona__meta">
                             {countryName(persona.country, copy)}
-                            {persona.language !== null && ` · ${copy.languageName[persona.language]}`}
+                            {persona.language !== null &&
+                              ` · ${copy.profileLanguageName[persona.language]}`}
                           </span>
                         </span>
                       </label>

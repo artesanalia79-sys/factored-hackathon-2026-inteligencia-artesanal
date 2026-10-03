@@ -21,6 +21,9 @@ export function App() {
   useEffect(() => {
     document.documentElement.lang = COPY[language].locale
     document.title = COPY[language].product
+    document
+      .querySelector('meta[name="description"]')
+      ?.setAttribute('content', COPY[language].pageDescription)
   }, [language])
 
   return (

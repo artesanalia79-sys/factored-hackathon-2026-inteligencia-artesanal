@@ -638,7 +638,8 @@ def test_no_confirmation_on_a_recognized_charge_or_a_handoff(
     assert handoff["confirmation"] is None
 
 
-# The web UI offers these first messages per demo persona; each must still reach what it promises.
+# The web UI offers these first messages per demo persona and language; each must still reach
+# what it promises.
 SCENARIOS = json.loads(
     (Path(__file__).parents[2] / "web" / "src" / "demo" / "scenarios.json").read_text("utf-8")
 )
@@ -650,7 +651,12 @@ FIRST_QUESTION = {
 
 @pytest.mark.parametrize(
     ("persona", "scenario"),
-    [(persona, item) for persona, items in SCENARIOS["personas"].items() for item in items],
+    [
+        (persona, item)
+        for group in [SCENARIOS["personas"], *SCENARIOS["translations"].values()]
+        for persona, items in group.items()
+        for item in items
+    ],
     ids=lambda value: value if isinstance(value, str) else value["label"],
 )
 def test_demo_scenarios_reach_their_first_question(
