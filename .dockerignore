@@ -1,0 +1,22 @@
+# Allowlist: nothing enters the build context unless it is re-included below. A new top-level
+# file or directory (.env, private/, data/, eval/heldout/, .git, .venv, organizer documents)
+# is excluded without anyone having to remember it. `scripts/image_smoke.sh` checks this.
+*
+
+!pyproject.toml
+!uv.lock
+!src
+!policy
+!config
+!tests/fixtures/bank
+
+# Never, even inside an allowed directory.
+**/__pycache__
+**/*.pyc
+**/.env
+**/.env.*
+**/*.duckdb
+**/*.duckdb.wal
+**/*.sqlite
+**/*.sqlite3
+**/*.parquet

@@ -1,0 +1,34 @@
+# Render Blueprint for the public staging service (Task 15). Steps: docs/operations.md.
+#
+# No secret value lives in this file. `generateValue` makes Render create the value; `sync:
+# false` means the value is typed in the Render dashboard (Environment) and never synced from
+# here. The plain values below are not secrets and are fixed on purpose.
+services:
+  - type: web
+    name: bankagent-staging
+    runtime: docker
+    plan: free # one instance, 512 MB, ephemeral disk; `numInstances` is not allowed on free
+    region: virginia
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /ready
+    # Deploy a commit only after every CI check on it passed (the image job included).
+    # Switched to Off in the dashboard at the freeze tag: docs/operations.md.
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: APP_SECRET_KEY # signs session tokens; nobody needs to know it
+        generateValue: true
+      - key: DATA_MODE # the image holds only the synthetic fixture bank
+        value: synthetic
+      - key: AUTH_EXPOSE_MOCK_OTP # demo login: no SMS channel; refused unless the data is synthetic
+        value: "true"
+      - key: DEMO_ACCESS_CODE # shared code every login must present; set it before a paid model is on
+        sync: false
+      - key: LLM_PROVIDER # stub | openai | compat
+        sync: false
+      - key: LLM_MODEL # empty = gpt-6-luna
+        sync: false
+      - key: LLM_SPEND_LIMIT_USD # lifetime cap of one process; empty = 0.10
+        sync: false
+      - key: OPENAI_API_KEY # only for LLM_PROVIDER=openai
+        sync: false

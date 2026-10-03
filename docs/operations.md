@@ -1,0 +1,179 @@
+# Operations
+
+How the public staging service is built, deployed, reset and rolled back (Task 15). Task 20
+adds logging and PII redaction to this file.
+
+## What runs
+
+- One container image (`Dockerfile`): the API only, one process, one worker. Conversations
+  live in process memory under one lock, so a second worker or instance would break them
+  (`docs/limitations.md`, "Conversation"). Never add workers.
+- One Render web service on the free plan, `bankagent-staging`, described by `render.yaml`.
+- Data: the synthetic fixture bank, built from `tests/fixtures/bank` while the image is built
+  and checked against its committed hash. No organizer data is in the image or the service.
+- State: the ops store, a SQLite file on the container's disk. The disk is ephemeral: the file
+  is new after every restart, deploy or wake-up. That is how the demo is reset (see below).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Liveness: the process answers. |
+| `GET /ready` | Readiness: 200 `{"status": "ready"}` when the serving DB and the ops store both answer; otherwise 503 with the names that failed (`serving_db`, `ops_store`) and nothing else. Render's health check uses it. |
+| `GET /docs` | OpenAPI page, usable as a manual client until the web UI (Task 14) is in the image. |
+| `/api/auth/*`, `POST /api/chat/turn` | Login and chat. |
+
+## Environment variables
+
+Names only. No value of a secret is in the repository, in an image layer or in this file.
+
+| Variable | Set by | Meaning |
+|---|---|---|
+| `APP_SECRET_KEY` | Render generates it (`generateValue`) | Signs session tokens. At least 32 bytes and 12 distinct characters, or the service refuses to start. Nobody needs to read it. |
+| `DATA_MODE` | `render.yaml` and the image, `synthetic` | The service also checks what the serving DB itself records. |
+| `AUTH_EXPOSE_MOCK_OTP` | `render.yaml`, `true` | The demo login returns the one-time code, because there is no SMS channel. Refused unless the data is synthetic. |
+| `DEMO_ACCESS_CODE` | Render dashboard | Shared code every login must present (at least 8 ASCII characters). Empty means no gate. Set it before a paid model is on. |
+| `LLM_PROVIDER` | Render dashboard | `stub` (keyword rules, 0 USD), `openai` or `compat`. Empty means `stub`. |
+| `LLM_MODEL` | Render dashboard | Empty means `gpt-6-luna`. |
+| `LLM_SPEND_LIMIT_USD` | Render dashboard | Spend cap of one process. Empty means 0.10. When it is reached the agent keeps working on the keyword interpreter. |
+| `OPENAI_API_KEY` | Render dashboard | Only for `LLM_PROVIDER=openai`. |
+| `SERVING_DB_PATH`, `OPS_DB_PATH` | The image | Do not set them on Render. |
+| `PORT` | Render (10000) | The image defaults to 8000. |
+
+`LLM_PROVIDER=compat` needs `LLM_BASE_URL` and `LLM_API_KEY` (`.env.example`); they are not
+declared in `render.yaml` and must be added there with `sync: false` before it is used.
+
+## First deploy (once)
+
+1. In GitHub, as the owner of the repository's account, install the Render GitHub App
+   (`https://github.com/apps/render/installations/new`) with "Only select repositories" and
+   this repository.
+2. In the Render dashboard: **New > Blueprint**, **Connect** this repository, give the
+   Blueprint a name and pick the branch.
+3. Render lists the variables marked `sync: false` and asks for their values. For a first
+   deploy without the model: `LLM_PROVIDER` = `stub`, a `DEMO_ACCESS_CODE` of your choice, and
+   the rest empty.
+4. **Deploy Blueprint**. The first build takes a few minutes. The deploy goes live when
+   `/ready` answers 200.
+5. Run the check in "Verify a deployment".
+
+The Render CLI (`https://render.com/docs/cli`) covers the rest of this file from a terminal:
+`render login`, then `render workspace set`. `render services` prints the service id
+(`srv-...`) that the commands below need.
+
+## Deploys
+
+- `autoDeployTrigger: checksPass`: Render deploys a commit of the linked branch only after
+  every CI check on it passed. The CI job `image` builds this image and runs a dispute against
+  it, so a commit that breaks the container is never deployed.
+- At the freeze tag (Task 26): set **Settings > Auto-Deploy** to **Off** and deploy the tagged
+  commit, so a later merge cannot restart or change the demo:
+  `render deploys create <service-id> --commit <sha> --wait`.
+- Which commit is live: `render deploys list <service-id> -o json`, or the service's
+  **Events** page.
+- A changed environment variable applies from the next deploy or restart, and that restart
+  also resets the demo.
+
+## Reset the demo
+
+Why: a persona wears out. One dispute per transaction is permanent, and a persona's second
+dispute within 90 days is escalated to a person (`DSP-ESC-02`). After a few demos the happy
+path is gone until the ops store is emptied.
+
+How: restart the service. The new container has an empty ops store.
+
+- `render restart <service-id>`, or in the dashboard **Manual Deploy > Restart service**.
+- It also happens by itself: a free instance sleeps after 15 minutes without traffic and
+  wakes up clean.
+
+What a reset loses: every dispute, card block, handoff, session and execution record, the
+conversations in progress, and the spend counter of `LLM_SPEND_LIMIT_USD`. There is no reset
+endpoint: a public one would let anyone wipe someone else's demo.
+
+Locally (no container): stop the server and delete the file at `OPS_DB_PATH`.
+
+## Turning the real model on
+
+1. Set `DEMO_ACCESS_CODE` first. Without it anyone who finds the URL can make paid calls.
+2. Set `OPENAI_API_KEY`, then `LLM_PROVIDER` = `openai` and, on purpose, `LLM_SPEND_LIMIT_USD`.
+3. The key owner sets a monthly budget on the OpenAI project. The cap of
+   `LLM_SPEND_LIMIT_USD` is per process and starts again at every restart, so on an instance
+   that sleeps and wakes it does not bound the total: the project budget does.
+4. Run "Verify a deployment", then reset the demo.
+
+To go back: `LLM_PROVIDER` = `stub`.
+
+## Verify a deployment
+
+```
+uv run poe smoke https://<service>.onrender.com
+```
+
+It waits for `/ready`, logs in as a synthetic persona and runs one full dispute
+(`scripts/smoke_dispute.py`). Exit 0 and `OK: verified dispute DSP-...` means the service
+created the dispute and read it back. Exit 2 (`USED UP`) means that persona's charge was
+already disputed: reset the demo and run it again. If the service has an access code, put the
+same value in `DEMO_ACCESS_CODE` in your local `.env`; the script never prints it.
+
+The run leaves one dispute behind, so reset the demo afterwards.
+
+## Roll back
+
+- Dashboard: **Deploys**, pick the last good deploy, **Rollback**. Render turns auto-deploy
+  off when you do this; turn it back on in **Settings** once `main` is fixed.
+- Or deploy a known good commit: `render deploys create <service-id> --commit <sha> --wait`.
+- A bad environment variable: correct it in **Environment** and restart the service.
+
+A rollback restarts the service, so it also resets the demo.
+
+## Building and testing the image
+
+Nobody needs Docker locally. The CI job `image` runs `scripts/image_smoke.sh` on every pull
+request and on every push to `main`, and writes the image size and the memory to the job
+summary. With Docker installed the same script runs with `uv run poe image-smoke`.
+
+It fails unless all of this holds:
+
+- the build context contains only what `.dockerignore` allows (`pyproject.toml`, `uv.lock`,
+  `src/`, `policy/`, `config/`, `tests/fixtures/bank/`), even with a `.env`, `private/`,
+  `data/`, `eval/heldout/` and `.venv/` planted next to them;
+- the image is under 512 MB, runs as uid 10001, cannot write its code or the fixture bank,
+  and `/app` holds nothing but the checkout layout and the fixture bank, whose hash matches;
+- started with only the variables above, `PORT=10000` and a 512 MB memory limit, it answers
+  `/health` and `/ready`, refuses a login without the access code, and completes a dispute
+  that ends verified;
+- the same dispute again is refused, and a new container accepts it again (the reset);
+- `SIGTERM` stops it with exit code 0.
+
+## Measured
+
+From the CI job `image` on `ubuntu-latest`, commit `7ee7073`, 2026-10-03 15:38 UTC, with the
+`stub` interpreter and a 512 MB limit on the container
+([run 37133939126](https://github.com/artesanalia79-sys/factored-hackathon-2026-inteligencia-artesanal/actions/runs/37133939126)).
+Every later run writes the same table to its job summary.
+
+| What | Value | How |
+|---|---|---|
+| Image size | 227 MB | `docker image inspect` |
+| Memory of the server process after one full dispute | 112 MB resident, 116 MB peak | `VmRSS` and `VmHWM` of PID 1 |
+| Memory charged to the container at that moment | 67 MiB of 512 MiB | `docker stats` |
+| Build context | 108 files, all inside the allowlist | listing of a `COPY .` image |
+
+Not measured: memory with a real model answering (the OpenAI client is imported in both
+cases, but it was never called in the container), and memory on Render itself.
+
+## What to expect from the free plan
+
+- The first request after 15 minutes without traffic takes about a minute.
+- 512 MB of memory and 0.1 CPU.
+- Render may restart a free instance at any time. A restart ends the conversations in
+  progress and resets the demo.
+- One instance only, which is what this service needs.
+
+## Adding the web UI to the image (Task 14)
+
+1. `.dockerignore`: add `!web`, and exclude `web/node_modules` and `web/dist` after it.
+2. `Dockerfile`: a stage from a node image pinned by tag and digest that copies `web/`, runs
+   `npm ci` and `npm run build`; then in the runtime stage
+   `COPY --from=<that stage> /app/web/dist ./web/dist`.
+3. `scripts/image_smoke.sh`: add `web/` to the allowlist of the build context and `web` to the
+   expected entries of `/app`.
+4. Serve `web/dist` from FastAPI (Task 14 decides the mount).
