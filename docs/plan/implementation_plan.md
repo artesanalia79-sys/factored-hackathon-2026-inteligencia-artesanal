@@ -170,7 +170,9 @@ idempotency, read-back verification.
 
 **T9. Policy engine** [P0] (Juan José)
 `policy/dispute_policy_v1.yaml` with stable rule ids, labeled synthetic unless verified
-(Argentina Ley 25.065 arts. 26-29 verified; MX/CO TODO-verify by a human); `poe policy-explain`.
+(no country's dispute window is verified yet: `DSP-WIN-01` is a synthetic 90-day placeholder
+until a human checks Argentina Ley 25.065 arts. 26-29 and the MX/CO equivalents, see
+`docs/limitations.md` and T29); `poe policy-explain`.
 
 **T10. LLM interpreter** [P0] (Jacobo)
 OpenAI `gpt-6-luna` structured outputs behind `LLMProvider`; cassettes; `config/pricing.yaml`;

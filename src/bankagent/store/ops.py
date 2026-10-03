@@ -8,6 +8,9 @@ Rules that hold here so callers cannot get them wrong:
 - Every statement is parameterized; no SQL is ever built from values.
 - Every read a customer-facing tool can make is scoped by ``customer_id`` or ``session_id``.
   Unscoped reads for human agents live in `bankagent.store.console`, which tools never import.
+  Three reads here are not scoped to a customer and no tool calls them: ``get_challenge`` (by
+  the random challenge id, inside the login), ``list_records`` (by trace id, for tests and
+  offline inspection) and ``count`` (row counts).
 - Disputes, card blocks and handoffs are idempotent by ``(customer_id, idempotency_key)``: an
   exact replay returns the stored row and ``created=False``; the same key with different
   arguments raises ``IdempotencyConflict`` and writes nothing.

@@ -64,7 +64,7 @@ rules:
       synthetic: true
       source: "placeholder pending legal verification; no primary source checked yet for AR, MX
         or CO"
-    todo: "TODO(T9, Santiago): verify Argentina Ley 25.065 arts. 26-29 and the MX/CO equivalents
+    todo: "TODO(T9, Juan José): verify Argentina Ley 25.065 arts. 26-29 and the MX/CO equivalents
       against a primary source before this policy is used on real customers; window_days is a
       synthetic placeholder until then (docs/limitations.md)."
 
@@ -90,16 +90,19 @@ rules:
     description: >
       A customer with a prior dispute in the last window_days is escalated to a human for this
       dispute instead of auto-creating it. A prior dispute is either a case in the bank's
-      dispute_history (category Transactions, case type Complaint or Claim, any status: T16's
-      strict definition), counted against as_of_date, or a dispute the agent itself created,
-      counted against the filing day. So a second dispute in the same conversation escalates:
-      several unrecognized charges are worth a human look, even when they are one incident.
+      dispute_history (category Transactions, case type Complaint or Claim, any status),
+      counted against as_of_date, or a dispute the agent itself created, counted against the
+      filing day. So a second dispute in the same conversation escalates: several unrecognized
+      charges are worth a human look, even when they are one incident. The history uses T16's
+      case types over the whole Transactions category, not T16's strict subcategory "Cargo no
+      reconocido": the fixture's subcategories are in English, and a Transactions case with no
+      subcategory may still be a disputed charge.
     explanation_key: dispute.repeat_disputer
     window_days: 90
     provenance:
       synthetic: true
       source: "business heuristic (serial-dispute risk signal), not externally verified"
-    todo: "TODO(T9, Santiago): business sign-off on the repeat-disputer window and on whether a
+    todo: "TODO(T9, Juan José): business sign-off on the repeat-disputer window and on whether a
       repeat disputer should escalate or only add context to a human review."
 
   - rule_id: DSP-ESC-03
