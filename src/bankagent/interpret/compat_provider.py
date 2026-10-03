@@ -55,6 +55,7 @@ from bankagent.interpret.openai_provider import (
     SpendLimitExceeded,
     _redact,
     normalize_amount_slot,
+    normalize_currency_slot,
     structured_task,
 )
 
@@ -257,6 +258,7 @@ class OpenAICompatibleProvider:
         fields: dict[str, Any] = parsed.model_dump()
         if interpretation:
             normalize_amount_slot(fields)
+            normalize_currency_slot(fields)
             fields |= {"model": self._model, "prompt_version": self._prompt_version}
         try:
             output = response_model.model_validate(fields)

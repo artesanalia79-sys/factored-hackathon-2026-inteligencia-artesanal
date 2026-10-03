@@ -369,6 +369,19 @@ def detect_dialogue_act(norm: str, intent: Intent, slots: DisputeSlots) -> Dialo
     return DialogueAct.OTHER
 
 
+def _currency_in(norm: str) -> str | None:
+    return next((code for rx, code in _CURRENCY_WORDS if rx.search(norm)), None)
+
+
+def parse_currency(text: str) -> str | None:
+    """The ISO 4217 code a text names without ambiguity: "COP", "dólares", "R$", "reais".
+
+    "pesos" alone names none: it is the currency of AR, CO and MX, and the customer's own cards
+    decide which. Shared with the LLM providers, so both interpreters read a currency alike.
+    """
+    return _currency_in(normalize(text))
+
+
 def parse_amount(raw: str) -> Decimal | None:
     """Parse LATAM/US amounts: ``2.450``, ``2,450``, ``1.234,56``, ``1,234.56``, ``9.800.000``."""
     token = raw.replace(" ", "")
@@ -411,7 +424,7 @@ def extract_slots(norm: str, *, card_block_requested: bool = False) -> DisputeSl
             if amount is not None:
                 break
 
-    currency = next((code for rx, code in _CURRENCY_WORDS if rx.search(norm)), None)
+    currency = _currency_in(norm)
 
     merchant: str | None = None
     best = len(norm) + 1
