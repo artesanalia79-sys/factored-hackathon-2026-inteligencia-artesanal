@@ -14,7 +14,7 @@ from bankagent.contracts.decisions import DisputeSlots, InterpretationResult
 from bankagent.contracts.enums import Dialect, DialogueAct, Intent, Language
 
 MODEL_NAME = "stub-keywords"
-PROMPT_VERSION = "stub-v1"
+PROMPT_VERSION = "stub-v2"  # v2: language markers expanded (PR #48)
 
 
 def normalize(text: str) -> str:
@@ -32,46 +32,37 @@ def _rx(*patterns: str) -> re.Pattern[str]:
 # ---------------------------------------------------------------------------
 # Language and dialect
 # ---------------------------------------------------------------------------
-_PT_MARKERS = _rx(
-    r"\bnao\b",
-    r"\bvoce\b",
-    r"\bcartao\b",
-    r"\bcobranca\b",
-    r"\breconheco\b",
-    r"\bfui eu\b",
-    r"\bmeu\b",
-    r"\bminha\b",
-    r"\bobrigad[oa]\b",
-    r"\bola\b",
-    r"\bestou\b",
-    r"\bquero\b",
-    r"\bcompra que\b",
-    r"\bchegou\b",
-    r"\batendente\b",
-    r"\bbloqueie\b",
-    r"\bduas vezes\b",
-    r"\bsim\b",
-    r"\bisso\b",
-    r"\breais\b",
-)
-_ES_MARKERS = _rx(
-    r"\btarjeta\b",
-    r"\bcargo\b",
-    r"\breconozco\b",
-    r"\bfui yo\b",
-    r"\bmi\b",
-    r"\bhola\b",
-    r"\bgracias\b",
-    r"\bquiero\b",
-    r"\bcobro\b",
-    r"\busted\b",
-    r"\bvos\b",
-    r"\bllego\b",
-    r"\bdos veces\b",
-    r"\bsi\b",
-    r"\bpesos\b",
-    r"\basesor\b",
-)
+def _words(*words: str) -> re.Pattern[str]:
+    """Whole normalized words or phrases (``"fui eu"``)."""
+    return _rx(*(rf"\b{re.escape(word)}\b" for word in words))
+
+
+# Each marker stays distinct after normalization, so a match is evidence for one language: the
+# frequent function words (articles, pronouns, prepositions) plus common verbs and domain words.
+# Left out on purpose because both languages use them: que, de, no, por, para, me, se, compra,
+# valor, este/esta, nunca, porque, aqui, compra que, and pesos (the currency of AR, CO and MX,
+# said the same way in Portuguese). "com" is not counted right after a dot ("amazon.com").
+_PT_WORDS = """
+    nao voce voces eu meu minha meus minhas seu sua seus suas dele dela isso isto essa esse
+    essas esses nessa nesse nesta neste um uma uns umas na nas do pelo pela ao aos num numa em
+    sem mais muito muita tambem tudo bem agora hoje ontem entao ainda sim
+    foi fiz fez tenho tem estou sou posso pode quero quer gostaria apareceu comprei paguei
+    recebi chegou cobraram cobrou reconheco reconhece reconheci reconhecer bloqueie ajuda ajudar
+    cartao cartoes cobranca cobrancas fatura conta loja estorno transacao contestacao
+    solicitacao sessao atendente reais oi ola obrigado obrigada tchau
+"""
+_PT_PHRASES = ("fui eu", "duas vezes", "bom dia", "boa tarde", "boa noite")
+_ES_WORDS = """
+    el los las un una unos unas del al y en con sin pero muy ya yo mi lo le les su sus ese esa
+    eso esos esas esto usted ustedes vos tambien bien ahora hoy ayer entonces si
+    es fue hice hizo tengo tiene estoy soy puedo puede quiero quisiera necesito hay recibi llego
+    cobraron reconozco ayuda ayudar
+    tarjeta tarjetas cargo cargos cobro cobros cuenta tienda devolucion transaccion solicitud
+    sesion movimiento reclamo asesor hola buenas gracias
+"""
+_ES_PHRASES = ("fui yo", "dos veces", "buenos dias", "buen dia")
+_PT_MARKERS = _rx(_words(*_PT_WORDS.split(), *_PT_PHRASES).pattern, r"(?<!\.)\bcom\b")
+_ES_MARKERS = _words(*_ES_WORDS.split(), *_ES_PHRASES)
 _ES_AR = _rx(
     r"\bvos\b",
     r"\btenes\b",
@@ -310,10 +301,22 @@ _DATE_TEXT = re.compile(
 )
 
 
-def detect_language(norm: str) -> Language:
+def language_evidence(norm: str) -> Language | None:
+    """The language a normalized message is clearly written in, or ``None`` when its markers tie.
+
+    ``"Ok"``, ``"No"`` or ``"85.900"`` carry no marker of either language: a caller holding a
+    conversation keeps the language it already had instead of guessing.
+    """
     pt = len(_PT_MARKERS.findall(norm))
     es = len(_ES_MARKERS.findall(norm))
+    if pt == es:
+        return None
     return Language.PT if pt > es else Language.ES
+
+
+def detect_language(norm: str) -> Language:
+    """Single-message guess: Spanish when the markers tie (the fixed default)."""
+    return language_evidence(norm) or Language.ES
 
 
 def detect_dialect(norm: str, language: Language) -> Dialect:

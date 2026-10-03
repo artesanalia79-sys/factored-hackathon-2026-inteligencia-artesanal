@@ -342,3 +342,20 @@ def test_corrections_count_as_clarification_rounds(system: tuple[TestClient, Ops
     assert last["ended"]
     assert last["claimed_actions"] == []
     assert store.count("disputes") == store.count("handoffs") == 0
+
+
+def test_a_portuguese_conversation_stays_in_portuguese(system: tuple[TestClient, OpsStore]) -> None:
+    client, store = system
+    headers = _headers(client, "Rafael")  # profile language pt on the fixture
+    opening = _turn(
+        client,
+        headers,
+        "Oi, apareceu uma compra de 32.500 pesos na GAMESTORE DIGITAL que eu não fiz.",
+    )
+    assert "Você reconhece esta transação?" in opening["reply_text"]
+    confirm = _turn(client, headers, "Não")
+    assert "Você confirma a abertura de uma contestação" in confirm["reply_text"]
+    done = _turn(client, headers, "Ok")
+    assert done["claimed_actions"] == ["create_dispute"]
+    assert done["reply_text"].startswith("Abri a contestação")
+    assert store.get_dispute("CUST-FX-004", transaction_id="TXN-FX-0401") is not None

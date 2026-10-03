@@ -7,7 +7,14 @@ from decimal import Decimal
 import pytest
 
 from bankagent.contracts.enums import Dialect, DialogueAct, Intent, Language
-from bankagent.interpret.keywords import interpret_text, normalize, parse_amount
+from bankagent.interpret.keywords import (
+    detect_language,
+    interpret_text,
+    language_evidence,
+    normalize,
+    parse_amount,
+)
+from bankagent.render.templates import OUTCOME_COPY, STATE_COPY
 
 
 @pytest.mark.parametrize(
@@ -63,6 +70,48 @@ def test_attacks_are_flagged(text: str) -> None:
 def test_language_and_dialect(text: str, language: Language, dialect: Dialect) -> None:
     result = interpret_text(text)
     assert (result.language, result.dialect) == (language, dialect)
+
+
+@pytest.mark.parametrize(
+    ("text", "language"),
+    [
+        # "pesos" is the currency of AR, CO and MX in either language: not Spanish evidence.
+        ("Oi, apareceu uma compra de 32.500 pesos na GAMESTORE DIGITAL que eu não fiz.", "pt"),
+        ("Me cobraram 350 mil pesos e não sei por quê", "pt"),
+        ("Foi uma cobrança de 129 pesos no PayPal", "pt"),
+        ("Cara, estão me cobrando uma assinatura que eu cancelei", "pt"),
+        ("Preciso de ajuda com um pagamento numa loja dos EUA", "pt"),
+        # ".com" is not the Portuguese "com"; "EU" (Estados Unidos) does not tip a sentence.
+        ("Quiero reclamar una compra que no hice en amazon.com", "es"),
+        ("Necesito ayuda con un pago en una tienda de EU", "es"),
+        ("Che, me aparece un consumo en dólares que no hice", "es"),
+        ("¿Me pueden ayudar? Tengo un débito que no autoricé", "es"),
+        ("Parce, me están cobrando una suscripción que cancelé", "es"),
+        # Short answers whose only evidence is a pronoun or a possessive.
+        ("Essa compra é minha", "pt"),
+        ("Esa compra es mía", "es"),
+    ],
+)
+def test_language_evidence_reads_function_words(text: str, language: str) -> None:
+    assert language_evidence(normalize(text)) == Language(language)
+
+
+NO_MARKERS = ["Ok", "No", "85.900", "32.500 pesos", "amazon.com", "Dale, confirmo", "Beleza, ok"]
+
+
+@pytest.mark.parametrize("text", NO_MARKERS)
+def test_a_message_without_markers_is_evidence_of_neither_language(text: str) -> None:
+    # The orchestrator keeps the conversation's language on these; a single message still
+    # needs a value, and the interpreter's fixed default stays Spanish.
+    assert language_evidence(normalize(text)) is None
+    assert detect_language(normalize(text)) == Language.ES
+
+
+def test_the_agents_own_copy_is_never_read_as_the_other_language() -> None:
+    for table in (STATE_COPY, OUTCOME_COPY):
+        for copy in table.values():
+            for language, text in copy.items():
+                assert language_evidence(normalize(text)) in {language, None}, text
 
 
 @pytest.mark.parametrize(

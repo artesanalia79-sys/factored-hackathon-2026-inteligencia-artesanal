@@ -44,7 +44,7 @@ from bankagent.contracts.tools import (
     Tool,
     ToolContext,
 )
-from bankagent.interpret.keywords import interpret_text, normalize
+from bankagent.interpret.keywords import interpret_text, language_evidence, normalize
 from bankagent.render.templates import (
     UnverifiedRenderError,
     render_confirmation,
@@ -106,6 +106,7 @@ class Agent:
         self._records: list[ExecutionRecord] = []
         self._state = ConversationState.UNDERSTAND
         self._language = Language.ES
+        self._language_known = False
         self._transaction: TransactionView | None = None
         self._read_args: GetTransactionArgs | None = None
         self._read_result: GetTransactionResult | None = None
@@ -513,10 +514,27 @@ class Agent:
         self._record(session, StepKind.VERIFY, self._state, StepOutcome.SUCCESS, args=args)
         return self._reply(reply, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
 
+    def _follow_language(self, session: Session, text: str) -> None:
+        """Keep the conversation's language; switch only on a message clearly in the other one.
+
+        The interpreter judges each message alone, and a message with no language markers
+        ("Ok", "No", a number) used to fall back to Spanish mid-conversation. The first turn
+        starts from the customer's profile language when the message itself does not tell.
+        """
+        evidence = language_evidence(normalize(text))
+        if evidence is not None:
+            self._language = evidence
+        elif not self._language_known and session.language is not None:
+            self._language = session.language
+        self._language_known = True
+
     def handle_turn(self, session: Session, text: str, /) -> AgentTurnOutput:
         self._records = []
         if self._ended:
             return self._reply(render_state(ConversationState.DONE, self._language), ended=True)
+        # Before the expiry check, so even the re-authentication message is in the right language
+        # (keyword markers only: nothing is read and no provider is called).
+        self._follow_language(session, text)
         if not session.is_active(self._clock()):
             self._record(
                 session,
@@ -528,7 +546,6 @@ class Agent:
             return self._reply(render_outcome(Outcome.REAUTH_REQUIRED, self._language), ended=True)
         self._record(session, StepKind.AUTHENTICATE, ConversationState.AUTH, StepOutcome.SUCCESS)
         interpreted = self._interpret(session, text)
-        self._language = interpreted.language
         if interpreted.injection_suspected or interpreted.intent == Intent.ATTACK:
             self._record(session, StepKind.POLICY, ConversationState.ABSTAIN, StepOutcome.BLOCKED)
             return self._reply(render_outcome(Outcome.DENIED, self._language), ended=True)

@@ -16,6 +16,7 @@ from bankagent.contracts.enums import (
     DisputeReason,
     DisputeStatus,
     Language,
+    Outcome,
     ToolName,
     TransactionStatus,
     TransactionType,
@@ -36,6 +37,7 @@ from bankagent.contracts.tools import (
 from bankagent.interpret.keywords import interpret_text
 from bankagent.interpret.stub import StubFault, StubProvider
 from bankagent.orchestrator.agent import PolicyEvaluator, create_agent
+from bankagent.render.templates import render_outcome
 
 NOW = datetime(2026, 10, 2, 12, tzinfo=UTC)
 
@@ -574,3 +576,33 @@ def test_the_merchant_spelled_differently_is_still_the_charge_on_screen() -> Non
     output = agent.handle_turn(_session(), "No reconozco ese cargo de Electro Mundo")
     assert "¿Confirmas crear un reclamo" in output.reply_text
     assert search.calls == get.calls == 1
+
+
+def test_a_message_without_language_markers_keeps_the_conversation_language() -> None:
+    agent, _, _ = _agent()
+    # The profile says Spanish, but the message is clearly Portuguese: the message wins.
+    first = agent.handle_turn(_session(), "Não reconheço uma compra de 2,450 pesos na ELECTROMUNDO")
+    assert "Você reconhece esta transação?" in first.reply_text
+    # "Ok" has no language markers (the interpreter alone would say Spanish).
+    second = agent.handle_turn(_session(), "Ok")
+    assert second.reply_text == render_outcome(Outcome.DEFLECTED_RECOGNIZED, Language.PT)
+
+
+def test_a_clearly_written_message_switches_the_language() -> None:
+    agent, _, _ = _dispute_agent(DisputeTool())
+    first = agent.handle_turn(
+        _session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco"
+    )
+    assert "¿Reconoces este movimiento?" in first.reply_text
+    second = agent.handle_turn(_session(), "Não, não reconheço essa compra")
+    assert "Você confirma a abertura de uma contestação" in second.reply_text
+
+
+def test_the_profile_language_answers_until_a_message_says_otherwise() -> None:
+    provider = StubProvider()
+    agent, search, get = _agent(provider)
+    expired = _session().model_copy(update={"expires_at": NOW, "language": Language.PT})
+    output = agent.handle_turn(expired, "Ok")
+    assert output.reply_text == render_outcome(Outcome.REAUTH_REQUIRED, Language.PT)
+    assert provider.calls == 0
+    assert search.calls == get.calls == 0
