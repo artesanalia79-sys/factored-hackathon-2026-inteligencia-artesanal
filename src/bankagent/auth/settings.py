@@ -9,6 +9,8 @@ Environment (see ``.env.example``):
   channel in the demo). Off unless set. It is refused unless the data is synthetic
   (``DATA_MODE`` and the serving DB's own metadata): with the public persona list it would
   let anyone log in as a customer from organizer data.
+- ``DEMO_ACCESS_CODE``: a shared code every login must present. Unset means no gate. It keeps
+  anonymous traffic off a public demo, where each chat turn can be a paid model call.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from datetime import timedelta
 
 MIN_SECRET_BYTES = 32
 MIN_SECRET_DISTINCT = 12
+MIN_ACCESS_CODE_CHARS = 8
 SYNTHETIC = "synthetic"
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"", "0", "false", "no", "off"})
@@ -59,11 +62,19 @@ class AuthSettings:
     # Demo only: there is no SMS channel, so the mock OTP can be returned to the caller.
     # Off by default; never allowed on curated (organizer-derived) data.
     expose_mock_otp: bool = False
+    # Demo only: a code shared with the people invited to try the service. None = no gate.
+    access_code: Secret | None = None
     data_mode: str = SYNTHETIC
     persona_limit: int = 50
     issuer: str = field(default="bankagent")
 
     def __post_init__(self) -> None:
+        if self.access_code is not None:
+            code = self.access_code.reveal()
+            if len(code) < MIN_ACCESS_CODE_CHARS or not code.isascii():
+                raise AuthConfigError(
+                    f"DEMO_ACCESS_CODE must be at least {MIN_ACCESS_CODE_CHARS} ASCII characters"
+                )
         value = self.secret.reveal()
         if len(value) < MIN_SECRET_BYTES:
             raise AuthConfigError(
@@ -97,9 +108,11 @@ class AuthSettings:
         value = env.get("APP_SECRET_KEY", "")
         if not value:
             raise AuthConfigError("APP_SECRET_KEY is not set; run `uv run poe init-env`")
+        access_code = env.get("DEMO_ACCESS_CODE", "").strip()
         return cls(
             secret=Secret(value),
             expose_mock_otp=_flag(env, "AUTH_EXPOSE_MOCK_OTP"),
+            access_code=Secret(access_code) if access_code else None,
             data_mode=env.get("DATA_MODE", "").strip().lower() or SYNTHETIC,
         )
 
