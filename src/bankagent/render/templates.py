@@ -137,6 +137,29 @@ BLOCK_DECLINED_COPY: dict[Language, str] = {
     Language.PT: "Entendido, não vou bloquear o cartão.",
 }
 
+# Why the policy refused a dispute, by the `explanation_key` of each eligibility rule in
+# `policy/dispute_policy_v1.yaml`. None of these lines states an action as done.
+INELIGIBLE_COPY: dict[str, dict[Language, str]] = {
+    "dispute.already_disputed": {
+        Language.ES: "Este movimiento ya tiene un reclamo abierto, así que no voy a crear otro.",
+        Language.PT: "Esta transação já tem uma contestação aberta, então não vou abrir outra.",
+    },
+    "dispute.out_of_window": {
+        Language.ES: "Este movimiento está fuera del plazo para presentar un reclamo.",
+        Language.PT: "Esta transação está fora do prazo para abrir uma contestação.",
+    },
+    "dispute.not_settled": {
+        Language.ES: (
+            "Este movimiento no es un cobro definitivo (está pendiente, fue rechazado o se "
+            "revirtió), así que no se puede reclamar."
+        ),
+        Language.PT: (
+            "Esta transação não é uma cobrança definitiva (está pendente, foi recusada ou "
+            "estornada), então não pode ser contestada."
+        ),
+    },
+}
+
 REASONS: dict[DisputeReason, dict[Language, str]] = {
     DisputeReason.UNRECOGNIZED: {
         Language.ES: "movimiento no reconocido",
@@ -220,6 +243,16 @@ def render_state(state: ConversationState, language: Language) -> str:
 def render_outcome(outcome: Outcome, language: Language) -> str:
     """Render an outcome without claiming a write or quoting unverified details."""
     return OUTCOME_COPY[outcome][language]
+
+
+def render_ineligible(explanation_key: str | None, language: Language) -> str:
+    """Say why the policy refused the dispute, without claiming or promising any action.
+
+    A key with no copy gets the generic refusal: the policy did decide, so it is not the
+    "not enough information" abstention.
+    """
+    copy = INELIGIBLE_COPY.get(explanation_key or "")
+    return copy[language] if copy else OUTCOME_COPY[Outcome.DENIED][language]
 
 
 def render_recognition(

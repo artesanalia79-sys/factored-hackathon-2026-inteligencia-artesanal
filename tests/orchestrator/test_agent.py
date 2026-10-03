@@ -50,7 +50,7 @@ from bankagent.contracts.tools import (
 from bankagent.interpret.keywords import interpret_text
 from bankagent.interpret.stub import StubFault, StubProvider
 from bankagent.orchestrator.agent import PolicyEvaluator, create_agent
-from bankagent.render.templates import render_outcome
+from bankagent.render.templates import render_ineligible, render_outcome
 
 NOW = datetime(2026, 10, 2, 12, tzinfo=UTC)
 
@@ -589,6 +589,58 @@ def test_the_merchant_spelled_differently_is_still_the_charge_on_screen() -> Non
     output = agent.handle_turn(_session(), "No reconozco ese cargo de Electro Mundo")
     assert "¿Confirmas crear un reclamo" in output.reply_text
     assert search.calls == get.calls == 1
+
+
+# -- an ineligible decision says why -----------------------------------------------------------
+
+
+def _ineligible(*keys: str) -> PolicyEvaluator:
+    def decide(
+        _session: Session, _transaction: GetTransactionResult, _reason: DisputeReason
+    ) -> PolicyDecision:
+        return PolicyDecision(
+            decision=DecisionType.INELIGIBLE,
+            rule_ids=("DSP-ELIG-02",),
+            explanation_keys=keys,
+            policy_version="test-v1",
+        )
+
+    return decide
+
+
+def test_an_ineligible_decision_names_its_reason_and_writes_nothing() -> None:
+    write = DisputeTool()
+    agent, _, _ = _dispute_agent(write, policy=_ineligible("dispute.already_disputed"))
+    agent.handle_turn(_session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    output = agent.handle_turn(_session(), "No fui yo")
+    assert output.reply_text == render_ineligible("dispute.already_disputed", Language.ES)
+    assert output.reply_text != render_outcome(Outcome.ABSTAINED, Language.ES)
+    assert output.ended
+    assert output.claimed_actions == ()
+    assert write.calls == 0
+    # Still a policy refusal with its rule for the scorer, not an abstention.
+    assert any(
+        record.step == "policy" and record.outcome == "blocked" and record.rule_ids
+        for record in output.records
+    )
+    assert not any(record.state == "abstain" for record in output.records)
+
+
+def test_the_ineligible_reason_is_the_first_key_in_the_conversation_language() -> None:
+    agent, _, _ = _dispute_agent(
+        DisputeTool(), policy=_ineligible("dispute.out_of_window", "dispute.not_settled")
+    )
+    agent.handle_turn(_session(), "Não reconheço uma compra de 2,450 pesos na ELECTROMUNDO")
+    output = agent.handle_turn(_session(), "Não fui eu")
+    assert output.reply_text == render_ineligible("dispute.out_of_window", Language.PT)
+
+
+def test_an_ineligible_decision_without_copy_is_refused_not_abstained() -> None:
+    agent, _, _ = _dispute_agent(DisputeTool(), policy=_ineligible())
+    agent.handle_turn(_session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    output = agent.handle_turn(_session(), "No fui yo")
+    assert output.reply_text == render_outcome(Outcome.DENIED, Language.ES)
+    assert output.ended
 
 
 # -- card-block offer after a verified dispute (plan step ACT) ----------------------------------

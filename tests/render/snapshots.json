@@ -130,5 +130,19 @@
   "block_declined": {
     "es": "Entendido, no bloquearé la tarjeta.",
     "pt": "Entendido, não vou bloquear o cartão."
+  },
+  "ineligible": {
+    "dispute.already_disputed": {
+      "es": "Este movimiento ya tiene un reclamo abierto, así que no voy a crear otro.",
+      "pt": "Esta transação já tem uma contestação aberta, então não vou abrir outra."
+    },
+    "dispute.out_of_window": {
+      "es": "Este movimiento está fuera del plazo para presentar un reclamo.",
+      "pt": "Esta transação está fora do prazo para abrir uma contestação."
+    },
+    "dispute.not_settled": {
+      "es": "Este movimiento no es un cobro definitivo (está pendiente, fue rechazado o se revirtió), así que no se puede reclamar.",
+      "pt": "Esta transação não é uma cobrança definitiva (está pendente, foi recusada ou estornada), então não pode ser contestada."
+    }
   }
 }

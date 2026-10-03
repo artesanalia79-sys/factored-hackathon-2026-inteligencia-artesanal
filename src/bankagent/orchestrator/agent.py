@@ -57,6 +57,7 @@ from bankagent.render.templates import (
     render_confirmation,
     render_created_dispute,
     render_created_handoff,
+    render_ineligible,
     render_outcome,
     render_recognition,
     render_state,
@@ -403,6 +404,10 @@ class Agent:
             return self._escalate(session, rule_ids=decision.rule_ids)
         if decision.decision == DecisionType.CLARIFY:
             return self._clarify(session)
+        if decision.decision == DecisionType.INELIGIBLE:
+            # The decision names the reason; "not enough information" would be untrue here.
+            key = decision.explanation_keys[0] if decision.explanation_keys else None
+            return self._reply(render_ineligible(key, self._language), ended=True)
         if decision.decision != DecisionType.PROCEED:
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
         if ActionType.CREATE_DISPUTE not in decision.allowed_actions:

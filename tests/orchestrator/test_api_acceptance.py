@@ -279,10 +279,14 @@ def test_fx007_open_claim_and_repeat_disputer_follow_the_policy(
     # TXN-FX-0701 already has an open claim in the bank's history: ineligible, nothing written.
     first = _turn(client, headers, "No reconozco el cargo de PEDIDOSYA de 15.200 pesos")
     assert "¿Reconoces este movimiento?" in first["reply_text"]
-    refused = _turn(client, headers, "No fui yo")
+    refused = _turn(client, headers, "No")
     assert refused["ended"]
     assert refused["claimed_actions"] == []
     assert store.count("disputes") == store.count("handoffs") == 0
+    # The reason, not the "no tengo información suficiente" abstention.
+    assert refused["reply_text"] == (
+        "Este movimiento ya tiene un reclamo abierto, así que no voy a crear otro."
+    )
 
     # TXN-FX-0702 has no open case, but a claim from 2026-04-02 makes her a repeat disputer.
     headers = _headers(client, "Valentina")
@@ -296,6 +300,42 @@ def test_fx007_open_claim_and_repeat_disputer_follow_the_policy(
     assert packet is not None
     assert packet.trigger_rule_ids == ("DSP-ESC-02",)
     assert packet.verified_facts[0].ref == "TXN-FX-0702"
+
+
+def test_fx007_open_claim_is_explained_in_portuguese(system: tuple[TestClient, OpsStore]) -> None:
+    client, store = system
+    headers = _headers(client, "Valentina")
+    _turn(client, headers, "Não reconheço a cobrança de PEDIDOSYA de 15.200 pesos")
+    refused = _turn(client, headers, "Não")
+    assert refused["ended"]
+    assert refused["reply_text"] == (
+        "Esta transação já tem uma contestação aberta, então não vou abrir outra."
+    )
+    assert store.count("disputes") == store.count("handoffs") == 0
+
+
+def test_fx008_old_and_unsettled_charges_get_their_own_reason(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    out_of_window = "Este movimiento está fuera del plazo para presentar un reclamo."
+    not_settled = (
+        "Este movimiento no es un cobro definitivo (está pendiente, fue rechazado o se "
+        "revirtió), así que no se puede reclamar."
+    )
+    for opening, reason in (
+        ("No reconozco el cargo de LIVERPOOL de 3,200 pesos", out_of_window),  # 127 days old
+        ("No reconozco un cargo de 1,999 pesos en ELECTRONICA EXPRESS", not_settled),  # Declined
+        ("No reconozco un cargo de UBER EATS por 560 pesos", not_settled),  # Pending
+    ):
+        headers = _headers(client, "Diego")
+        first = _turn(client, headers, opening)
+        assert "¿Reconoces este movimiento?" in first["reply_text"]
+        refused = _turn(client, headers, "No")
+        assert refused["reply_text"] == reason
+        assert refused["ended"]
+        assert refused["claimed_actions"] == []
+    assert store.count("disputes") == store.count("handoffs") == 0
 
 
 # -- what a person types, not what the simulator types ----------------------------------------

@@ -45,6 +45,7 @@ from bankagent.contracts.tools import (
     ListCardsResult,
 )
 from bankagent.eval.detectors import detect_claims
+from bankagent.policy import load_policy
 from bankagent.render import (
     UnverifiedRenderError,
     render_block_declined,
@@ -53,6 +54,7 @@ from bankagent.render import (
     render_confirmation,
     render_created_dispute,
     render_created_handoff,
+    render_ineligible,
     render_outcome,
     render_recognition,
     render_state,
@@ -160,6 +162,28 @@ def test_confirmation_snapshots(language: Language, transaction: TransactionView
         )
         == SNAPSHOT["confirm_block"][language.value]
     )
+
+
+@pytest.mark.parametrize("language", list(Language))
+@pytest.mark.parametrize("key", sorted(SNAPSHOT["ineligible"]))
+def test_ineligible_snapshots_claim_nothing(key: str, language: Language) -> None:
+    copy = render_ineligible(key, language)
+    assert copy == SNAPSHOT["ineligible"][key][language.value]
+    # "Ya tiene un reclamo abierto" is about the bank's records, not an action of this agent.
+    assert detect_claims(copy) == frozenset()
+
+
+def test_every_eligibility_rule_of_the_policy_has_copy() -> None:
+    keys = {rule.explanation_key for rule in load_policy().eligibility_rules()}
+    assert keys == set(SNAPSHOT["ineligible"])
+
+
+@pytest.mark.parametrize("language", list(Language))
+@pytest.mark.parametrize("key", [None, "dispute.rule_added_later"])
+def test_ineligible_without_copy_is_a_refusal_not_an_abstention(
+    key: str | None, language: Language
+) -> None:
+    assert render_ineligible(key, language) == render_outcome(Outcome.DENIED, language)
 
 
 def _active_card(product_id: str = "card-1") -> ListCardsResult:
