@@ -171,8 +171,8 @@ cases, but it was never called in the container), and memory on Render itself.
 
 `https://bankagent-staging.onrender.com`, Render free plan, region `virginia`, branch `main`,
 one instance, health check on `/ready`, auto-deploy after CI checks. All times UTC,
-2026-10-03. Deployed commit: `546ec7b` (the merge of pull request #56), read with
-`render deploys list`.
+2026-10-03. Deployed commits, read with `render deploys list`: `546ec7b` (the merge of pull
+request #56) until 17:06, then `bf20735`.
 
 | Time | What | Result |
 |---|---|---|
@@ -185,11 +185,23 @@ one instance, health check on `/ready`, auto-deploy after CI checks. All times U
 | 16:58:41 | The same flow | Still used up: the old instance answers until the new one is ready |
 | 16:58:55 | The same flow | `OK: verified dispute DSP-3EE4469C10522E95`: a new instance with an empty store, 26 s after the restart |
 | 16:59:10 | `render restart` | Leaves the demo unused |
+| 17:06:10 to 17:06:55 | Automatic deploy of `bf20735` (pull request #57) | Created 3 s after the CI checks of that commit finished green; live in 45 s |
+| 17:21:59 to 17:22:32 | Manual deploy after `LLM_PROVIDER` was set to `openai` in the dashboard | Live |
+| 17:23:07 | `uv run poe smoke` | `OK: verified dispute DSP-56C60A26866E6AFD`; 2.0 to 6.4 s per turn |
+| 17:24 | Three openings sent to a local server on the keyword interpreter and to the service | The model is interpreting, see below; 2.1 to 2.7 s per turn |
+| 17:24:30 | `render restart` | Leaves the demo unused; `/ready` 200 at 17:25:11 |
 
-Not verified on the service: which interpreter answered (the value of `LLM_PROVIDER` is set
-in the dashboard; `stub` was the value agreed for the first deploy and the turn times fit
-it), the real model, the memory the instance uses (dashboard, **Metrics**), and the wake-up
-after 15 idle minutes.
+That the model reads the messages, and not the keyword fallback, was checked by behaviour,
+because the service does not say which one answered. Two openings the keyword rules cannot
+read get the clarification question from a local server on `LLM_PROVIDER=stub` and the
+right charge from the service: the amount in words ("fueron dos mil cuatrocientos
+cincuenta") and informal spelling ("me salio algo de electromundo q no es mio, como 2450
+varos"). A third opening is read by both. The first deploy ran on `stub` (0.1 to 0.9 s per
+turn).
+
+Not verified on the service: what these calls cost (the spend counter is not exposed; see
+the OpenAI dashboard), the memory the instance uses (Render dashboard, **Metrics**), and
+the wake-up after 15 idle minutes.
 
 ## What to expect from the free plan
 
