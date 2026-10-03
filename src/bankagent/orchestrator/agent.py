@@ -903,13 +903,19 @@ class Agent:
             return written
         return self._reply(written, ended=True, claimed_actions=(ActionType.BLOCK_CARD,))
 
-    def _follow_language(self, session: Session, text: str) -> None:
-        """Keep the conversation's language; switch only on a message clearly in the other one.
+    def _follow_language(
+        self, session: Session, text: str, preferred_language: Language | None = None
+    ) -> None:
+        """Honor a selected language; otherwise follow clear evidence in the message.
 
         The interpreter judges each message alone, and a message with no language markers
         ("Ok", "No", a number) used to fall back to Spanish mid-conversation. The first turn
         starts from the customer's profile language when the message itself does not tell.
         """
+        if preferred_language is not None:
+            self._language = preferred_language
+            self._language_known = True
+            return
         evidence = language_evidence(normalize(text))
         if evidence is not None:
             self._language = evidence
@@ -917,13 +923,15 @@ class Agent:
             self._language = session.language
         self._language_known = True
 
-    def handle_turn(self, session: Session, text: str, /) -> AgentTurnOutput:
+    def handle_turn(
+        self, session: Session, text: str, /, preferred_language: Language | None = None
+    ) -> AgentTurnOutput:
         self._records = []
         if self._ended:
             return self._reply(render_state(ConversationState.DONE, self._language), ended=True)
         # Before the expiry check, so even the re-authentication message is in the right language
         # (keyword markers only: nothing is read and no provider is called).
-        self._follow_language(session, text)
+        self._follow_language(session, text, preferred_language)
         if not session.is_active(self._clock()):
             self._record(
                 session,

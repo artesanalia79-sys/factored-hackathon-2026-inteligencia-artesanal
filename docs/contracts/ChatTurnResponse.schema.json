@@ -104,7 +104,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "One agent reply.\n\n``claimed_actions`` lists only writes verified by read-back. ``confirmation`` is set exactly\nwhen the reply asks the customer to confirm a write; the customer answers in the chat (\"Sí\"\nor \"No\"), and the token for the write is issued at that yes, server side. ``language`` is the\nlanguage the agent replied in, which follows the customer's messages.",
+  "description": "One agent reply.\n\n``claimed_actions`` lists only writes verified by read-back. ``confirmation`` is set exactly\nwhen the reply asks the customer to confirm a write; the customer answers in the chat (\"Sí\"\nor \"No\"), and the token for the write is issued at that yes, server side. ``language`` is the\nlanguage the agent replied in, which follows the requested preference when provided, or the\ncustomer's message otherwise.",
   "properties": {
     "claimed_actions": {
       "items": {

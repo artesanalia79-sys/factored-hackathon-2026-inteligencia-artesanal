@@ -16,7 +16,8 @@ from starlette.types import Scope
 from bankagent.auth.http import SafeValidationRoute, build_auth_router, session_dependency
 from bankagent.auth.service import AuthService
 from bankagent.contracts.api import ChatTurnRequest, ChatTurnResponse
-from bankagent.contracts.domain import Session
+from bankagent.contracts.domain import Session, TransactionView
+from bankagent.contracts.enums import Language
 from bankagent.contracts.records import ExecutionRecord
 from bankagent.orchestrator.agent import AgentTurnOutput
 
@@ -41,7 +42,9 @@ REVALIDATE = "no-cache"
 
 
 class TurnAgent(Protocol):
-    def handle_turn(self, session: Session, text: str, /) -> AgentTurnOutput: ...
+    def handle_turn(
+        self, session: Session, text: str, /, preferred_language: Language | None = None
+    ) -> AgentTurnOutput: ...
 
 
 class WebFiles(StaticFiles):
@@ -85,6 +88,7 @@ def create_app(
     *,
     auth: AuthService,
     agent_factory: Callable[[], TurnAgent],
+    transaction_reader: Callable[[str], Sequence[TransactionView]] | None = None,
     record_sink: Callable[[Sequence[ExecutionRecord]], None] | None = None,
     readiness: Mapping[str, Callable[[], object]] | None = None,
     web_dist: Path | None = None,
@@ -115,7 +119,7 @@ def create_app(
             if agent is None:
                 agent = agent_factory()
                 agents[session.session_id] = agent
-            output = agent.handle_turn(session, body.text)
+            output = agent.handle_turn(session, body.text, body.language)
             if record_sink is not None:
                 record_sink(output.records)
             if output.ended:
@@ -127,6 +131,15 @@ def create_app(
             language=output.language,
             confirmation=output.confirmation,
         )
+
+    if transaction_reader is not None:
+
+        @router.get("/transactions")
+        def transactions(
+            session: Annotated[Session, Depends(current_session)],
+        ) -> list[TransactionView]:
+            """Recent movements belonging to the authenticated customer only."""
+            return list(transaction_reader(session.customer_id))
 
     app.include_router(router)
 

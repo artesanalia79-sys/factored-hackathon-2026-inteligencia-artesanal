@@ -18,6 +18,7 @@ from bankagent.auth.wiring import (
     utc_now,
 )
 from bankagent.contracts.llm import LLMProvider
+from bankagent.contracts.tools import SearchTransactionsArgs
 from bankagent.interpret.compat_provider import from_env as compat_from_env
 from bankagent.interpret.openai_provider import OpenAIProvider
 from bankagent.interpret.stub import StubProvider
@@ -86,6 +87,9 @@ def create_default_app() -> FastAPI:
     llm = build_llm(env)
     return create_app(
         auth=auth,
+        transaction_reader=lambda customer_id: serving.search_transactions(
+            customer_id, SearchTransactionsArgs(), limit=50
+        ),
         agent_factory=lambda: create_agent(
             llm=llm, tools=tools, clock=clock, policy=policy, issue_confirmation=issuer
         ),

@@ -15,14 +15,18 @@ from bankagent.orchestrator.agent import AgentTurnOutput
 class FakeTurnAgent:
     def __init__(self) -> None:
         self.turns = 0
+        self.preferred_languages: list[Language | None] = []
 
-    def handle_turn(self, session: Session, text: str, /) -> AgentTurnOutput:
+    def handle_turn(
+        self, session: Session, text: str, /, preferred_language: Language | None = None
+    ) -> AgentTurnOutput:
         self.turns += 1
+        self.preferred_languages.append(preferred_language)
         return AgentTurnOutput(
             reply_text=f"turno {self.turns}",
             records=(),
             ended=self.turns == 2,
-            language=Language.ES,
+            language=preferred_language or Language.ES,
         )
 
 
@@ -74,6 +78,18 @@ def test_chat_rejects_customer_id_without_echoing_it(
     )
     assert response.status_code == 422
     assert "CUST-T7-001" not in response.text
+
+
+def test_chat_passes_the_selected_language_to_the_agent(
+    service: AuthService, do_login: Callable[..., str]
+) -> None:
+    agent = FakeTurnAgent()
+    client = TestClient(create_app(auth=service, agent_factory=lambda: agent))
+    header = {"Authorization": f"Bearer {do_login()}"}
+    response = client.post("/api/chat/turn", json={"text": "No", "language": "pt"}, headers=header)
+    assert response.status_code == 200
+    assert response.json()["language"] == "pt"
+    assert agent.preferred_languages == [Language.PT]
 
 
 def test_a_reply_cannot_leave_out_its_language() -> None:

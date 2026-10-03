@@ -71,6 +71,10 @@ class SessionResponse(Contract):
 
 class ChatTurnRequest(Contract):
     text: str = Field(min_length=1, max_length=2000)
+    language: Language | None = Field(
+        default=None,
+        description="preferred response language; omitted requests follow the customer's message",
+    )
 
 
 class ConfirmationView(Contract):
@@ -109,7 +113,8 @@ class ChatTurnResponse(Contract):
     ``claimed_actions`` lists only writes verified by read-back. ``confirmation`` is set exactly
     when the reply asks the customer to confirm a write; the customer answers in the chat ("Sí"
     or "No"), and the token for the write is issued at that yes, server side. ``language`` is the
-    language the agent replied in, which follows the customer's messages.
+    language the agent replied in, which follows the requested preference when provided, or the
+    customer's message otherwise.
     """
 
     reply_text: str

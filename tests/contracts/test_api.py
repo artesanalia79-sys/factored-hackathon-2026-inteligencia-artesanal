@@ -92,6 +92,13 @@ def test_chat_response_defaults_to_no_confirmation() -> None:
     assert response.model_dump(mode="json")["language"] == "pt"
 
 
+def test_chat_request_language_is_optional_and_bounded_to_supported_languages() -> None:
+    assert ChatTurnRequest(text="No").language is None
+    assert ChatTurnRequest(text="No", language=Language.PT).language == Language.PT
+    with pytest.raises(ValidationError):
+        ChatTurnRequest.model_validate({"text": "No", "language": "en"})
+
+
 def test_the_demo_access_code_is_optional_and_bounded() -> None:
     assert LoginRequest(persona_id="p-1").access_code is None
     assert LoginRequest(persona_id="p-1", access_code="shared-demo-code").access_code

@@ -677,6 +677,16 @@ def test_a_portuguese_greeting_is_answered_in_portuguese() -> None:
     assert not hello.ended
 
 
+def test_selected_language_controls_replies_even_when_the_message_uses_another_language() -> None:
+    agent, _, _ = _agent()
+    first = agent.handle_turn(_session(), "Hola", Language.PT)
+    assert first.reply_text == render_opening_question(Language.PT)
+    assert first.language == Language.PT
+    second = agent.handle_turn(_session(), "Oi", Language.ES)
+    assert second.reply_text == render_opening_question(Language.ES)
+    assert second.language == Language.ES
+
+
 def test_a_request_that_stays_out_of_scope_ends_after_two_rounds() -> None:
     agent, search, get = _agent()
     first = agent.handle_turn(_session(), "¿Cuál es mi saldo?")

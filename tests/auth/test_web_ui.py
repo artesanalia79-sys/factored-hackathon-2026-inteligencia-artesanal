@@ -13,7 +13,9 @@ from bankagent.orchestrator.agent import AgentTurnOutput
 
 
 class EchoAgent:
-    def handle_turn(self, session: Session, text: str, /) -> AgentTurnOutput:
+    def handle_turn(
+        self, session: Session, text: str, /, preferred_language: Language | None = None
+    ) -> AgentTurnOutput:
         return AgentTurnOutput(reply_text=text, records=(), ended=False, language=Language.ES)
 
 
