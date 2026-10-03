@@ -4,6 +4,8 @@ Skeleton from Task 15; Task 28 writes the slides. The organizers ask for **4 to 
 with details on the tool (`docs/challenge/kickoff.md`). Six are outlined; merge 5 into 4 if
 the deck must be shorter.
 
+The slides are in English, like every deliverable (`docs/submission/checklist.md`).
+
 Rule for every number on a slide: it comes from a file in this repository, named under the
 slide. A number with no source does not go on a slide.
 
@@ -12,6 +14,8 @@ slide. A number with no source does not go on a slide.
 - One sentence: what a customer with an unrecognized card charge goes through today.
 - The baseline from the organizer data: contact volume, handling time, complaints.
 - What a resolved dispute intake is worth (range, not a point estimate).
+- A mentor's advice for this slide: say what the problem costs, not only that it happens
+  ("peak-hour calls around 10 AM cost the bank $2,000", not "many customers call around 10 AM").
 
 Sources: `docs/evidence/call_center_baseline.md`, `docs/evidence/complaints_baseline.md`,
 `docs/evidence/roi.md`, `docs/evidence/roi_tornado.svg`.
@@ -45,6 +49,8 @@ Sources: `docs/adr/0001-architecture.md`, `docs/adr/0003-fraud-signals-at-runtim
 - Proposed system against the LLM-only baseline on the held-out cases, with confidence
   intervals and the failures shown.
 - Deviations from the pre-registration, stated.
+- Which data the evaluation ran on and why (the open decision in
+  `docs/submission/checklist.md`).
 
 Sources: `eval/preregistration.md`, `eval/gates.yaml`, the Task 27 report (path set by T27).
 
@@ -76,3 +82,8 @@ Sources: `docs/operations.md`, `docs/limitations.md`, `docs/decision_ledger.md`,
 | Data Analytics: data quality and relevant insights | 1, 5 |
 | Data Engineering: extraction and transformation | 3, 5 |
 | Machine Learning: model selection, optimization, implementation and tracking | 4, 5 |
+
+The Participant Hub names the dimensions slightly differently: Technical Judgment (slides 3
+and 6: deliberate choices, defended), AI Engineering, Data Engineering, Machine Learning and
+Data Analytics. Its advice: "You don't need to maximize every dimension. Build a focused
+solution, make deliberate technical choices, and be ready to defend them."

@@ -8,7 +8,8 @@ adds logging and PII redaction to this file.
 - One container image (`Dockerfile`): the API only, one process, one worker. Conversations
   live in process memory under one lock, so a second worker or instance would break them
   (`docs/limitations.md`, "Conversation"). Never add workers.
-- One Render web service on the free plan, `bankagent-staging`, described by `render.yaml`.
+- One Render web service on the free plan, `bankagent-staging`, described by `render.yaml`:
+  <https://bankagent-staging.onrender.com>.
 - Data: the synthetic fixture bank, built from `tests/fixtures/bank` while the image is built
   and checked against its committed hash. No organizer data is in the image or the service.
 - State: the ops store, a SQLite file on the container's disk. The disk is ephemeral: the file
@@ -43,17 +44,23 @@ declared in `render.yaml` and must be added there with `sync: false` before it i
 
 ## First deploy (once)
 
+Done on 2026-10-03 (see "Staging record"). To recreate the service:
+
 1. In GitHub, as the owner of the repository's account, install the Render GitHub App
-   (`https://github.com/apps/render/installations/new`) with "Only select repositories" and
-   this repository.
-2. In the Render dashboard: **New > Blueprint**, **Connect** this repository, give the
-   Blueprint a name and pick the branch.
-3. Render lists the variables marked `sync: false` and asks for their values. For a first
-   deploy without the model: `LLM_PROVIDER` = `stub`, a `DEMO_ACCESS_CODE` of your choice, and
-   the rest empty.
-4. **Deploy Blueprint**. The first build takes a few minutes. The deploy goes live when
-   `/ready` answers 200.
-5. Run the check in "Verify a deployment".
+   (`https://github.com/apps/render/installations/new`). Under "Repository access" choose
+   "Only select repositories", pick this repository and save: an installed app with no
+   repository selected sees nothing.
+2. In Render, connect that GitHub account: the **GitHub** button under "Configure your Git
+   provider", with the browser logged in to GitHub as the account that owns the repository.
+   Until both steps are done Render answers "No repositories found".
+3. **New > Blueprint** (the button in the top bar; the onboarding list of service types has
+   no Blueprint entry), **Connect** this repository, give the Blueprint a name and keep the
+   branch `main`.
+4. Render lists the variables marked `sync: false` and asks for their values. For a first
+   deploy without the model: `LLM_PROVIDER` = `stub` and a `DEMO_ACCESS_CODE` of your choice.
+5. **Deploy Blueprint**. The deploy goes live when `/ready` answers 200 (52 seconds the
+   first time).
+6. Run the check in "Verify a deployment".
 
 The Render CLI (`https://render.com/docs/cli`) covers the rest of this file from a terminal:
 `render login`, then `render workspace set`. `render services` prints the service id
@@ -145,20 +152,56 @@ It fails unless all of this holds:
 
 ## Measured
 
-From the CI job `image` on `ubuntu-latest`, commit `7ee7073`, 2026-10-03 15:38 UTC, with the
-`stub` interpreter and a 512 MB limit on the container
-([run 37133939126](https://github.com/artesanalia79-sys/factored-hackathon-2026-inteligencia-artesanal/actions/runs/37133939126)).
+From the CI job `image` on `ubuntu-latest`, commit `ee51b86`, 2026-10-03, with the `stub`
+interpreter and a 512 MB limit on the container
+([run 37134461186](https://github.com/artesanalia79-sys/factored-hackathon-2026-inteligencia-artesanal/actions/runs/37134461186)).
 Every later run writes the same table to its job summary.
 
 | What | Value | How |
 |---|---|---|
-| Image size | 227 MB | `docker image inspect` |
-| Memory of the server process after one full dispute | 112 MB resident, 116 MB peak | `VmRSS` and `VmHWM` of PID 1 |
-| Memory charged to the container at that moment | 67 MiB of 512 MiB | `docker stats` |
+| Image size | 228 MB | `docker image inspect` |
+| Memory of the server process after one full dispute | 112 MB resident, 118 MB peak | `VmRSS` and `VmHWM` of PID 1 |
+| Memory charged to the container at that moment | 69 MiB of 512 MiB | `docker stats` |
 | Build context | 108 files, all inside the allowlist | listing of a `COPY .` image |
 
 Not measured: memory with a real model answering (the OpenAI client is imported in both
 cases, but it was never called in the container), and memory on Render itself.
+
+## Staging record
+
+`https://bankagent-staging.onrender.com`, Render free plan, region `virginia`, branch `main`,
+one instance, health check on `/ready`, auto-deploy after CI checks. All times UTC,
+2026-10-03. Deployed commits, read with `render deploys list`: `546ec7b` (the merge of pull
+request #56) until 17:06, then `bf20735`.
+
+| Time | What | Result |
+|---|---|---|
+| 16:56:01 to 16:56:53 | First deploy, from the Blueprint | Live in 52 s |
+| 16:58 | `GET /health`, `GET /ready` | 200 `{"status":"ready"}` |
+| 16:58 | `POST /api/auth/login` without the access code | 403 `access_code_required` |
+| 16:58:13 | `uv run poe smoke` with the access code | `OK: verified dispute DSP-68EA194969CC12E4`; 0.1 to 0.9 s per turn |
+| Before 16:58:29 | The same flow again, same instance | Exit 2, used up |
+| 16:58:29 | `render restart` | Accepted |
+| 16:58:41 | The same flow | Still used up: the old instance answers until the new one is ready |
+| 16:58:55 | The same flow | `OK: verified dispute DSP-3EE4469C10522E95`: a new instance with an empty store, 26 s after the restart |
+| 16:59:10 | `render restart` | Leaves the demo unused |
+| 17:06:10 to 17:06:55 | Automatic deploy of `bf20735` (pull request #57) | Created 3 s after the CI checks of that commit finished green; live in 45 s |
+| 17:21:59 to 17:22:32 | Manual deploy after `LLM_PROVIDER` was set to `openai` in the dashboard | Live |
+| 17:23:07 | `uv run poe smoke` | `OK: verified dispute DSP-56C60A26866E6AFD`; 2.0 to 6.4 s per turn |
+| 17:24 | Three openings sent to a local server on the keyword interpreter and to the service | The model is interpreting, see below; 2.1 to 2.7 s per turn |
+| 17:24:30 | `render restart` | Leaves the demo unused; `/ready` 200 at 17:25:11 |
+
+That the model reads the messages, and not the keyword fallback, was checked by behaviour,
+because the service does not say which one answered. Two openings the keyword rules cannot
+read get the clarification question from a local server on `LLM_PROVIDER=stub` and the
+right charge from the service: the amount in words ("fueron dos mil cuatrocientos
+cincuenta") and informal spelling ("me salio algo de electromundo q no es mio, como 2450
+varos"). A third opening is read by both. The first deploy ran on `stub` (0.1 to 0.9 s per
+turn).
+
+Not verified on the service: what these calls cost (the spend counter is not exposed; see
+the OpenAI dashboard), the memory the instance uses (Render dashboard, **Metrics**), and
+the wake-up after 15 idle minutes.
 
 ## What to expect from the free plan
 
