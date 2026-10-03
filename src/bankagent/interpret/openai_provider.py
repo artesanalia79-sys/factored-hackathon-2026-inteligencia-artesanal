@@ -92,6 +92,25 @@ def _redact(text: str) -> str:
     return _SENSITIVE.sub("[REDACTED]", text)
 
 
+def structured_task(response_model: type[BaseModel]) -> tuple[bool, str, type[BaseModel]]:
+    """(is the interpretation, instructions, API transport model) of a supported request.
+
+    The interpretation uses the interpreter prompt and ``_ParsedInterpretation``; any other model
+    must declare ``LLM_INSTRUCTIONS`` and ``PROMPT_VERSION`` and is its own transport schema.
+    Shared with ``compat_provider`` so both providers accept the same requests.
+    """
+    if response_model is InterpretationResult:
+        return True, _INSTRUCTIONS, _ParsedInterpretation
+    instructions = getattr(response_model, "LLM_INSTRUCTIONS", None)
+    version = getattr(response_model, "PROMPT_VERSION", None)
+    if not (isinstance(instructions, str) and isinstance(version, str)):
+        raise LLMMalformedOutput(
+            "supported structured outputs: InterpretationResult or a model with "
+            "LLM_INSTRUCTIONS and PROMPT_VERSION"
+        )
+    return False, instructions, response_model
+
+
 class OpenAIProvider:
     """A synchronous LLMProvider. Create one instance per budgeted run.
 
@@ -148,18 +167,7 @@ class OpenAIProvider:
     ) -> StructuredCompletion[T]:
         if timeout_s <= 0:
             raise ValueError("timeout_s must be positive")
-        interpretation = response_model is InterpretationResult
-        task_instructions = getattr(response_model, "LLM_INSTRUCTIONS", None)
-        task_version = getattr(response_model, "PROMPT_VERSION", None)
-        if not interpretation and not (
-            isinstance(task_instructions, str) and isinstance(task_version, str)
-        ):
-            raise LLMMalformedOutput(
-                "OpenAIProvider supports InterpretationResult or a model with "
-                "LLM_INSTRUCTIONS and PROMPT_VERSION"
-            )
-        base_instructions = _INSTRUCTIONS if interpretation else cast(str, task_instructions)
-        text_format: type[BaseModel] = _ParsedInterpretation if interpretation else response_model
+        interpretation, base_instructions, text_format = structured_task(response_model)
 
         # The generous byte bound includes schema and request overhead. Output is capped by the API.
         sanitized = [{"role": m.role, "content": _redact(m.content)} for m in messages]

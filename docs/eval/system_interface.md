@@ -103,6 +103,7 @@ The LLM-only baseline (`bankagent.eval.baseline`, decision D1) already runs this
 uv run poe eval-run --system baseline                      # dev cases, StubProvider, 0 USD
 uv run poe eval-run --system baseline --system proposed \
     --provider openai --repeats 3 --budget-usd 5          # real cost: owner approval first
+uv run poe eval-run --system baseline --provider compat     # LLM_* variables in .env (PR #51)
 ```
 
 With the `StubProvider` the baseline cannot act (the stub only produces interpretations), so a

@@ -49,7 +49,8 @@ run's disputes. Implementation details of the baseline, fixed here: one LLM call
 (`BaselineStep`: call one tool with JSON arguments, or reply), at most 6 steps per customer
 message, tool results returned to the model as text; the harness fills only the server-side
 fields a model cannot know (a handoff's trace id, `policy_version = "none"`, a missing
-idempotency key). The OpenAI provider redacts customer identifiers from every prompt, so the
+idempotency key). Both LLM providers (`OpenAIProvider` and the OpenAI-compatible one of PR #51)
+accept its request and redact customer identifiers from every prompt, so the
 customer id written in the baseline prompt reaches the model as `[REDACTED]`; since the tools are
 session-scoped this changes nothing the baseline can do. Cases that inject an LLM fault keep the
 simulated fault (0 USD) under the real provider, for both systems.

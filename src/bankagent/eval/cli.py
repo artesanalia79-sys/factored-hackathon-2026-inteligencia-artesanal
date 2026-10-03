@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from collections.abc import Callable, Sequence
@@ -221,6 +222,23 @@ def real_run(
             return OpenAIProvider()  # one budgeted provider per case run
 
         assumptions = "OpenAIProvider (config/pricing.yaml), real cost"
+    elif provider == "compat":
+        from bankagent.interpret.compat_provider import from_env
+
+        # One shared provider, so its daily call limit holds across every case run; the
+        # suite's spend guard still stops each system at its budget.
+        try:
+            shared = from_env(os.environ, spend_limit_usd=budget_usd * 2 if budget_usd else None)
+        except ValueError as exc:  # names keys, never values
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+
+        def provider_factory(case: EvalCase) -> LLMProvider:
+            if any(f in FAULTS_BY_INJECTION for f in case.fault_injections):
+                return stub_provider_for(case)
+            return shared
+
+        assumptions = f"OpenAI-compatible endpoint, model {shared.model} (LLM_* variables)"
     else:
         provider_factory = stub_provider_for
         assumptions = "StubProvider (keyword rules), 0 USD per call"
@@ -265,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--cases", type=Path, default=DEV_DIR)
     run_parser.add_argument("--out", type=Path, default=RUNS_DIR / "dev")
     run_parser.add_argument("--repeats", type=int, default=1)
-    run_parser.add_argument("--provider", choices=("stub", "openai"), default="stub")
+    run_parser.add_argument("--provider", choices=("stub", "openai", "compat"), default="stub")
     run_parser.add_argument("--budget-usd", type=Decimal, default=Decimal("0"))
     args = parser.parse_args(argv)
     if args.command == "smoke":

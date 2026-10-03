@@ -276,3 +276,40 @@ def test_tool_results_go_back_to_the_model(case: EvalCase, backends: FixtureBack
     second_call = llm.seen[1]
     assert second_call[-1].startswith("[TOOL RESULT]")
     assert TARGET in second_call[-1]
+
+
+def test_the_compatible_provider_is_shared_and_faults_stay_simulated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from bankagent.eval import cli
+    from bankagent.interpret.compat_provider import OpenAICompatibleProvider
+
+    for key, value in {
+        "LLM_BASE_URL": "https://llm.example.com/v1",
+        "LLM_API_KEY": "test-key",
+        "LLM_MODEL": "gpt-6-luna",
+    }.items():
+        monkeypatch.setenv(key, value)
+    built: list[LLMProvider] = []
+
+    def fake_suite(_systems: object, cases: Sequence[EvalCase], **kwargs: Any) -> list[CaseTrace]:
+        factory = kwargs["config"].provider_factory
+        built.extend(factory(c) for c in [*cases, *cases])
+        return []
+
+    monkeypatch.setattr(cli, "run_suite", fake_suite)
+    monkeypatch.setattr(cli, "write_outputs", lambda *_a, **_k: [])
+    source = (DEV_DIR / "dev-normal-es-mx-001.yaml").read_text(encoding="utf-8")
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    (cases_dir / "a.yaml").write_text(source, encoding="utf-8")
+    faulted = source.replace("dev-normal-es-mx-001", "dev-timeout-es-mx-001").replace(
+        "fault_injections: []", "fault_injections: [llm_timeout]"
+    )
+    (cases_dir / "b.yaml").write_text(faulted, encoding="utf-8")
+    args = ["run", "--system", "baseline", "--provider", "compat", "--cases", str(cases_dir)]
+    assert cli.main([*args, "--out", str(tmp_path / "out")]) == 0
+    real = [p for p in built if isinstance(p, OpenAICompatibleProvider)]
+    assert len(real) == 2
+    assert real[0] is real[1]
+    assert sum(isinstance(p, StubProvider) for p in built) == 2
