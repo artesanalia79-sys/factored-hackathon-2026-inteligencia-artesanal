@@ -86,4 +86,8 @@ def create_default_app() -> FastAPI:
             llm=llm, tools=tools, clock=clock, policy=policy, issue_confirmation=issuer
         ),
         record_sink=store.append_records,
+        readiness={
+            "serving_db": serving.as_of_date,
+            "ops_store": lambda: store.count("sessions"),
+        },
     )
