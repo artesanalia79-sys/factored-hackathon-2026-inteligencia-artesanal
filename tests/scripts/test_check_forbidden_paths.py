@@ -103,6 +103,16 @@ def test_local_env_values_are_detected(tmp_path: Path) -> None:
     assert guard.scan_env_leaks("s3://other/transactions", values) == []
 
 
+@pytest.mark.parametrize("key", ["DEMO_ACCESS_CODE", "LLM_API_KEY"])
+def test_the_demo_access_code_and_the_compat_key_are_guarded_too(tmp_path: Path, key: str) -> None:
+    # Neither has a recognizable prefix, so only the comparison with the local value finds it.
+    env = tmp_path / ".env"
+    value = "".join(RNG.choices(string.ascii_lowercase + string.digits, k=16))
+    env.write_text(f"{key}={value}\n", encoding="utf-8")
+    values = guard.load_sensitive_env_values(env)
+    assert guard.scan_env_leaks(f"Use the code {value} to log in.", values) == [key]
+
+
 def test_main_blocks_a_staged_secret_and_passes_clean_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

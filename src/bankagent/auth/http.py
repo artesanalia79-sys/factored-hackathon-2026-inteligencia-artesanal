@@ -24,7 +24,12 @@ from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
-from bankagent.auth.service import AuthService, InvalidCredentials, TooManyAttempts
+from bankagent.auth.service import (
+    AccessCodeRequired,
+    AuthService,
+    InvalidCredentials,
+    TooManyAttempts,
+)
 from bankagent.contracts.domain import Session
 from bankagent.contracts.enums import Language
 from bankagent.contracts.errors import SessionExpired, Unauthorized
@@ -59,6 +64,8 @@ class _Request(BaseModel):
 
 class LoginRequest(_Request):
     persona_id: str = Field(min_length=1, max_length=64)
+    # Needed only where the deployment sets a shared access code (403 without it).
+    access_code: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class VerifyRequest(_Request):
@@ -138,7 +145,11 @@ def build_auth_router(service: AuthService) -> APIRouter:
     @router.post("/login")
     def login(body: LoginRequest) -> LoginResponse:
         try:
-            issued = service.start_login(body.persona_id)
+            issued = service.start_login(body.persona_id, body.access_code)
+        except AccessCodeRequired:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail={"error": AccessCodeRequired.code}
+            ) from None
         except TooManyAttempts as exc:
             raise _too_many(exc) from None
         except InvalidCredentials:

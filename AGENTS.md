@@ -69,7 +69,8 @@ data_pipeline/            ingest (Task 4) + dbt project (Tasks 5-6)
 eval/                     harness, dev cases, pre-registration, gates (Tasks 12, 17, 27)
 web/                      React + Vite + TypeScript UI (Task 14)
 tests/                    pytest suite; tests/fixtures/bank/*.yaml = synthetic personas
-scripts/                  repo tooling (hooks, env init, skills sync)
+scripts/                  repo tooling (hooks, env init, skills sync, HTTP and image smoke checks)
+Dockerfile / render.yaml  container image and Render staging service (Task 15, docs/operations.md)
 ```
 
 ## Commands
@@ -87,6 +88,9 @@ Python is managed by uv (Python 3.12). Tasks run through poethepoet: `uv run poe
 | `uv run poe fixtures` / `fixtures-check` | build / verify the synthetic fixture bank DuckDB |
 | `uv run poe sync-skills` / `skills-check` | mirror / verify skills copies |
 | `uv run poe secrets-scan` | run every pre-commit hook on the whole repo |
+| `uv run poe serve` | run the API locally (reads `.env`) |
+| `uv run poe smoke <base URL>` | one full dispute over HTTP against a running service |
+| `uv run poe image-smoke` | build and check the container image (needs Docker; CI job `image` runs it) |
 | `uv run poe` | list every task (placeholders exit 2 until their task lands) |
 
 ## Definition of Done (every change)
@@ -130,3 +134,4 @@ Reusable procedures live in `.agents/skills/<name>/SKILL.md`. Use them when the 
 - Policy: `policy/dispute_policy_v1.yaml` (rules are labeled synthetic unless verified).
 - LLM budget and models: `docs/adr/0002-llm-provider-and-budget.md`, `config/pricing.yaml`.
 - Evaluation protocol: `eval/preregistration.md`, `eval/gates.yaml` (frozen before unsealing).
+- Deployment and operations: `Dockerfile`, `render.yaml`, `docs/operations.md`.
