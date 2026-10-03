@@ -33,6 +33,12 @@ Architecture decisions: `docs/adr/`. Known limitations: `docs/limitations.md`.
    Only customer-facing templates and test utterances are in Spanish or Portuguese.
 8. **Pin every dependency** exactly (`uv add "pkg==X.Y.Z"`, `npm install --save-exact`).
 9. Do not commit, push, open PRs or change GitHub settings unless a human asked for it.
+10. **A development check against a real model spends in small, measured steps** (skill
+    `live-llm-check`): a human's go-ahead, a hard cap far below the budget, free checks first,
+    then one call, a few, one conversation, one UI spec; stop at the first surprise; prove the
+    model answered (`success`, not the keyword `fallback`); report the cost of each step. Tests
+    and CI stay on the stub. The demo and the final evaluation follow their own budget and
+    protocol (ADR 0002, `eval/preregistration.md`), not this rule.
 
 ## Area rules (read before editing)
 
@@ -121,6 +127,7 @@ Reusable procedures live in `.agents/skills/<name>/SKILL.md`. Use them when the 
 | `tool-contract` | adding or changing an agent tool |
 | `policy-rule` | adding or changing a dispute policy rule |
 | `debug-ci` | a CI run failed |
+| `live-llm-check` | testing or debugging something against a real model with a team key (not the demo or the final evaluation) |
 | `write-adr` | recording an architecture decision |
 
 ## Where things are decided
