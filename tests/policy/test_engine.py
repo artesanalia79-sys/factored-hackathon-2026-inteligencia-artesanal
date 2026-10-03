@@ -21,6 +21,7 @@ from bankagent.contracts.enums import (
     TransactionType,
 )
 from bankagent.policy.engine import PolicyInputs, evaluate
+from bankagent.policy.inputs import build_inputs
 from bankagent.policy.schema import (
     ApprovedStatusRule,
     FraudScoreRule,
@@ -114,7 +115,8 @@ def _inputs(**overrides: object) -> PolicyInputs:
         "filed_on": AS_OF,
         "open_dispute_id": None,
         "risk": None,
-        "last_claim_date": None,
+        "last_history_claim_date": None,
+        "last_agent_dispute_date": None,
     }
     base.update(overrides)
     return PolicyInputs(**base)  # type: ignore[arg-type]
@@ -213,21 +215,47 @@ def test_fraud_score_just_below_the_threshold_proceeds() -> None:
 
 
 def test_a_claim_exactly_at_the_repeat_disputer_boundary_escalates() -> None:
-    decision = evaluate(_config(), _inputs(last_claim_date=AS_OF - timedelta(days=90)))
+    decision = evaluate(_config(), _inputs(last_history_claim_date=AS_OF - timedelta(days=90)))
     assert decision.decision == DecisionType.ESCALATE
     assert decision.rule_ids == ("R1",)
 
 
 def test_a_claim_one_day_past_the_repeat_disputer_window_proceeds() -> None:
-    decision = evaluate(_config(), _inputs(last_claim_date=AS_OF - timedelta(days=91)))
+    decision = evaluate(_config(), _inputs(last_history_claim_date=AS_OF - timedelta(days=91)))
     assert decision.decision == DecisionType.PROCEED
 
 
 def test_both_escalation_triggers_combine_in_rule_order() -> None:
     risk = TransactionRiskSignals(transaction_id="TXN-TEST-0001", fraud_score=50.0)
-    decision = evaluate(_config(), _inputs(risk=risk, last_claim_date=AS_OF - timedelta(days=1)))
+    decision = evaluate(
+        _config(),
+        _inputs(risk=risk, last_history_claim_date=AS_OF - timedelta(days=1)),
+    )
     assert decision.decision == DecisionType.ESCALATE
     assert decision.rule_ids == ("F1", "R1")
+
+
+def test_an_agent_dispute_is_measured_against_filed_on_not_as_of_date() -> None:
+    # PR #44 review, round 2: as_of_date is frozen (2026-06-17 in the fixture); an agent
+    # dispute is real time. Comparing it to as_of_date instead of filed_on makes every agent
+    # dispute escalate forever, because the day count goes negative and is always <= window_days.
+    far_future_dispute = AS_OF + timedelta(days=365)
+    still_within_90_days = evaluate(
+        _config(),
+        _inputs(
+            filed_on=far_future_dispute + timedelta(days=1),
+            last_agent_dispute_date=far_future_dispute,
+        ),
+    )
+    assert still_within_90_days.decision == DecisionType.ESCALATE
+
+    # Reproduces the review's exact repro: a dispute filed a year after that still escalated.
+    a_year_later = far_future_dispute + timedelta(days=365)
+    should_have_expired = evaluate(
+        _config(),
+        _inputs(filed_on=a_year_later, last_agent_dispute_date=far_future_dispute),
+    )
+    assert should_have_expired.decision == DecisionType.PROCEED
 
 
 # -- end to end on the real policy and the real fixture bank ------------------------------
@@ -241,21 +269,10 @@ def _real_inputs(
     store: OpsStore | None = None,
     filed_on: date | None = None,
 ) -> PolicyInputs:
-    transaction = serving.transaction(customer_id, transaction_id)
-    assert transaction is not None
-    customer = serving.customer(customer_id)
-    assert customer is not None
-    history_claim = serving.last_claim_date(customer_id)
-    agent_claim = store.last_dispute_date(customer_id) if store else None
-    last_claim_date = max((d for d in (history_claim, agent_claim) if d is not None), default=None)
-    return PolicyInputs(
-        transaction=transaction,
-        customer_country=customer.country,
-        as_of_date=serving.as_of_date(),
-        filed_on=filed_on or serving.as_of_date(),
-        open_dispute_id=serving.open_complaint_id(customer_id, transaction_id),
-        risk=serving.risk_signals(customer_id, transaction_id),
-        last_claim_date=last_claim_date,
+    """Thin wrapper so existing tests keep their call shape; delegates to the shared builder
+    (`bankagent.policy.inputs.build_inputs`) rather than re-implementing the two-clock read."""
+    return build_inputs(
+        serving, store, customer_id, transaction_id, filed_on or serving.as_of_date()
     )
 
 
@@ -336,12 +353,38 @@ def test_a_customer_with_no_history_but_a_recent_agent_dispute_is_a_repeat_dispu
     ops_store.insert_dispute(ANDRES, first)
 
     without_agent_history = _real_inputs(serving, ANDRES, "TXN-FX-0202")
-    assert without_agent_history.last_claim_date is None
+    assert without_agent_history.last_history_claim_date is None
+    assert without_agent_history.last_agent_dispute_date is None
 
     with_agent_history = _real_inputs(serving, ANDRES, "TXN-FX-0202", store=ops_store)
     decision = evaluate(load_policy(), with_agent_history)
     assert decision.decision == DecisionType.ESCALATE
     assert decision.rule_ids == ("DSP-ESC-02",)
+
+
+def test_another_customers_agent_dispute_does_not_make_this_one_a_repeat_disputer(
+    serving: ServingDB, ops_store: OpsStore
+) -> None:
+    # BOLA: PR #44 review (round 2) found no test catches `OpsStore.last_dispute_date` losing
+    # its `customer_id` filter.
+    as_of = serving.as_of_date()
+    other_customers_dispute = DisputeCase(
+        dispute_id="DSP-TEST-0002",
+        transaction_id="TXN-FX-0201",
+        reason=DisputeReason.UNRECOGNIZED,
+        status=DisputeStatus.SUBMITTED,
+        created_at=datetime.combine(as_of, datetime.min.time(), tzinfo=UTC),
+        amount=Decimal("859.00"),
+        currency="COP",
+        idempotency_key="idem-dispute-0098",
+        policy_version="test-v1",
+    )
+    ops_store.insert_dispute(ANDRES, other_customers_dispute)
+
+    inputs = _real_inputs(serving, MARIANA, "TXN-FX-0104", store=ops_store)
+    assert inputs.last_agent_dispute_date is None
+    decision = evaluate(load_policy(), inputs)
+    assert decision.decision == DecisionType.PROCEED
 
 
 _INSERT_DISPUTE_HISTORY = """

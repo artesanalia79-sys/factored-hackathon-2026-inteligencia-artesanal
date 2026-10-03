@@ -50,6 +50,14 @@ class PolicyInputs:
     relative to the snapshot's build day instead of today.
     ``open_dispute_id`` is whatever ``GetTransactionResult.open_dispute_id`` already reports: the
     agent-made dispute if any, else the newest still-open prior complaint.
+
+    The repeat-disputer trigger has two sources on two different clocks, kept apart rather than
+    merged into one "newest" date: ``last_history_claim_date`` (pre-agent ``dispute_history``) is
+    measured against ``as_of_date``, like the dispute window; ``last_agent_dispute_date``
+    (``OpsStore.last_dispute_date``) is real time and is measured against ``filed_on``. Merging
+    them into a single date before comparing against ``as_of_date`` compares a real-time date to
+    the frozen clock and never expires (PR #44 review): any agent dispute filed after
+    ``as_of_date`` gives a negative day count, which is always within the window.
     """
 
     transaction: TransactionView
@@ -58,7 +66,8 @@ class PolicyInputs:
     filed_on: date
     open_dispute_id: str | None
     risk: TransactionRiskSignals | None
-    last_claim_date: date | None
+    last_history_claim_date: date | None
+    last_agent_dispute_date: date | None
 
 
 def _check_eligibility(rule: Rule, inputs: PolicyInputs) -> bool:
@@ -82,9 +91,13 @@ def _check_escalation(rule: Rule, inputs: PolicyInputs) -> bool:
         score = inputs.risk.fraud_score if inputs.risk else None
         return score is not None and score >= rule.threshold
     if isinstance(rule, RepeatDisputerRule):
-        if inputs.last_claim_date is None:
-            return False
-        return (inputs.as_of_date - inputs.last_claim_date).days <= rule.window_days
+        history_hit = inputs.last_history_claim_date is not None and (
+            (inputs.as_of_date - inputs.last_history_claim_date).days <= rule.window_days
+        )
+        agent_hit = inputs.last_agent_dispute_date is not None and (
+            (inputs.filed_on - inputs.last_agent_dispute_date).days <= rule.window_days
+        )
+        return history_hit or agent_hit
     raise TypeError(f"{rule.kind} is not an escalation rule")  # pragma: no cover
 
 

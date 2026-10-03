@@ -13,49 +13,13 @@ from datetime import date
 from pathlib import Path
 
 from bankagent.contracts.enums import DecisionType
+from bankagent.contracts.errors import NotFound
 from bankagent.fixtures.builder import DEFAULT_OUT as DEFAULT_BANK
-from bankagent.policy.engine import PolicyInputs, evaluate
+from bankagent.policy.engine import evaluate
+from bankagent.policy.inputs import build_inputs
 from bankagent.policy.schema import POLICY_FILE, PolicyConfig, load_policy
 from bankagent.store.ops import OpsStore
 from bankagent.store.serving import ServingDB
-
-
-def _latest(*dates: date | None) -> date | None:
-    found = [d for d in dates if d is not None]
-    return max(found) if found else None
-
-
-def _inputs(
-    serving: ServingDB,
-    store: OpsStore | None,
-    customer_id: str,
-    transaction_id: str,
-    filed_on: date,
-) -> PolicyInputs:
-    transaction = serving.transaction(customer_id, transaction_id)
-    if transaction is None:
-        raise SystemExit(f"no transaction {transaction_id!r} for customer {customer_id!r}")
-    customer = serving.customer(customer_id)
-    if customer is None:
-        raise SystemExit(f"no customer {customer_id!r}")
-    own_dispute = store.get_dispute(customer_id, transaction_id=transaction_id) if store else None
-    open_dispute_id = (
-        own_dispute.dispute_id
-        if own_dispute is not None
-        else serving.open_complaint_id(customer_id, transaction_id)
-    )
-    return PolicyInputs(
-        transaction=transaction,
-        customer_country=customer.country,
-        as_of_date=serving.as_of_date(),
-        filed_on=filed_on,
-        open_dispute_id=open_dispute_id,
-        risk=serving.risk_signals(customer_id, transaction_id),
-        last_claim_date=_latest(
-            serving.last_claim_date(customer_id),
-            store.last_dispute_date(customer_id) if store else None,
-        ),
-    )
 
 
 def _print_decision(
@@ -96,7 +60,10 @@ def main(argv: list[str] | None = None) -> int:
     store = OpsStore(args.ops_store) if args.ops_store else None
     config = load_policy(args.policy)
     filed_on = args.filed_on or date.today()
-    inputs = _inputs(serving, store, args.customer_id, args.transaction_id, filed_on)
+    try:
+        inputs = build_inputs(serving, store, args.customer_id, args.transaction_id, filed_on)
+    except NotFound as exc:
+        raise SystemExit(str(exc)) from exc
     decision = evaluate(config, inputs)
     _print_decision(config, decision.decision, decision.rule_ids)
     if decision.sla_due_date is not None:

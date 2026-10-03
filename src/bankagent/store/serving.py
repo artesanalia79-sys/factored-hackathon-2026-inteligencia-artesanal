@@ -294,11 +294,11 @@ class ServingDB:
     def last_claim_date(self, customer_id: str) -> date | None:
         """Date of this customer's most recent pre-agent dispute (T16's definition: category
         ``Transactions``, case type ``Complaint`` or ``Claim``; any status, any transaction), or
-        ``None``. Input to the repeat-disputer escalation trigger (T9): a dispute the agent
-        itself created is not here, only in ``OpsStore.last_dispute_date``; combine both (the
-        newer date) before building ``PolicyInputs.last_claim_date``, or a customer who disputes
-        repeatedly through the agent, with no prior complaint in the source data, is never
-        flagged as a repeat disputer.
+        ``None``. Feeds ``PolicyInputs.last_history_claim_date``, compared against ``as_of_date``
+        (``bankagent.policy.inputs.build_inputs``). An agent-made dispute is not here, only in
+        ``OpsStore.last_dispute_date``, which feeds the separate ``last_agent_dispute_date`` and
+        is compared against ``filed_on`` instead: the two dates are on different clocks and must
+        not be merged into one before comparing (PR #44 review, round 2).
         """
         with duckdb.connect(self._path, read_only=True) as con:
             row = con.execute(_LAST_CLAIM_SQL, [customer_id]).fetchone()

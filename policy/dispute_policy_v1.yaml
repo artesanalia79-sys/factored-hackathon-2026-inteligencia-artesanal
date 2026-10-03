@@ -75,9 +75,16 @@ rules:
   - rule_id: DSP-ESC-02
     kind: repeat_disputer
     description: >
-      A customer with a prior dispute (dispute_history, category Transactions, case_type
-      Complaint or Claim, any status, any transaction, T16's definition) in the last
-      window_days is escalated to a human for this dispute instead of auto-creating it.
+      A customer with a prior dispute in the last window_days is escalated to a human for this
+      dispute instead of auto-creating it. A prior dispute is either: a pre-agent complaint
+      (dispute_history, category Transactions, case_type Complaint or Claim, any status, any
+      transaction, T16's definition), measured against the serving DB's as_of_date; or an
+      agent-made dispute on a different transaction (OpsStore), measured against the real filing
+      date (filed_on), never against as_of_date (the two are on different clocks; merging them
+      before comparing means an agent dispute never expires). Decision: a second dispute in the
+      same conversation (or a later one, within the window) now escalates, even though several
+      charges from one fraud event could be one incident; no attempt is made to tell those
+      apart yet.
     explanation_key: dispute.repeat_disputer
     window_days: 90
     provenance:
