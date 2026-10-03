@@ -105,7 +105,9 @@ with urllib.request.urlopen(sys.argv[1] + "/", timeout=10) as page:
     body = page.read().decode()
     assert page.status == 200 and "<div id=\"root\">" in body, "no UI page"
     assert "frame-ancestors 'none'" in page.headers.get("Content-Security-Policy", ""), "no CSP"
-print("GET / -> 200, the web UI with its Content-Security-Policy")
+    # Revalidated on every load: after a redeploy it must name the new hashed assets.
+    assert page.headers.get("Cache-Control") == "no-cache", "index.html may be cached"
+print("GET / -> 200, the web UI with its Content-Security-Policy, revalidated on each load")
 PY
 
 [[ "$(docker exec "$NAME" id -u)" != "0" ]] || fail "the service process runs as root"

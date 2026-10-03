@@ -19,14 +19,18 @@ export interface ChatState {
   confirmation: ConfirmationView | null
   /** The language the agent last replied in; the chrome follows it. */
   language: Language
-  failed: boolean
+  /**
+   * The last send got no reply, so it may or may not have arrived. `answer` when it answered a
+   * confirmation question: the server may already be asking the next one.
+   */
+  failed: 'message' | 'answer' | null
   expired: boolean
 }
 
 export type ChatEvent =
   | { type: 'sent'; text: string }
   | { type: 'replied'; reply: ChatTurnResponse }
-  | { type: 'failed' }
+  | { type: 'failed'; answer: boolean }
   | { type: 'expired' }
 
 export function initialChat(language: Language): ChatState {
@@ -36,7 +40,7 @@ export function initialChat(language: Language): ChatState {
     pending: false,
     confirmation: null,
     language,
-    failed: false,
+    failed: null,
     expired: false,
   }
 }
@@ -50,7 +54,7 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         nextId: state.nextId + 1,
         pending: true,
         confirmation: null,
-        failed: false,
+        failed: null,
       }
     case 'replied': {
       const { reply } = event
@@ -77,7 +81,7 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
       }
     }
     case 'failed':
-      return { ...state, pending: false, failed: true }
+      return { ...state, pending: false, failed: event.answer ? 'answer' : 'message' }
     case 'expired':
       return { ...state, pending: false, confirmation: null, expired: true }
   }

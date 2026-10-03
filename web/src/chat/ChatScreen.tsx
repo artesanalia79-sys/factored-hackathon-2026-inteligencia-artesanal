@@ -44,12 +44,16 @@ export function ChatScreen({ session, onLanguageChange, onSignedOut }: Props) {
     else if (document.activeElement === document.body) composer.current?.focus()
   }, [state.pending, state.confirmation])
 
-  async function send(text: string) {
+  /** Send a message typed in the composer, or the answer of the confirmation panel. */
+  async function send(text: string, from: 'composer' | 'panel') {
     const message = text.trim()
     if (message === '' || inFlight.current || state.expired) return
     inFlight.current = true
+    // Whatever answers a confirmation question, typed or from the panel.
+    const answer = state.confirmation !== null
     dispatch({ type: 'sent', text: message })
-    setDraft('')
+    // A panel answer leaves a half-written message in the composer alone.
+    if (from === 'composer') setDraft('')
     try {
       const reply = await api.turn(session.token, { text: message })
       dispatch({ type: 'replied', reply })
@@ -58,22 +62,24 @@ export function ChatScreen({ session, onLanguageChange, onSignedOut }: Props) {
       if (failure instanceof ApiError && failure.status === 401) {
         dispatch({ type: 'expired' })
       } else {
-        dispatch({ type: 'failed' })
-        // Give the text back, unless the customer already started a new one.
-        setDraft((current) => (current === '' ? message : current))
+        dispatch({ type: 'failed', answer })
+        // Give a message back, unless the customer already started a new one. Never an answer:
+        // if the server read it before the reply was lost, it now asks the next question (the
+        // card block after the dispute), and the same "Sí" sent again would answer that one,
+        // which the customer never saw.
+        if (!answer) setDraft((current) => (current === '' ? message : current))
       }
     } finally {
       inFlight.current = false
     }
   }
 
-  async function signOut() {
-    try {
-      await api.logout(session.token)
-    } catch {
-      // The session ends on its own at its expiry; leaving the screen is what matters here.
-    }
+  function signOut() {
+    // Leave at once and revoke the session in the background: with the service asleep or the
+    // network down, waiting for the call would leave the button doing nothing for up to 30 s.
+    // If the call fails, the session still ends at its expiry.
     onSignedOut('signed_out')
+    api.logout(session.token).catch(() => undefined)
   }
 
   function pick(text: string) {
@@ -150,22 +156,24 @@ export function ChatScreen({ session, onLanguageChange, onSignedOut }: Props) {
           <div className="chat__column">
             {state.confirmation !== null && !state.pending && (
               <ConfirmationPanel
+                // One panel per question: each new one waits before it takes an answer.
+                key={last?.id}
                 view={state.confirmation}
                 copy={copy}
                 panelRef={confirmPanel}
-                onAnswer={send}
+                onAnswer={(text) => send(text, 'panel')}
               />
             )}
-            {state.failed && (
+            {state.failed !== null && (
               <p className="alert" role="alert">
                 <Warning aria-hidden="true" />
-                <span>{copy.sendFailed}</span>
+                <span>{state.failed === 'answer' ? copy.answerFailed : copy.sendFailed}</span>
               </p>
             )}
             {state.expired ? (
               <div className="alert alert--block" role="alert">
                 <Warning aria-hidden="true" />
-                <span>{copy.sessionExpired}</span>
+                <span>{copy.sessionEnded}</span>
                 <button
                   type="button"
                   className="button button--primary button--small"
@@ -181,7 +189,7 @@ export function ChatScreen({ session, onLanguageChange, onSignedOut }: Props) {
                 canSend={!state.pending}
                 inputRef={composer}
                 onDraftChange={setDraft}
-                onSend={send}
+                onSend={(text) => send(text, 'composer')}
               />
             )}
           </div>

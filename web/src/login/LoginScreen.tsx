@@ -1,7 +1,7 @@
 import { ArrowLeft, Check, Info, Warning } from '@phosphor-icons/react'
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { ApiError, api } from '../api/client.ts'
-import type { Language, LoginResponse, PersonaResponse } from '../api/contracts.gen.ts'
+import { type Language, LIMITS, type LoginResponse, type PersonaResponse } from '../api/contracts.gen.ts'
 import { BrandMark } from '../BrandMark.tsx'
 import { COPY, type Copy, countryName } from '../i18n.ts'
 import type { ChatSession } from '../session.ts'
@@ -10,6 +10,18 @@ type Personas =
   | { kind: 'loading' }
   | { kind: 'failed' }
   | { kind: 'ready'; list: readonly PersonaResponse[] }
+
+/** What went wrong, kept as a kind and worded at render time, so it follows the language. */
+type LoginError =
+  | {
+      kind:
+        | 'accessCodeRequired'
+        | 'accessCodeWrong'
+        | 'personaUnavailable'
+        | 'invalidCode'
+        | 'networkError'
+    }
+  | { kind: 'tooManyAttempts'; seconds: number }
 
 interface Props {
   language: Language
@@ -24,12 +36,16 @@ interface Props {
 // What a deployment with a shared access code answers to a login without the right one.
 const ACCESS_CODE_REQUIRED = 'access_code_required'
 
-function errorMessage(error: unknown, copy: Copy, step: 'persona' | 'code'): string {
+function loginError(error: unknown, step: 'persona' | 'code'): LoginError {
   if (error instanceof ApiError) {
-    if (error.status === 429) return copy.tooManyAttempts(error.retryAfterSeconds ?? 0)
-    if (error.status === 401 && step === 'code') return copy.invalidCode
+    if (error.status === 429) return { kind: 'tooManyAttempts', seconds: error.retryAfterSeconds ?? 0 }
+    if (error.status === 401 && step === 'code') return { kind: 'invalidCode' }
   }
-  return copy.networkError
+  return { kind: 'networkError' }
+}
+
+function errorText(error: LoginError, copy: Copy): string {
+  return error.kind === 'tooManyAttempts' ? copy.tooManyAttempts(error.seconds) : copy[error.kind]
 }
 
 export function LoginScreen({
@@ -49,7 +65,8 @@ export function LoginScreen({
   // Shown once the server asked for the access code, or when one is already known.
   const [askAccessCode, setAskAccessCode] = useState(accessCode !== '')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<LoginError | null>(null)
+  const accessCodeInvalid = error?.kind === 'accessCodeWrong'
   const codeHeading = useRef<HTMLHeadingElement>(null)
   const personaHeading = useRef<HTMLLegendElement>(null)
   const accessField = useRef<HTMLInputElement>(null)
@@ -95,7 +112,7 @@ export function LoginScreen({
     } catch (failure) {
       if (failure instanceof ApiError && failure.code === ACCESS_CODE_REQUIRED) {
         setAskAccessCode(true)
-        setError(presented === '' ? copy.accessCodeRequired : copy.accessCodeWrong)
+        setError({ kind: presented === '' ? 'accessCodeRequired' : 'accessCodeWrong' })
         requestAnimationFrame(() => accessField.current?.focus())
       } else if (failure instanceof ApiError && failure.status === 401) {
         // Persona ids are keyed by the server's secret: after a redeploy the list on screen is
@@ -103,9 +120,9 @@ export function LoginScreen({
         setSelected(null)
         setPersonas({ kind: 'loading' })
         setAttempt((value) => value + 1)
-        setError(copy.personaUnavailable)
+        setError({ kind: 'personaUnavailable' })
       } else {
-        setError(errorMessage(failure, copy, 'persona'))
+        setError(loginError(failure, 'persona'))
       }
     } finally {
       setBusy(false)
@@ -127,7 +144,7 @@ export function LoginScreen({
         language: verified.language ?? language,
       })
     } catch (failure) {
-      setError(errorMessage(failure, copy, 'code'))
+      setError(loginError(failure, 'code'))
       setBusy(false)
     }
   }
@@ -198,11 +215,13 @@ export function LoginScreen({
                     className="input"
                     type="password"
                     autoComplete="off"
-                    maxLength={128}
+                    maxLength={LIMITS.LoginRequest.access_code.maxLength}
                     value={accessCode}
                     onChange={(event) => onAccessCodeChange(event.target.value)}
-                    aria-describedby={ids.accessHint}
-                    aria-invalid={error === copy.accessCodeWrong}
+                    aria-describedby={
+                      accessCodeInvalid ? `${ids.accessHint} ${ids.error}` : ids.accessHint
+                    }
+                    aria-invalid={accessCodeInvalid}
                   />
                   <p id={ids.accessHint} className="field__hint">
                     {copy.accessCodeHint}
@@ -265,7 +284,7 @@ export function LoginScreen({
               {error !== null && (
                 <p id={ids.error} className="field-error" role="alert">
                   <Warning aria-hidden="true" />
-                  {error}
+                  {errorText(error, copy)}
                 </p>
               )}
               <button
@@ -304,7 +323,7 @@ export function LoginScreen({
                   className="input input--code"
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  maxLength={12}
+                  maxLength={LIMITS.VerifyRequest.code.maxLength}
                   value={code}
                   onChange={(event) => setCode(event.target.value)}
                   aria-invalid={error !== null}
@@ -313,7 +332,7 @@ export function LoginScreen({
                 {error !== null && (
                   <p id={ids.error} className="field-error" role="alert">
                     <Warning aria-hidden="true" />
-                    {error}
+                    {errorText(error, copy)}
                   </p>
                 )}
               </div>

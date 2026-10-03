@@ -5,6 +5,8 @@ import { composer, confirmation, expect, fact, log, say, signIn, test } from './
 
 test('happy path: a dispute is created only after confirming its exact facts', async ({ page }) => {
   await signIn(page, 'Mariana')
+  // The limit comes from the contract (ChatTurnRequest), not from a number copied by hand.
+  await expect(composer(page)).toHaveAttribute('maxlength', '2000')
   await page.getByRole('button', { name: /Cargo no reconocido/ }).click()
   await expect(composer(page)).toHaveValue(
     'Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco',
@@ -19,18 +21,37 @@ test('happy path: a dispute is created only after confirming its exact facts', a
   await expect(fact(page, 'Comercio')).toHaveText('ELECTROMUNDO ONLINE')
   await expect(fact(page, 'Importe')).toHaveText('2,450.00 MXN')
   await expect(fact(page, 'Fecha')).toHaveText('12/06/2026')
-  await expect(fact(page, 'Tarjeta')).toContainText('4821')
+  await expect(fact(page, 'Tarjeta terminada en')).toHaveText('4821')
   await expect(fact(page, 'Canal')).toHaveText('sitio web')
   await expect(fact(page, 'Motivo')).toHaveText('movimiento no reconocido')
   await expect(page.getByText('Reclamo registrado y verificado')).toHaveCount(0)
 
+  // The card block is offered next, in the place of the dispute question, so the second click
+  // of a double click on "Confirmar" lands on the new "Confirmar" as it appears. The page plays
+  // that click the moment the new question is in the DOM, whatever the test runner's timing.
+  await page.evaluate(() => {
+    const observer = new MutationObserver(() => {
+      const panel = document.querySelector('.confirm')
+      if (panel === null || !panel.textContent?.includes('Bloquear la tarjeta')) return
+      observer.disconnect()
+      const buttons = Array.from(panel.querySelectorAll('button'))
+      const button = buttons.find((candidate) => candidate.textContent === 'Confirmar')
+      document.body.dataset.secondClick = button?.getAttribute('aria-disabled') ?? 'missing'
+      button?.click()
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+  })
+  const answers = log(page).locator('.msg--customer')
+  const before = await answers.count()
   await confirmation(page).getByRole('button', { name: 'Confirmar' }).click()
   await expect(log(page)).toContainText(/Creé el reclamo DSP-/)
   await expect(page.getByText('Reclamo registrado y verificado')).toBeVisible()
-
-  // The card block is offered next, as its own confirmation.
   await expect(confirmation(page)).toContainText('Bloquear la tarjeta')
-  await expect(fact(page, 'Tarjeta')).toContainText('4821')
+  // The click came while the question was not yet taking answers: no "Sí" sent, nothing blocked.
+  await expect(page.locator('body')).toHaveAttribute('data-second-click', 'true')
+  expect(await answers.count()).toBe(before + 1)
+  await expect(confirmation(page)).toContainText('Bloquear la tarjeta')
+  await expect(fact(page, 'Tarjeta terminada en')).toHaveText('4821')
   await expect(fact(page, 'Comercio')).toHaveCount(0)
   await confirmation(page).getByRole('button', { name: 'Cancelar' }).click()
   await expect(log(page)).toContainText('Entendido, no bloquearé la tarjeta.')
@@ -84,6 +105,8 @@ test('keyboard only, in Portuguese: sign in, dispute and block the card', async 
   await expect(page.getByRole('button', { name: 'Cancelar' })).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: 'Confirmar' })).toBeFocused()
+  // A new question takes answers only after a moment (a person reads it first).
+  await expect(page.getByRole('button', { name: 'Confirmar' })).toBeEnabled()
   await page.keyboard.press('Enter')
   await expect(page.getByText('Contestação registrada e verificada')).toBeVisible()
 
@@ -92,6 +115,7 @@ test('keyboard only, in Portuguese: sign in, dispute and block the card', async 
   await page.keyboard.press('Tab')
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: 'Confirmar' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Confirmar' })).toBeEnabled()
   await page.keyboard.press('Enter')
   await expect(log(page)).toContainText('Bloqueei o cartão com final 2208.')
   await expect(page.getByText('Bloqueio do cartão verificado')).toBeVisible()
@@ -146,4 +170,7 @@ test('an ended session asks to sign in again and keeps the conversation', async 
   await page.getByRole('button', { name: 'Entrar de nuevo' }).click()
   await expect(page.getByText('Tu sesión terminó. Entra de nuevo para continuar.')).toBeVisible()
   await expect(page.getByRole('radio', { name: /Lucía/ })).toBeVisible()
+  // The notice follows the language toggle.
+  await page.getByRole('button', { name: 'Português' }).click()
+  await expect(page.getByText('Sua sessão terminou. Entre de novo para continuar.')).toBeVisible()
 })

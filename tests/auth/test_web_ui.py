@@ -8,12 +8,13 @@ from fastapi.testclient import TestClient
 from bankagent.api.app import WEB_SECURITY_HEADERS, create_app
 from bankagent.auth.service import AuthService
 from bankagent.contracts.domain import Session
+from bankagent.contracts.enums import Language
 from bankagent.orchestrator.agent import AgentTurnOutput
 
 
 class EchoAgent:
     def handle_turn(self, session: Session, text: str, /) -> AgentTurnOutput:
-        return AgentTurnOutput(reply_text=text, records=(), ended=False)
+        return AgentTurnOutput(reply_text=text, records=(), ended=False, language=Language.ES)
 
 
 @pytest.fixture
@@ -40,6 +41,23 @@ def test_built_ui_is_served_with_its_security_headers(service: AuthService, dist
     assert "frame-ancestors 'none'" in WEB_SECURITY_HEADERS["Content-Security-Policy"]
 
 
+def test_the_page_is_revalidated_and_its_hashed_assets_are_kept(
+    service: AuthService, dist: Path
+) -> None:
+    """After a redeploy a cached index.html would name assets that no longer exist."""
+    client = _client(service, dist)
+    page = client.get("/")
+    assert page.headers["Cache-Control"] == "no-cache"
+    assert client.get("/index.html").headers["Cache-Control"] == "no-cache"
+    assert client.get("/assets/app.js").headers["Cache-Control"] == (
+        "public, max-age=31536000, immutable"
+    )
+    # The browser's revalidation: unchanged, so 304, and the answer keeps the same policy.
+    again = client.get("/", headers={"If-None-Match": page.headers["ETag"]})
+    assert again.status_code == 304
+    assert again.headers["Cache-Control"] == "no-cache"
+
+
 def test_api_routes_keep_precedence_over_the_ui(service: AuthService, dist: Path) -> None:
     client = _client(service, dist)
     assert client.get("/health").json() == {"status": "ok"}
@@ -49,6 +67,31 @@ def test_api_routes_keep_precedence_over_the_ui(service: AuthService, dist: Path
     docs = client.get("/docs")
     assert docs.status_code == 200
     assert "Content-Security-Policy" not in docs.headers
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "allowed"),
+    [
+        ("GET", "/api/chat/turn", "POST"),
+        ("GET", "/api/auth/login", "POST"),
+        ("POST", "/api/auth/personas", "GET"),
+        ("POST", "/health", "GET"),
+    ],
+)
+def test_a_wrong_method_on_an_api_route_is_405_not_the_uis_404(
+    service: AuthService, dist: Path, method: str, path: str, allowed: str
+) -> None:
+    response = _client(service, dist).request(method, path)
+    assert response.status_code == 405
+    assert response.headers["Allow"] == allowed
+    assert "Content-Security-Policy" not in response.headers
+
+
+def test_an_unknown_path_is_still_the_uis_404(service: AuthService, dist: Path) -> None:
+    client = _client(service, dist)
+    for path in ("/api/chat/nope", "/assets/index-old.js", "/nope"):
+        assert client.get(path).status_code == 404, path
+    assert client.get("/").status_code == 200
 
 
 @pytest.mark.parametrize("build", ["missing", "without_index"])

@@ -12,7 +12,8 @@ export function App() {
   // Kept in memory only: a reload signs out, and nothing about the session reaches storage.
   const [session, setSession] = useState<ChatSession | null>(null)
   const [language, setLanguage] = useState<Language>(browserLanguage)
-  const [notice, setNotice] = useState<string | null>(null)
+  // Why the last session ended. The notice is worded at render time, so it follows the language.
+  const [ended, setEnded] = useState<'expired' | 'signed_out' | null>(null)
   // The demo's shared access code, once the server asked for it: in memory only, so signing in
   // again after a session ends does not ask twice.
   const [accessCode, setAccessCode] = useState('')
@@ -27,12 +28,12 @@ export function App() {
       {session === null ? (
         <LoginScreen
           language={language}
-          notice={notice}
+          notice={ended === 'expired' ? COPY[language].sessionEnded : null}
           accessCode={accessCode}
           onAccessCodeChange={setAccessCode}
           onLanguageChange={setLanguage}
           onSignedIn={(signedIn) => {
-            setNotice(null)
+            setEnded(null)
             setLanguage(signedIn.language)
             setSession(signedIn)
           }}
@@ -42,7 +43,7 @@ export function App() {
           session={session}
           onLanguageChange={setLanguage}
           onSignedOut={(reason) => {
-            setNotice(reason === 'expired' ? COPY[language].sessionEndedNotice : null)
+            setEnded(reason)
             setSession(null)
           }}
         />

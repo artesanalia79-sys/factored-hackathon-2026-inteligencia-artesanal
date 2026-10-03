@@ -56,8 +56,9 @@ WORKDIR /app/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund && npm cache clean --force
 COPY web ./
-# `tsc -b` type-checks the UI and its tests, then Vite writes web/dist.
-RUN npm run build
+# Type-check the shipped code only, then Vite writes web/dist. The Playwright specs are
+# checked by the CI job `web`: a type error in a test must not block a deploy of a sound UI.
+RUN npm run build:app
 
 # ---------------------------------------------------------------------------
 # runtime: no uv, no build tools, non-root

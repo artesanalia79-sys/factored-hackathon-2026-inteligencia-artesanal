@@ -54,7 +54,8 @@ from bankagent.eval.simulator import QuestionKind, classify_question
 from bankagent.policy import load_policy
 from bankagent.render import (
     UnverifiedRenderError,
-    confirmation_view,
+    block_offer_prompt,
+    confirmation_prompt,
     render_block_declined,
     render_block_offer,
     render_blocked_card,
@@ -482,7 +483,7 @@ def test_confirmation_hides_internal_ids_and_free_text(
     assert "1234" in block_copy
 
 
-@pytest.mark.parametrize("render", [render_confirmation, confirmation_view])
+@pytest.mark.parametrize("render", [render_confirmation, confirmation_prompt])
 def test_confirmation_rejects_unverified_or_mismatched_read(
     render: Callable[..., object], transaction: TransactionView
 ) -> None:
@@ -523,7 +524,7 @@ def test_confirmation_rejects_unverified_or_mismatched_read(
 
 
 @pytest.mark.parametrize("language", list(Language))
-def test_confirmation_view_is_the_question_as_data(
+def test_the_confirmation_view_is_the_question_as_data(
     language: Language, transaction: TransactionView
 ) -> None:
     """The UI's panel shows the question's own strings: nothing it does not say, nothing more."""
@@ -533,11 +534,12 @@ def test_confirmation_view_is_the_question_as_data(
     )
     read = GetTransactionResult(transaction=transaction)
     record = _record(ToolName.GET_TRANSACTION, txn_args)
-    question = render_confirmation(language, args, txn_args, read, record)
-    view = confirmation_view(language, args, txn_args, read, record)
+    prompt = confirmation_prompt(language, args, txn_args, read, record)
+    view = prompt.view
+    assert prompt.text == render_confirmation(language, args, txn_args, read, record)
     assert view.action == ActionType.CREATE_DISPUTE
     shown = (view.reason, view.merchant, view.date, view.channel, view.card_last4, view.amount)
-    assert all(value is not None and value in question for value in shown)
+    assert all(value is not None and value in prompt.text for value in shown)
     reason = "movimiento no reconocido" if language == Language.ES else "transação não reconhecida"
     assert shown == (reason, "Mercado Sol", "17/06/2026", "compra presencial", "1234", "42,50 USD")
     assert all(value not in view.model_dump_json() for value in ("txn-1", "card-1", "request-1"))
@@ -548,11 +550,14 @@ def test_confirmation_view_is_the_question_as_data(
     )
     cards = _active_card()
     card_record = _record(ToolName.LIST_CARDS, card_args)
-    block = confirmation_view(language, block_args, card_args, cards, card_record)
-    assert block == ConfirmationView(action=ActionType.BLOCK_CARD, card_last4="1234")
-    assert block.card_last4 in render_confirmation(
-        language, block_args, card_args, cards, card_record
-    )
+    block = confirmation_prompt(language, block_args, card_args, cards, card_record)
+    assert block.view == ConfirmationView(action=ActionType.BLOCK_CARD, card_last4="1234")
+    assert block.view.card_last4 in block.text
+    # The offer after a dispute is the same question behind a lead, with the same panel.
+    offer = block_offer_prompt(language, block_args, card_args, cards, card_record)
+    assert offer.view == block.view
+    assert offer.text.endswith(block.text)
+    assert offer.text == render_block_offer(language, block_args, card_args, cards, card_record)
 
 
 def test_merchant_name_is_single_line_and_bounded(transaction: TransactionView) -> None:

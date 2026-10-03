@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePath
 from threading import RLock
 from typing import Annotated, Protocol
 
@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
+from starlette.routing import BaseRoute, Match, Mount
 from starlette.types import Scope
 
 from bankagent.auth.http import SafeValidationRoute, build_auth_router, session_dependency
@@ -32,6 +33,11 @@ WEB_SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
 }
+# Vite names every file under assets/ after a hash of its content, so a browser may keep it for
+# good. Everything else, index.html first, is revalidated on each load: after a redeploy the page
+# must name the new assets, not old ones that no longer exist (a blank page until a reload).
+IMMUTABLE_ASSET = "public, max-age=31536000, immutable"
+REVALIDATE = "no-cache"
 
 
 class TurnAgent(Protocol):
@@ -39,12 +45,30 @@ class TurnAgent(Protocol):
 
 
 class WebFiles(StaticFiles):
-    """The built UI (``web/dist``), served with ``WEB_SECURITY_HEADERS``."""
+    """The built UI (``web/dist``), served with ``WEB_SECURITY_HEADERS`` and its cache policy."""
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         response = await super().get_response(path, scope)
         response.headers.update(WEB_SECURITY_HEADERS)
+        # ``path`` uses the OS separator; a 304 gets the same policy as the file it stands for.
+        hashed = PurePath(path).parts[:1] == ("assets",)
+        response.headers["Cache-Control"] = IMMUTABLE_ASSET if hashed else REVALIDATE
         return response
+
+
+class WebMount(Mount):
+    """The UI at ``/``, minus every path an API route owns with another method.
+
+    A mount at ``/`` matches every path, and the router prefers any full match to a method
+    mismatch, so ``GET /api/chat/turn`` would get the UI's 404. Stepping aside lets the route
+    answer 405 with ``Allow``.
+    """
+
+    def matches(self, scope: Scope) -> tuple[Match, Scope]:
+        routes: Sequence[BaseRoute] = getattr(scope.get("router"), "routes", ())
+        if any(route is not self and route.matches(scope)[0] == Match.PARTIAL for route in routes):
+            return Match.NONE, {}
+        return super().matches(scope)
 
 
 def _answers(name: str, probe: Callable[[], object]) -> bool:
@@ -71,7 +95,7 @@ def create_app(
     exists only when probes are given, so an app built without them cannot report itself ready.
     ``web_dist`` is the UI's production build. It is served at ``/`` when it holds an
     ``index.html``; every API route, `/health` and `/ready` keep precedence because they are
-    registered before it.
+    registered before it, and a wrong method on them gets 405 (``WebMount``).
     """
     app = FastAPI(title="Bank dispute intake")
     app.include_router(build_auth_router(auth))
@@ -125,6 +149,8 @@ def create_app(
 
     # Last: a mount at / would answer every path registered after it.
     if web_dist is not None and (web_dist / "index.html").is_file():
-        app.mount("/", WebFiles(directory=web_dist, html=True), name="web")
+        app.router.routes.append(
+            WebMount("/", app=WebFiles(directory=web_dist, html=True), name="web")
+        )
 
     return app

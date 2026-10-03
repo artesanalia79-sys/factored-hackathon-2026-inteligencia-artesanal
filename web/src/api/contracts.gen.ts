@@ -91,3 +91,18 @@ export interface ConfirmationView {
   merchant?: string | null
   reason?: string | null
 }
+
+/** Length limits of the request fields, from the same schemas: inputs take maxLength here. */
+export const LIMITS = {
+  LoginRequest: {
+    access_code: { minLength: 1, maxLength: 128 },
+    persona_id: { minLength: 1, maxLength: 64 },
+  },
+  VerifyRequest: {
+    challenge_id: { minLength: 1, maxLength: 64 },
+    code: { minLength: 1, maxLength: 12 },
+  },
+  ChatTurnRequest: {
+    text: { minLength: 1, maxLength: 2000 },
+  },
+} as const

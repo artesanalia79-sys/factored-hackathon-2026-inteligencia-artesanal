@@ -59,11 +59,36 @@ async function combinedSchema() {
   }
 }
 
-const generated = await compile(await combinedSchema(), 'ApiContracts', {
-  bannerComment: BANNER,
-  additionalProperties: false,
-  style: { singleQuote: true, semi: false, printWidth: 100, trailingComma: 'all' },
-})
+// The length limits of every request field, so an input's maxLength comes from the contract too.
+// An optional field's limits sit in its non-null branch.
+function requestLimits(schema) {
+  const lines = []
+  for (const name of MODELS.filter((model) => model.endsWith('Request'))) {
+    lines.push(`  ${name}: {`)
+    for (const [field, property] of Object.entries(schema.$defs[name].properties)) {
+      const branch = [property, ...(property.anyOf ?? [])].find((s) => 'maxLength' in s)
+      if (branch === undefined) continue
+      lines.push(`    ${field}: { minLength: ${branch.minLength ?? 0}, maxLength: ${branch.maxLength} },`)
+    }
+    lines.push('  },')
+  }
+  return [
+    '',
+    '/** Length limits of the request fields, from the same schemas: inputs take maxLength here. */',
+    'export const LIMITS = {',
+    ...lines,
+    '} as const',
+    '',
+  ].join('\n')
+}
+
+const schema = await combinedSchema()
+const generated =
+  (await compile(schema, 'ApiContracts', {
+    bannerComment: BANNER,
+    additionalProperties: false,
+    style: { singleQuote: true, semi: false, printWidth: 100, trailingComma: 'all' },
+  })) + requestLimits(schema)
 
 if (process.argv.includes('--check')) {
   const current = await readFile(OUT, 'utf8').catch(() => '')

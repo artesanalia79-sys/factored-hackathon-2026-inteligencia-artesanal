@@ -35,7 +35,8 @@ export interface Copy {
   invalidCode: string
   tooManyAttempts: (seconds: number) => string
   networkError: string
-  sessionEndedNotice: string
+  /** Shown in the chat when the session ends, and again on the sign-in screen. */
+  sessionEnded: string
   credit: string
   // chat
   sessionUntil: (time: string) => string
@@ -53,8 +54,9 @@ export interface Copy {
   composerHint: string
   send: string
   sendFailed: string
+  /** An answer to a confirmation question may not have arrived: it is not given back. */
+  answerFailed: string
   ended: string
-  sessionExpired: string
   signInAgain: string
   verified: Record<ActionType, string>
   // confirmation panel
@@ -68,7 +70,6 @@ export interface Copy {
     channel: string
     reason: string
   }
-  cardEnding: (last4: string) => string
   confirmHint: string
   confirm: string
   cancel: string
@@ -118,7 +119,7 @@ const es: Copy = {
       ? `Demasiados intentos. Vuelve a intentarlo en ${Math.ceil(seconds / 60)} min.`
       : 'Demasiados intentos con este código. Elige el cliente de nuevo para recibir otro.',
   networkError: 'No pudimos conectar con el servicio. Inténtalo de nuevo.',
-  sessionEndedNotice: 'Tu sesión terminó. Entra de nuevo para continuar.',
+  sessionEnded: 'Tu sesión terminó. Entra de nuevo para continuar.',
   credit: 'Prototipo de Inteligencia Artesanal para el Factored AI & Data Hackathon 2026.',
   sessionUntil: (time) => `Sesión hasta las ${time}`,
   signOut: 'Cerrar sesión',
@@ -136,8 +137,9 @@ const es: Copy = {
   send: 'Enviar',
   sendFailed:
     'No pudimos confirmar si tu mensaje llegó. Revisa la conversación antes de enviarlo de nuevo.',
+  answerFailed:
+    'No pudimos confirmar si tu respuesta llegó. Antes de responder otra vez, pregúntale al asistente en qué quedó tu solicitud.',
   ended: 'Conversación finalizada',
-  sessionExpired: 'Tu sesión terminó. Entra de nuevo para continuar.',
   signInAgain: 'Entrar de nuevo',
   verified: {
     create_dispute: 'Reclamo registrado y verificado',
@@ -150,11 +152,10 @@ const es: Copy = {
     merchant: 'Comercio',
     amount: 'Importe',
     date: 'Fecha',
-    card: 'Tarjeta',
+    card: 'Tarjeta terminada en',
     channel: 'Canal',
     reason: 'Motivo',
   },
-  cardEnding: (last4) => `terminada en ${last4}`,
   confirmHint: 'Nada cambia hasta que confirmes. También puedes responder por escrito.',
   confirm: 'Confirmar',
   cancel: 'Cancelar',
@@ -203,7 +204,7 @@ const pt: Copy = {
       ? `Muitas tentativas. Tente de novo em ${Math.ceil(seconds / 60)} min.`
       : 'Muitas tentativas com este código. Escolha o cliente de novo para receber outro.',
   networkError: 'Não conseguimos conectar ao serviço. Tente de novo.',
-  sessionEndedNotice: 'Sua sessão terminou. Entre de novo para continuar.',
+  sessionEnded: 'Sua sessão terminou. Entre de novo para continuar.',
   credit: 'Protótipo da Inteligencia Artesanal para o Factored AI & Data Hackathon 2026.',
   sessionUntil: (time) => `Sessão até ${time}`,
   signOut: 'Sair',
@@ -221,8 +222,9 @@ const pt: Copy = {
   send: 'Enviar',
   sendFailed:
     'Não conseguimos confirmar se a sua mensagem chegou. Confira a conversa antes de enviá-la de novo.',
+  answerFailed:
+    'Não conseguimos confirmar se a sua resposta chegou. Antes de responder de novo, pergunte ao assistente como ficou a sua solicitação.',
   ended: 'Conversa encerrada',
-  sessionExpired: 'Sua sessão terminou. Entre de novo para continuar.',
   signInAgain: 'Entrar de novo',
   verified: {
     create_dispute: 'Contestação registrada e verificada',
@@ -235,11 +237,10 @@ const pt: Copy = {
     merchant: 'Estabelecimento',
     amount: 'Valor',
     date: 'Data',
-    card: 'Cartão',
+    card: 'Cartão com final',
     channel: 'Canal',
     reason: 'Motivo',
   },
-  cardEnding: (last4) => `com final ${last4}`,
   confirmHint: 'Nada muda até você confirmar. Você também pode responder por escrito.',
   confirm: 'Confirmar',
   cancel: 'Cancelar',

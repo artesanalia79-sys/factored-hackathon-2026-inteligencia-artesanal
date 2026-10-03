@@ -1,9 +1,9 @@
 import { PaperPlaneRight } from '@phosphor-icons/react'
 import { type KeyboardEvent, type RefObject, useId, useLayoutEffect } from 'react'
+import { LIMITS } from '../api/contracts.gen.ts'
 import type { Copy } from '../i18n.ts'
 
-// The API accepts up to 2000 characters per turn (ChatTurnRequest).
-const MAX_LENGTH = 2000
+const MAX_LENGTH = LIMITS.ChatTurnRequest.text.maxLength
 const MAX_HEIGHT_PX = 168
 
 interface Props {

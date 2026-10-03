@@ -8,7 +8,7 @@ import { defineConfig, devices } from '@playwright/test'
 // a persona's second dispute escalates as a repeat disputer (docs/limitations.md). The signing
 // secret is random per run and never written anywhere. A second server runs with a shared access
 // code (T15, `DEMO_ACCESS_CODE`) for the specs that test the real gate. The stores are removed
-// after the run (e2e/teardown.ts).
+// after the run, or after the next one on Windows (e2e/teardown.ts).
 const PORT = 8765
 const GATED_PORT = 8766
 process.env.E2E_RUN ??= `${process.pid}-${Date.now()}`

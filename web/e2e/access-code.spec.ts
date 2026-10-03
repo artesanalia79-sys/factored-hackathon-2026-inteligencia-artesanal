@@ -32,6 +32,11 @@ test('a demo with an access code asks for it once and remembers it', async ({ pa
   await page.getByRole('button', { name: 'Enviar código' }).click()
   await expect(page.getByRole('alert')).toContainText('El código de acceso no es correcto.')
   await expect(field).toHaveAttribute('aria-invalid', 'true')
+  // After a language switch the error is reworded and the field is still marked invalid.
+  await page.getByRole('button', { name: 'Português' }).click()
+  await expect(page.getByRole('alert')).toContainText('O código de acesso não está correto.')
+  await expect(page.getByLabel('Código de acesso da demo')).toHaveAttribute('aria-invalid', 'true')
+  await page.getByRole('button', { name: 'Español' }).click()
 
   await field.fill(SHARED_CODE)
   await page.getByRole('button', { name: 'Enviar código' }).click()

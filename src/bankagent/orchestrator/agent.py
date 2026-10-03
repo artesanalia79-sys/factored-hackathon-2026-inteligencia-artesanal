@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -58,13 +58,13 @@ from bankagent.interpret.keywords import (
 )
 from bankagent.render.templates import (
     MAX_CANDIDATES,
+    ConfirmationPrompt,
     UnverifiedRenderError,
-    confirmation_view,
+    block_offer_prompt,
+    confirmation_prompt,
     render_block_declined,
-    render_block_offer,
     render_blocked_card,
     render_candidates,
-    render_confirmation,
     render_created_dispute,
     render_created_handoff,
     render_ineligible,
@@ -183,9 +183,10 @@ class AgentTurnOutput:
     records: tuple[ExecutionRecord, ...]
     ended: bool
     claimed_actions: tuple[ActionType, ...] = ()
-    # The language of ``reply_text``, and the write it asks the customer to confirm, if it asks
-    # (the UI's confirmation panel, T14).
-    language: Language = Language.ES
+    # The language of ``reply_text``. No default: the UI takes its language and the message's
+    # `lang` from it, so a Portuguese reply must never report Spanish by omission (T14).
+    language: Language = field(kw_only=True)
+    # The write the reply asks the customer to confirm, if it asks (the UI's panel, T14).
     confirmation: ConfirmationView | None = None
 
 
@@ -301,6 +302,18 @@ class Agent:
         )
         self._turn_index += 1
         return output
+
+    def _ask(
+        self,
+        prompt: ConfirmationPrompt,
+        *,
+        lead: str | None = None,
+        claimed_actions: tuple[ActionType, ...] = (),
+    ) -> AgentTurnOutput:
+        """Ask to confirm a write. The question and the UI's panel come from one prompt, so
+        they cannot disagree; ``lead`` goes before the question (a claim just verified)."""
+        text = prompt.text if lead is None else f"{lead} {prompt.text}"
+        return self._reply(text, claimed_actions=claimed_actions, confirmation=prompt.view)
 
     def _interpret(self, session: Session, text: str) -> InterpretationResult:
         # A deterministic attack gate runs before the provider sees the utterance.
@@ -499,21 +512,14 @@ class Agent:
             return self._abstain(session)
         self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
         if self._state == ConversationState.CONFIRM and self._pending_args is not None:
-            return self._reply(
-                render_confirmation(
+            return self._ask(
+                confirmation_prompt(
                     self._language,
                     self._pending_args,
                     self._read_args,
                     self._read_result,
                     self._read_record,
-                ),
-                confirmation=confirmation_view(
-                    self._language,
-                    self._pending_args,
-                    self._read_args,
-                    self._read_result,
-                    self._read_record,
-                ),
+                )
             )
         reply = render_recognition(
             self._language, self._read_args, self._read_result, self._read_record
@@ -637,13 +643,11 @@ class Agent:
         )
         self._pending_args = args
         self._state = ConversationState.CONFIRM
-        reply = render_confirmation(
-            self._language, args, self._read_args, self._read_result, self._read_record
+        return self._ask(
+            confirmation_prompt(
+                self._language, args, self._read_args, self._read_result, self._read_record
+            )
         )
-        view = confirmation_view(
-            self._language, args, self._read_args, self._read_result, self._read_record
-        )
-        return self._reply(reply, confirmation=view)
 
     def _deflect(self, session: Session) -> AgentTurnOutput:
         self._record(session, StepKind.RENDER, ConversationState.RESPOND, StepOutcome.SUCCESS)
@@ -731,10 +735,7 @@ class Agent:
         if offered is None:
             return self._reply(written, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
         # The dispute is claimed now, and the conversation stays open for the block question.
-        offer, view = offered
-        return self._reply(
-            f"{written} {offer}", claimed_actions=(ActionType.CREATE_DISPUTE,), confirmation=view
-        )
+        return self._ask(offered, lead=written, claimed_actions=(ActionType.CREATE_DISPUTE,))
 
     def _write[ArgsT: Contract, ResultT: Contract](
         self,
@@ -806,7 +807,7 @@ class Agent:
         self._record(session, StepKind.VERIFY, self._state, StepOutcome.SUCCESS, args=args)
         return reply
 
-    def _offer_block(self, session: Session) -> tuple[str, ConfirmationView] | None:
+    def _offer_block(self, session: Session) -> ConfirmationPrompt | None:
         """The question offering to block the card, after a verified dispute; None for no offer.
 
         Plan step ACT: offer the block when the customer did not recognize the charge (or asked
@@ -838,8 +839,7 @@ class Agent:
             idempotency_key=self._block_key,
         )
         try:
-            offer = render_block_offer(self._language, args, cards_args, cards, record)
-            view = confirmation_view(self._language, args, cards_args, cards, record)
+            offer = block_offer_prompt(self._language, args, cards_args, cards, record)
         except UnverifiedRenderError:
             return None  # the card is no longer among the active ones: nothing to block
         self._pending_block = args
@@ -847,7 +847,7 @@ class Agent:
         self._cards_result = cards
         self._cards_record = record
         self._state = ConversationState.CONFIRM
-        return offer, view
+        return offer
 
     def _confirm_block(
         self, session: Session, interpreted: InterpretationResult
@@ -868,21 +868,14 @@ class Agent:
                 self._record(
                     session, StepKind.RENDER, ConversationState.CONFIRM, StepOutcome.SUCCESS
                 )
-                return self._reply(
-                    render_confirmation(
+                return self._ask(
+                    confirmation_prompt(
                         self._language,
                         args,
                         self._cards_args,
                         self._cards_result,
                         self._cards_record,
-                    ),
-                    confirmation=confirmation_view(
-                        self._language,
-                        args,
-                        self._cards_args,
-                        self._cards_result,
-                        self._cards_record,
-                    ),
+                    )
                 )
         self._pending_block = None
         if act != DialogueAct.AFFIRM or args is None or self._issue_confirmation is None:

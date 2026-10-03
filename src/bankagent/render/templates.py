@@ -362,14 +362,26 @@ def render_candidates(
     )
 
 
-def _confirmation(
+@dataclass(frozen=True, slots=True)
+class ConfirmationPrompt:
+    """A confirmation question, and the same question as data for the UI's panel (T14).
+
+    Built together by one call from one verified read, so the panel cannot show a fact the
+    question does not: the view's values are the question's own display strings.
+    """
+
+    text: str
+    view: ConfirmationView
+
+
+def confirmation_prompt(
     language: Language,
     args: CreateDisputeArgs | BlockCardArgs,
     read_args: GetTransactionArgs | ListCardsArgs,
     read_result: GetTransactionResult | ListCardsResult,
     record: ExecutionRecord,
-) -> tuple[ConfirmationView, str]:
-    """The pending write as data and as its question, both from one matching verified read."""
+) -> ConfirmationPrompt:
+    """Ask to confirm the pending write, with recognizable facts from a matching verified read."""
     if isinstance(args, CreateDisputeArgs):
         if not isinstance(read_args, GetTransactionArgs) or not isinstance(
             read_result, GetTransactionResult
@@ -394,11 +406,13 @@ def _confirmation(
         )
         facts = _facts_sentence(charge, language)
         if language == Language.ES:
-            return view, f"¿Confirmas crear un reclamo por {reason} para este movimiento: {facts}?"
-        return view, (
-            f"Você confirma a abertura de uma contestação por {reason} "
-            f"para esta transação: {facts}?"
-        )
+            text = f"¿Confirmas crear un reclamo por {reason} para este movimiento: {facts}?"
+        else:
+            text = (
+                f"Você confirma a abertura de uma contestação por {reason} "
+                f"para esta transação: {facts}?"
+            )
+        return ConfirmationPrompt(text, view)
     if not isinstance(read_args, ListCardsArgs) or not isinstance(read_result, ListCardsResult):
         raise UnverifiedRenderError("card confirmation requires a card read")
     _require_verified(record, ToolName.LIST_CARDS, expected_args_hash=args_hash(read_args))
@@ -407,8 +421,10 @@ def _confirmation(
         raise UnverifiedRenderError("card read does not match pending block")
     view = ConfirmationView(action=ActionType.BLOCK_CARD, card_last4=card.card_last4)
     if language == Language.ES:
-        return view, f"¿Confirmas bloquear la tarjeta terminada en {card.card_last4}?"
-    return view, f"Você confirma o bloqueio do cartão com final {card.card_last4}?"
+        text = f"¿Confirmas bloquear la tarjeta terminada en {card.card_last4}?"
+    else:
+        text = f"Você confirma o bloqueio do cartão com final {card.card_last4}?"
+    return ConfirmationPrompt(text, view)
 
 
 def render_confirmation(
@@ -418,23 +434,20 @@ def render_confirmation(
     read_result: GetTransactionResult | ListCardsResult,
     record: ExecutionRecord,
 ) -> str:
-    """Show recognizable facts from a matching authenticated read before confirmation."""
-    return _confirmation(language, args, read_args, read_result, record)[1]
+    """The text of ``confirmation_prompt``, for a caller that shows no confirmation panel."""
+    return confirmation_prompt(language, args, read_args, read_result, record).text
 
 
-def confirmation_view(
+def block_offer_prompt(
     language: Language,
-    args: CreateDisputeArgs | BlockCardArgs,
-    read_args: GetTransactionArgs | ListCardsArgs,
-    read_result: GetTransactionResult | ListCardsResult,
+    args: BlockCardArgs,
+    read_args: ListCardsArgs,
+    read_result: ListCardsResult,
     record: ExecutionRecord,
-) -> ConfirmationView:
-    """The confirmation question as data, for the UI's confirmation panel (T14).
-
-    Same inputs, checks and display strings as ``render_confirmation``: ``_confirmation`` builds
-    both from the same verified read, so the panel cannot show a fact the question does not.
-    """
-    return _confirmation(language, args, read_args, read_result, record)[0]
+) -> ConfirmationPrompt:
+    """Offer a card block: a neutral lead, then the block confirmation from a verified card read."""
+    question = confirmation_prompt(language, args, read_args, read_result, record)
+    return ConfirmationPrompt(f"{BLOCK_OFFER_COPY[language]} {question.text}", question.view)
 
 
 def render_block_offer(
@@ -444,9 +457,8 @@ def render_block_offer(
     read_result: ListCardsResult,
     record: ExecutionRecord,
 ) -> str:
-    """Offer a card block: a neutral lead, then the block confirmation from a verified card read."""
-    question = render_confirmation(language, args, read_args, read_result, record)
-    return f"{BLOCK_OFFER_COPY[language]} {question}"
+    """The text of ``block_offer_prompt``, for a caller that shows no confirmation panel."""
+    return block_offer_prompt(language, args, read_args, read_result, record).text
 
 
 def render_block_declined(language: Language) -> str:
