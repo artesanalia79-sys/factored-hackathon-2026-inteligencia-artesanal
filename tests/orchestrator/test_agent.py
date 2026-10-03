@@ -26,7 +26,9 @@ from bankagent.contracts.enums import (
     DisputeStatus,
     Language,
     Outcome,
+    Priority,
     ProductStatus,
+    Specialty,
     ToolName,
     TransactionStatus,
     TransactionType,
@@ -50,7 +52,12 @@ from bankagent.contracts.tools import (
 )
 from bankagent.interpret.keywords import interpret_text
 from bankagent.interpret.stub import StubFault, StubProvider
-from bankagent.orchestrator.agent import PolicyEvaluator, create_agent
+from bankagent.orchestrator.agent import (
+    ATTACK_RULE_ID,
+    UNSUPPORTED_RULE_ID,
+    PolicyEvaluator,
+    create_agent,
+)
 from bankagent.render.templates import (
     render_candidates,
     render_ineligible,
@@ -202,6 +209,10 @@ def test_attack_is_blocked_without_a_bank_read() -> None:
     assert output.ended
     assert search.calls == get.calls == 0
     assert output.claimed_actions == ()
+    # The trace says why the turn was refused (docs/eval/system_interface.md, section 3).
+    refusal = next(record for record in output.records if record.step == "policy")
+    assert refusal.outcome == "blocked"
+    assert refusal.rule_ids == (ATTACK_RULE_ID,)
 
 
 def test_llm_timeout_uses_keyword_fallback() -> None:
@@ -379,6 +390,42 @@ def test_policy_escalation_creates_complete_handoff() -> None:
     assert handoff.draft is not None
     assert handoff.draft.trigger_rule_ids == ("HIGH_AMOUNT",)
     assert handoff.draft.verified_facts[0].ref == "TXN-FX-0101"
+    # No fraud signal among the triggers: the disputes team, at high priority.
+    assert handoff.draft.routing.specialty == Specialty.DISPUTES
+    assert handoff.draft.routing.priority == Priority.HIGH
+
+
+def _escalating(*triggers: str) -> PolicyEvaluator:
+    def decide(
+        _session: Session, _transaction: GetTransactionResult, _reason: DisputeReason
+    ) -> PolicyDecision:
+        return PolicyDecision(
+            decision=DecisionType.ESCALATE,
+            rule_ids=tuple(f"DSP-ESC-0{index + 1}" for index in range(len(triggers))),
+            escalation_triggers=triggers,
+            policy_version="test-v1",
+        )
+
+    return decide
+
+
+def test_a_fraud_score_escalation_is_routed_to_the_fraud_team() -> None:
+    for triggers, specialty in (
+        (("fraud_score",), Specialty.FRAUD),
+        (("repeat_disputer", "fraud_score"), Specialty.FRAUD),
+        (("repeat_disputer",), Specialty.DISPUTES),
+        (("dq_flag",), Specialty.DISPUTES),
+    ):
+        handoff = HandoffTool()
+        agent, _, _ = _dispute_agent(handoff=handoff, policy=_escalating(*triggers))
+        agent.handle_turn(
+            _session(), "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco"
+        )
+        output = agent.handle_turn(_session(), "No fui yo")
+        assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
+        assert handoff.draft is not None
+        assert handoff.draft.routing.specialty == specialty, triggers
+        assert handoff.draft.routing.priority == Priority.HIGH
 
 
 def test_human_request_creates_handoff_without_transaction_or_write() -> None:
@@ -394,6 +441,9 @@ def test_human_request_creates_handoff_without_transaction_or_write() -> None:
     assert handoff.draft is not None
     assert handoff.draft.request == "Customer requested a human agent"
     assert handoff.draft.verified_facts == ()
+    # A plain request for a person is not urgent by itself.
+    assert handoff.draft.routing.specialty == Specialty.DISPUTES
+    assert handoff.draft.routing.priority == Priority.MEDIUM
 
 
 def test_expired_session_never_reaches_interpreter_or_tools() -> None:
@@ -514,6 +564,7 @@ def test_unavailable_search_escalates_with_an_open_question() -> None:
     assert handoff.draft is not None
     assert handoff.draft.verified_facts == ()
     assert "search was unavailable" in handoff.draft.open_questions[0]
+    assert handoff.draft.routing.priority == Priority.HIGH
 
 
 def test_unverified_dispute_escalates_without_claiming_it() -> None:
@@ -691,9 +742,9 @@ def test_a_request_the_agent_knows_and_does_not_serve_is_refused_at_once() -> No
         agent, search, get = _agent()
         output = agent.handle_turn(_session(), text)
         assert output.ended
-        assert any(
-            record.step == "policy" and record.outcome == "blocked" for record in output.records
-        )
+        refusal = next(record for record in output.records if record.step == "policy")
+        assert refusal.outcome == "blocked"
+        assert refusal.rule_ids == (UNSUPPORTED_RULE_ID,)
         assert search.calls == get.calls == 0
 
 

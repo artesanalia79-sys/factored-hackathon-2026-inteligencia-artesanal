@@ -87,6 +87,13 @@ REASONS = {
     Intent.DISPUTE_NOT_RECEIVED: DisputeReason.NOT_RECEIVED,
 }
 
+# Refusals the orchestrator decides before any policy rule runs. They are not rules of
+# `policy/dispute_policy_v1.yaml` (those are `DSP-...`), so they have their own stable ids.
+ATTACK_RULE_ID = "GATE-ATTACK-01"  # prompt injection or an attack intent
+UNSUPPORTED_RULE_ID = "GATE-SCOPE-01"  # a request the agent recognizes and does not serve
+# The policy rule kind (`PolicyDecision.escalation_triggers`) that is a fraud signal (ADR 0003).
+FRAUD_TRIGGER = "fraud_score"
+
 # Stored with the card block for the bank's staff; never shown to the customer.
 BLOCK_REASONS = {
     DisputeReason.UNRECOGNIZED: "Customer did not recognize a disputed charge",
@@ -509,7 +516,15 @@ class Agent:
         *,
         rule_ids: tuple[str, ...] = (),
         open_question: str = "Review eligibility and next steps",
+        specialty: Specialty = Specialty.DISPUTES,
+        priority: Priority = Priority.HIGH,
     ) -> AgentTurnOutput:
+        """Hand the case to a person. The routing says who and how urgently.
+
+        High priority by default: a policy escalation is a risk signal, and after a tool failure
+        a confirmed request is waiting to be finished. The callers lower it for a plain request
+        to talk to a person and route a fraud-score escalation to the fraud team.
+        """
         self._state = ConversationState.ESCALATE
         if ToolName.CREATE_HANDOFF not in self._tools:
             self._record(session, StepKind.HANDOFF, self._state, StepOutcome.FAILURE)
@@ -542,9 +557,7 @@ class Agent:
             open_questions=(open_question,),
             trigger_rule_ids=rule_ids,
             policy_version=self._decision.policy_version if self._decision else "pending-policy",
-            routing=HandoffRouting(
-                specialty=Specialty.DISPUTES, language=self._language, priority=Priority.HIGH
-            ),
+            routing=HandoffRouting(specialty=specialty, language=self._language, priority=priority),
         )
         args = CreateHandoffArgs(draft=draft, idempotency_key=self._idempotency_key)
         result, record = self._read(
@@ -587,7 +600,14 @@ class Agent:
             rule_ids=decision.rule_ids,
         )
         if decision.decision == DecisionType.ESCALATE:
-            return self._escalate(session, rule_ids=decision.rule_ids)
+            # A fraud-score escalation goes to the fraud team; the fixture and the curated
+            # serving DB both have fraud agents (there is no such guarantee for `cards`).
+            fraud = FRAUD_TRIGGER in decision.escalation_triggers
+            return self._escalate(
+                session,
+                rule_ids=decision.rule_ids,
+                specialty=Specialty.FRAUD if fraud else Specialty.DISPUTES,
+            )
         if decision.decision == DecisionType.CLARIFY:
             return self._clarify(session)
         if decision.decision == DecisionType.INELIGIBLE:
@@ -879,11 +899,17 @@ class Agent:
         self._record(session, StepKind.AUTHENTICATE, ConversationState.AUTH, StepOutcome.SUCCESS)
         interpreted = self._interpret(session, text)
         if interpreted.injection_suspected or interpreted.intent == Intent.ATTACK:
-            self._record(session, StepKind.POLICY, ConversationState.ABSTAIN, StepOutcome.BLOCKED)
+            self._record(
+                session,
+                StepKind.POLICY,
+                ConversationState.ABSTAIN,
+                StepOutcome.BLOCKED,
+                rule_ids=(ATTACK_RULE_ID,),
+            )
             return self._reply(render_outcome(Outcome.DENIED, self._language), ended=True)
         if interpreted.intent == Intent.HUMAN_REQUEST:
             self._intent = Intent.HUMAN_REQUEST
-            return self._escalate(session)
+            return self._escalate(session, priority=Priority.MEDIUM)
         if self._pending_block is not None:
             # Before the intent check below: "Sí, bloquéala" is a card_block intent, not a dispute.
             return self._confirm_block(session, interpreted)
@@ -910,7 +936,13 @@ class Agent:
                 return self._ask_what_happened(session, interpreted.slots)
             # A request the agent recognizes and does not serve (a claim's status, a card block
             # with no dispute) is refused at once.
-            self._record(session, StepKind.POLICY, ConversationState.ABSTAIN, StepOutcome.BLOCKED)
+            self._record(
+                session,
+                StepKind.POLICY,
+                ConversationState.ABSTAIN,
+                StepOutcome.BLOCKED,
+                rule_ids=(UNSUPPORTED_RULE_ID,),
+            )
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
         if self._state != ConversationState.CLARIFY:
             self._intent = interpreted.intent

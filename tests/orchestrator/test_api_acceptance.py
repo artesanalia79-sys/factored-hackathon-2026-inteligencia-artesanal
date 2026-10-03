@@ -115,8 +115,11 @@ def test_fx001_unrecognized_charge_creates_verified_dispute(
     second = _turn(client, headers, "No fui yo")
     assert "¿Confirmas crear un reclamo" in second["reply_text"]
     assert store.count("disputes") == 0
+    # No token exists while the question is on screen: it is issued at the customer's yes.
+    assert store.count("confirmation_tokens") == 0
     third = _turn(client, headers, "Sí, confirmo")
     assert third["claimed_actions"] == ["create_dispute"]
+    assert store.count("confirmation_tokens") == 1
     dispute = store.get_dispute("CUST-FX-001", transaction_id="TXN-FX-0101")
     assert dispute is not None
     assert dispute.policy_version == POLICY_VERSION
@@ -234,7 +237,9 @@ def test_fx006_high_risk_escalates_with_complete_handoff(
     assert packet.trigger_rule_ids == ("DSP-ESC-01",)
     assert packet.verified_facts[0].ref == "TXN-FX-0601"
     assert packet.open_questions
-    assert packet.routing.specialty.value == "disputes"
+    # DSP-ESC-01 is a fraud signal: the handoff goes to the fraud team.
+    assert packet.routing.specialty.value == "fraud"
+    assert packet.routing.priority.value == "high"
 
 
 def test_attack_has_no_action_and_timeout_uses_fallback(
@@ -300,6 +305,8 @@ def test_fx007_open_claim_and_repeat_disputer_follow_the_policy(
     assert packet is not None
     assert packet.trigger_rule_ids == ("DSP-ESC-02",)
     assert packet.verified_facts[0].ref == "TXN-FX-0702"
+    # A repeat disputer is not a fraud signal: the disputes team.
+    assert packet.routing.specialty.value == "disputes"
 
 
 def test_fx007_open_claim_is_explained_in_portuguese(system: tuple[TestClient, OpsStore]) -> None:
