@@ -44,7 +44,7 @@ from bankagent.contracts.tools import (
     Tool,
     ToolContext,
 )
-from bankagent.interpret.keywords import interpret_text
+from bankagent.interpret.keywords import interpret_text, normalize
 from bankagent.render.templates import (
     UnverifiedRenderError,
     render_confirmation,
@@ -69,6 +69,11 @@ REASONS = {
     Intent.DISPUTE_DUPLICATE: DisputeReason.DUPLICATE,
     Intent.DISPUTE_NOT_RECEIVED: DisputeReason.NOT_RECEIVED,
 }
+
+
+def _compact(text: str) -> str:
+    """No case, accents, spaces or punctuation: "Electro Mundo" is in "ELECTROMUNDO ONLINE"."""
+    return "".join(char for char in normalize(text) if char.isalnum())
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,15 +387,73 @@ class Agent:
         )
         return self._reply(reply)
 
+    def _deflect(self, session: Session) -> AgentTurnOutput:
+        self._record(session, StepKind.RENDER, ConversationState.RESPOND, StepOutcome.SUCCESS)
+        return self._reply(render_outcome(Outcome.DEFLECTED_RECOGNIZED, self._language), ended=True)
+
+    def _points_elsewhere(self, slots: DisputeSlots) -> bool:
+        """The answer describes a charge other than the one on screen: a correction."""
+        txn = self._transaction
+        if txn is None:
+            return False
+        return (
+            (slots.transaction_ref is not None and slots.transaction_ref != txn.transaction_id)
+            or (slots.amount is not None and slots.amount != txn.amount)
+            or (slots.card_last4 is not None and slots.card_last4 != txn.card_last4)
+            or (
+                slots.merchant_query is not None
+                and _compact(slots.merchant_query) not in _compact(txn.merchant_name or "")
+            )
+        )
+
+    def _start_over(self, session: Session) -> AgentTurnOutput | None:
+        """Drop the charge on screen so this turn searches again with the customer's new clues.
+
+        Counts as a clarification round; returns the abstention once the rounds are used up.
+        """
+        self._clarifications += 1
+        if self._clarifications > 2:
+            return self._abstain(session)
+        self._transaction = None
+        self._read_args = None
+        self._read_result = None
+        self._read_record = None
+        self._decision = None
+        self._pending_args = None
+        # The correction describes the charge afresh: an old amount would filter out a merchant
+        # named now, so only the card-block request carries over.
+        self._slots = DisputeSlots(card_block_requested=self._slots.card_block_requested)
+        self._state = ConversationState.CLARIFY
+        return None
+
+    def _recognize(self, session: Session, interpreted: InterpretationResult) -> AgentTurnOutput:
+        # "¿Reconoces este movimiento?" is a yes/no question, and the interpreter never sees it:
+        # a bare "Sí" or "No" arrives as affirm or deny and still answers it.
+        act = interpreted.dialogue_act
+        if act in {DialogueAct.RECOGNIZE_CHARGE, DialogueAct.AFFIRM}:
+            if self._reason == DisputeReason.UNRECOGNIZED:
+                return self._deflect(session)
+            return self._check_policy(session)
+        if act in {DialogueAct.NOT_RECOGNIZE_CHARGE, DialogueAct.DENY}:
+            return self._check_policy(session)
+        return self._reask(session)
+
     def _confirm(self, session: Session, interpreted: InterpretationResult) -> AgentTurnOutput:
-        if interpreted.dialogue_act == DialogueAct.DENY:
+        act = interpreted.dialogue_act
+        if act == DialogueAct.RECOGNIZE_CHARGE and self._reason == DisputeReason.UNRECOGNIZED:
+            # "Ah, sí, fui yo": the customer now recognizes the charge, so nothing is disputed.
+            return self._deflect(session)
+        if act == DialogueAct.DENY:
             return self._reply(render_outcome(Outcome.INCOMPLETE, self._language), ended=True)
-        if interpreted.dialogue_act != DialogueAct.AFFIRM:
+        if act != DialogueAct.AFFIRM:
             return self._reask(session)
         if self._pending_args is None or self._issue_confirmation is None:
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
         args = self._pending_args
-        not_created = "The confirmed dispute could not be created; file it for the customer"
+        not_created = (
+            "The confirmed dispute was not created; check for an existing dispute on this "
+            "transaction, then file it if there is none"
+        )
         tool = self._tools.get(ToolName.CREATE_DISPUTE)
         if tool is None:
             self._record(
@@ -472,21 +535,16 @@ class Agent:
         if interpreted.intent == Intent.HUMAN_REQUEST:
             self._intent = Intent.HUMAN_REQUEST
             return self._escalate(session)
-        if self._state == ConversationState.CONFIRM:
-            return self._confirm(session, interpreted)
-        if self._state == ConversationState.RECOGNIZE:
-            if interpreted.dialogue_act == DialogueAct.RECOGNIZE_CHARGE:
-                if self._reason == DisputeReason.UNRECOGNIZED:
-                    self._record(
-                        session, StepKind.RENDER, ConversationState.RESPOND, StepOutcome.SUCCESS
-                    )
-                    return self._reply(
-                        render_outcome(Outcome.DEFLECTED_RECOGNIZED, self._language), ended=True
-                    )
-                return self._check_policy(session)
-            if interpreted.dialogue_act == DialogueAct.NOT_RECOGNIZE_CHARGE:
-                return self._check_policy(session)
-            return self._reask(session)
+        if self._state in {ConversationState.RECOGNIZE, ConversationState.CONFIRM}:
+            if not self._points_elsewhere(interpreted.slots):
+                if self._state == ConversationState.CONFIRM:
+                    return self._confirm(session, interpreted)
+                return self._recognize(session, interpreted)
+            # "No, ese no es, es el de 1,249": answering for the charge on screen would dispute
+            # the wrong one, so this turn searches again below with the new clues.
+            stopped = self._start_over(session)
+            if stopped is not None:
+                return stopped
         if self._state != ConversationState.CLARIFY and interpreted.intent not in {
             Intent.DISPUTE_UNRECOGNIZED,
             Intent.DISPUTE_DUPLICATE,

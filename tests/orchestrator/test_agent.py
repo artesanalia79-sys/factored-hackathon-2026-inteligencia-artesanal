@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from bankagent.contracts.base import Contract, args_hash
-from bankagent.contracts.decisions import PolicyDecision
+from bankagent.contracts.decisions import DisputeSlots, PolicyDecision
 from bankagent.contracts.domain import ConfirmationToken, DisputeCase, Session, TransactionView
 from bankagent.contracts.enums import (
     ActionType,
@@ -33,6 +33,7 @@ from bankagent.contracts.tools import (
     SearchTransactionsResult,
     ToolContext,
 )
+from bankagent.interpret.keywords import interpret_text
 from bankagent.interpret.stub import StubFault, StubProvider
 from bankagent.orchestrator.agent import PolicyEvaluator, create_agent
 
@@ -420,6 +421,7 @@ def _dispute_agent(
     *,
     handoff: HandoffTool | None = None,
     policy: PolicyEvaluator = _policy,
+    llm: StubProvider | None = None,
 ):
     _, search, get = _agent()
     tools: dict[ToolName, Any] = {
@@ -431,7 +433,7 @@ def _dispute_agent(
     if handoff is not None:
         tools[ToolName.CREATE_HANDOFF] = handoff
     agent = create_agent(
-        llm=StubProvider(),
+        llm=llm or StubProvider(),
         tools=tools,
         clock=lambda: NOW,
         policy=policy,
@@ -515,7 +517,9 @@ def test_failed_dispute_write_escalates_the_confirmed_request() -> None:
     assert write.calls == 1
     assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
     assert handoff.draft is not None
-    assert "could not be created" in handoff.draft.open_questions[0]
+    # A refusal can also mean the dispute exists under another key (two sessions racing):
+    # the person is told to look before filing, never to file blindly.
+    assert "check for an existing dispute" in handoff.draft.open_questions[0]
     assert handoff.draft.policy_version == "test-v1"
 
 
@@ -554,3 +558,19 @@ def test_unavailable_transaction_read_escalates() -> None:
     assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
     assert handoff.draft is not None
     assert "lookup was unavailable" in handoff.draft.open_questions[0]
+
+
+def test_the_merchant_spelled_differently_is_still_the_charge_on_screen() -> None:
+    # An LLM may write the merchant its own way; that is an answer, not a correction.
+    opening = "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco"
+    answer = interpret_text("No lo reconozco").model_copy(
+        update={"slots": DisputeSlots(merchant_query="Electro Mundo")}
+    )
+    write = DisputeTool()
+    agent, search, get = _dispute_agent(
+        write, llm=StubProvider(scripted=(interpret_text(opening), answer))
+    )
+    agent.handle_turn(_session(), opening)
+    output = agent.handle_turn(_session(), "No reconozco ese cargo de Electro Mundo")
+    assert "¿Confirmas crear un reclamo" in output.reply_text
+    assert search.calls == get.calls == 1
