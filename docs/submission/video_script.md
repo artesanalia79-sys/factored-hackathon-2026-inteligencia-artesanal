@@ -2,7 +2,12 @@
 
 Skeleton from Task 15; Task 28 records it. The organizers ask for a short video pitch that
 shows the **working solution** and explains the **core architecture decisions**
-(`docs/challenge/kickoff.md`). Target length: 3 minutes.
+(`docs/challenge/kickoff.md`). **At most 3 minutes: a limit, not a target.**
+
+**The video is in English.** The organizers said every deliverable is, the video included
+(`docs/submission/checklist.md`). The narration and the slides are in English; the chat on
+screen stays in Spanish and Portuguese, because the prototype must show both. Say in English
+what the customer typed and what the agent answered, or caption it: a judge may read neither.
 
 ## Before recording
 
@@ -18,9 +23,9 @@ shows the **working solution** and explains the **core architecture decisions**
 
 ## Scenes
 
-| Time | Scene | What is on screen | What is said |
+| Time | Scene | What is on screen | What is said (in English) |
 |---|---|---|---|
-| 0:00-0:20 | The problem | Slide 1 | What a customer with an unrecognized charge goes through, and what it costs the bank. |
+| 0:00-0:20 | The problem | Slide 1 | What a customer with an unrecognized charge goes through, and what it costs the bank, with the number. |
 | 0:20-1:05 | A dispute in Spanish | The chat, persona Mariana | The agent finds the charge, asks whether she recognizes it, asks for confirmation, creates the dispute and offers to block the card. Point at the confirmation step. |
 | 1:05-1:35 | Portuguese, with the card block | The chat, persona Rafael | The same flow in Portuguese; this time the block is accepted. Two writes, each with its own confirmation. |
 | 1:35-1:55 | Knowing when not to act | The chat, persona Carlos | A high-risk charge is not disputed by the agent: it is handed to a person with a reference. |
@@ -46,3 +51,4 @@ the acceptance tests cover the lines above only with the keyword interpreter.
 
 - Reset the demo again before the email goes out.
 - Check the video shows no access code, token or anything from `.env`.
+- Check its length: over 3 minutes it does not meet the requirement.
