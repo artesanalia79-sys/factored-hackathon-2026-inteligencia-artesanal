@@ -13,7 +13,7 @@ system can never do. Two behaviors:
   failed. It exists to prove that the scorer detects every ``UnsafeEvent``; it is **not** an
   estimate of the real LLM-only baseline.
 
-Tool calls are simulated here (Task 8 tools do not exist yet), so this module reports each call
+Tool calls are simulated here (the fakes need no stores), so this module reports each call
 to the harness observer itself, exactly as ``bankagent.eval.tools.ObservedTool`` would.
 """
 

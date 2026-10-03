@@ -1,4 +1,11 @@
-"""OpenAI structured interpretation with a local, per-run spending guard."""
+"""OpenAI structured outputs with a local, per-run spending guard.
+
+Two kinds of request: the interpretation of a customer message (``InterpretationResult``, the
+proposed agent) and any API-compatible model that declares its own task through
+``LLM_INSTRUCTIONS`` and ``PROMPT_VERSION`` class attributes (the evaluation's LLM-only baseline,
+``bankagent.eval.baseline.BaselineStep``). Both share the redaction, the budget and the error
+mapping below.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +14,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
-from typing import cast
+from typing import Any, cast
 
 import yaml
 from openai import (
@@ -85,6 +92,25 @@ def _redact(text: str) -> str:
     return _SENSITIVE.sub("[REDACTED]", text)
 
 
+def structured_task(response_model: type[BaseModel]) -> tuple[bool, str, type[BaseModel]]:
+    """(is the interpretation, instructions, API transport model) of a supported request.
+
+    The interpretation uses the interpreter prompt and ``_ParsedInterpretation``; any other model
+    must declare ``LLM_INSTRUCTIONS`` and ``PROMPT_VERSION`` and is its own transport schema.
+    Shared with ``compat_provider`` so both providers accept the same requests.
+    """
+    if response_model is InterpretationResult:
+        return True, _INSTRUCTIONS, _ParsedInterpretation
+    instructions = getattr(response_model, "LLM_INSTRUCTIONS", None)
+    version = getattr(response_model, "PROMPT_VERSION", None)
+    if not (isinstance(instructions, str) and isinstance(version, str)):
+        raise LLMMalformedOutput(
+            "supported structured outputs: InterpretationResult or a model with "
+            "LLM_INSTRUCTIONS and PROMPT_VERSION"
+        )
+    return False, instructions, response_model
+
+
 class OpenAIProvider:
     """A synchronous LLMProvider. Create one instance per budgeted run.
 
@@ -141,12 +167,11 @@ class OpenAIProvider:
     ) -> StructuredCompletion[T]:
         if timeout_s <= 0:
             raise ValueError("timeout_s must be positive")
-        if response_model is not InterpretationResult:
-            raise LLMMalformedOutput("OpenAIProvider only supports InterpretationResult")
+        interpretation, base_instructions, text_format = structured_task(response_model)
 
         # The generous byte bound includes schema and request overhead. Output is capped by the API.
         sanitized = [{"role": m.role, "content": _redact(m.content)} for m in messages]
-        instructions = _INSTRUCTIONS + "\nCaller context: " + _redact(system)
+        instructions = base_instructions + "\nCaller context: " + _redact(system)
         input_bound = (
             len(instructions.encode())
             + sum(len(item["content"].encode()) for item in sanitized)
@@ -162,7 +187,7 @@ class OpenAIProvider:
                 model=self._model,
                 instructions=instructions,
                 input=cast(ResponseInputParam, sanitized),
-                text_format=_ParsedInterpretation,
+                text_format=text_format,
                 max_output_tokens=self._max_output_tokens,
                 reasoning={"effort": "none"},
                 timeout=timeout_s,
@@ -196,16 +221,13 @@ class OpenAIProvider:
         parsed = response.output_parsed
         if parsed is None:
             raise LLMMalformedOutput("OpenAI returned no parsed output")
+        fields: dict[str, Any] = parsed.model_dump()
+        if interpretation:
+            fields |= {"model": self._model, "prompt_version": PROMPT_VERSION}
         try:
-            output = response_model.model_validate(
-                {
-                    **parsed.model_dump(),
-                    "model": self._model,
-                    "prompt_version": PROMPT_VERSION,
-                }
-            )
+            output = response_model.model_validate(fields)
         except ValidationError as exc:
-            raise LLMMalformedOutput("OpenAI returned invalid interpretation") from exc
+            raise LLMMalformedOutput("OpenAI returned invalid structured output") from exc
         return StructuredCompletion[response_model](
             output=output,
             usage=TokenUsage(

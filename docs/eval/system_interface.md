@@ -76,38 +76,46 @@ to the tool, so the confirmation, the tool call and the harness observation line
 
 ## 4. How the harness plugs it in
 
+Real runs use the real Task 8 tools through `RunConfig.backend_factory`
+(`bankagent.eval.backend.FixtureBackendFactory`): the fixture bank is shared and every case run
+gets a fresh, empty ops store, so one run's disputes never reach another run or repeat (one
+dispute per transaction and one block per card are permanent). The run's stores are in
+`EvalEnvironment.backend`.
+
 `bankagent.eval.adapters.proposed_system()` wraps `create_agent`. For every case run it binds the
-policy evaluator and the confirmation issuer over the databases under that run's tools:
+policy evaluator and the confirmation issuer to that run's stores, not to stores of their own:
 
 ```python
-create_agent(
-    llm=env.llm,
-    tools=env.tools,
-    clock=env.clock,
-    policy=build_policy_evaluator(env.serving, env.store, clock=env.clock),
-    issue_confirmation=build_confirmation_issuer(env.store),
-)
+class ProposedSystem:
+    name = "proposed"
+    variant = SystemVariant.PROPOSED
+
+    def open_session(self, env: EvalEnvironment) -> _AgentSession:
+        backend = env.backend  # required: real tools
+        agent = create_agent(
+            llm=env.llm,
+            tools=env.tools,
+            clock=env.clock,
+            policy=build_policy_evaluator(backend.serving, backend.store, clock=env.clock),
+            issue_confirmation=build_confirmation_issuer(backend.store),
+        )
+        return _AgentSession(agent, env.session)
 ```
 
-`env.store` is a new, empty ops store for that run, opened by `RunConfig.bank`
-(`bankagent.eval.runner.fresh_bank`): one dispute per transaction and one block per card are
-permanent, so a store shared between runs makes the second run on a transaction fail.
+The LLM-only baseline (`bankagent.eval.baseline`, decision D1) runs the same way:
 
-```python
-config = RunConfig(bank=fresh_bank(serving, directory, require_policy=True), clock=clock)
-traces = run_suite(
-    [proposed_system()],
-    cases,
-    suite_id="dev",
-    repeats=1,
-    budget_usd_per_system=Decimal("0"),
-    config=config,
-)
+```bash
+uv run poe eval-run --system proposed                      # dev cases, StubProvider, 0 USD
+uv run poe eval-run --system baseline --system proposed \
+    --provider openai --repeats 3 --budget-usd 5          # real cost: owner approval first
+uv run poe eval-run --system baseline --provider compat     # LLM_* variables in .env (PR #51)
 ```
 
-`tests/eval/test_proposed_dev_run.py` runs the dev cases this way (StubProvider, fixture bank) and
-is the executable example. `uv run poe eval-smoke` still runs the scripted fakes in
-`bankagent.eval.fake`, which check the harness itself.
+With the `StubProvider` the proposed agent can act (its keyword interpreter is the stub) and the
+baseline cannot (the stub only produces interpretations), so a stub run of the baseline checks
+the plumbing, not the baseline. `tests/eval/test_proposed_dev_run.py` runs the dev cases through
+`proposed_system()` and is the executable example. `uv run poe eval-smoke` still runs the
+scripted fakes in `bankagent.eval.fake`, which check the harness itself.
 
 ## 5. Quick self-check for Task 13
 

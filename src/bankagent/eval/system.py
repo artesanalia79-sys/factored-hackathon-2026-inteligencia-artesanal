@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from bankagent.contracts.base import Contract
 from bankagent.contracts.domain import Session
@@ -28,8 +28,9 @@ from bankagent.contracts.enums import (
 from bankagent.contracts.llm import LLMProvider
 from bankagent.contracts.records import ExecutionRecord
 from bankagent.contracts.tools import Tool
-from bankagent.store.ops import OpsStore
-from bankagent.store.serving import ServingDB
+
+if TYPE_CHECKING:
+    from bankagent.eval.backend import RunBackend
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,29 +64,14 @@ class ToolObserver:
 
 
 @dataclass(frozen=True, slots=True)
-class BankState:
-    """The bank one case run works on: the serving DB, an empty ops store and the tools on both.
-
-    One dispute per transaction and one block per card are permanent, so every case run gets a
-    new ops store (``RunConfig.bank``): a store shared by two runs makes the second one fail.
-    """
-
-    serving: ServingDB
-    store: OpsStore
-    tools: Mapping[ToolName, Tool[Any, Any]]
-
-
-@dataclass(frozen=True, slots=True)
 class EvalEnvironment:
     """Everything a system may use for one case run. Built by the harness, identical per variant.
 
     ``session`` is server-side: its ``customer_id`` must never reach the model in the proposed
     system (the LLM-only baseline may show it by design, see ``eval/preregistration.md``).
-
-    ``serving`` and ``store`` are the databases under ``tools`` when the run has a real bank
-    (``None`` for the scripted fakes). They are for what is not a tool: the policy inputs and the
-    confirmation tokens, which must live on the store the write tools spend them from. Reading
-    or writing bank records through them instead of ``tools`` bypasses the evaluation.
+    ``backend`` is the run's own stores when the run uses the real Task 8 tools (it issues the
+    confirmation tokens and gives the proposed agent's policy its inputs); ``None`` for the
+    scripted fakes, which simulate their tools.
     """
 
     case_id: str
@@ -94,8 +80,7 @@ class EvalEnvironment:
     tools: Mapping[ToolName, Tool[Any, Any]]
     observer: ToolObserver
     clock: Callable[[], datetime]
-    serving: ServingDB | None = None
-    store: OpsStore | None = None
+    backend: RunBackend | None = None
 
 
 @dataclass(frozen=True, slots=True)

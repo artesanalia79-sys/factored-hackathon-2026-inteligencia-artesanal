@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import Mock
 
 import pytest
@@ -19,6 +19,7 @@ from openai import (
     ContentFilterFinishReasonError,
     LengthFinishReasonError,
 )
+from pydantic import BaseModel
 
 from bankagent.contracts.decisions import InterpretationResult
 from bankagent.contracts.llm import (
@@ -282,7 +283,7 @@ def test_output_failing_shared_contract_is_malformed(field: str, value: object) 
     assert provider.spent_usd == provider._price(1000, 100)
 
 
-def test_only_interpretation_results_are_supported() -> None:
+def test_a_model_without_a_declared_task_is_refused() -> None:
     provider = _provider(Mock())
     with pytest.raises(LLMMalformedOutput):
         provider.complete_structured(
@@ -375,3 +376,40 @@ def test_from_env_ignores_the_openai_key() -> None:
     """The OpenAI key must never be sent to a third-party endpoint."""
     with pytest.raises(ValueError, match="LLM_API_KEY"):
         from_env({"LLM_BASE_URL": BASE_URL, "LLM_MODEL": PRICED, "OPENAI_API_KEY": "sk-openai"})
+
+
+class _Task(BaseModel):
+    """A model that declares its own task, like the evaluation's LLM-only baseline step."""
+
+    LLM_INSTRUCTIONS: ClassVar[str] = "Pick the next step."
+    PROMPT_VERSION: ClassVar[str] = "task-v1"
+
+    answer: str
+
+
+def _complete_task(provider: OpenAICompatibleProvider) -> StructuredCompletion[_Task]:
+    return provider.complete_structured(
+        system="Customer id of this conversation: CUST-FX-001.",
+        messages=[ChatMessage(role="user", content="hola")],
+        response_model=_Task,
+        timeout_s=5,
+    )
+
+
+def test_json_schema_mode_parses_a_declared_task_with_its_own_instructions() -> None:
+    client = _client_returning(_completion(parsed=_Task(answer="ok")))
+    completion = _complete_task(_provider(client))
+    assert completion.output == _Task(answer="ok")
+    kwargs = client.chat.completions.parse.call_args.kwargs
+    assert kwargs["response_format"] is _Task
+    system = kwargs["messages"][0]["content"]
+    assert system.startswith("Pick the next step.")
+    assert "CUST-FX-001" not in json.dumps(kwargs["messages"])
+
+
+def test_json_object_mode_puts_the_declared_task_schema_in_the_prompt() -> None:
+    client = _client_returning(_completion(parsed=None, content='{"answer": "ok"}'))
+    completion = _complete_task(_provider(client, response_mode="json_object"))
+    assert completion.output == _Task(answer="ok")
+    system = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert json.dumps(_Task.model_json_schema()) in system

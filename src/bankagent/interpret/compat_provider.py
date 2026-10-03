@@ -23,7 +23,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 import yaml
@@ -40,7 +40,6 @@ from openai import (
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel, ValidationError
 
-from bankagent.contracts.decisions import InterpretationResult
 from bankagent.contracts.llm import (
     ChatMessage,
     LLMMalformedOutput,
@@ -51,12 +50,11 @@ from bankagent.contracts.llm import (
 )
 from bankagent.interpret.openai_provider import (
     _DEFAULT_PRICING,
-    _INSTRUCTIONS,
     _MILLION,
     MAX_OUTPUT_TOKENS,
     SpendLimitExceeded,
-    _ParsedInterpretation,
     _redact,
+    structured_task,
 )
 
 ResponseMode = Literal["json_schema", "json_object"]
@@ -180,12 +178,10 @@ class OpenAICompatibleProvider:
     ) -> StructuredCompletion[T]:
         if timeout_s <= 0:
             raise ValueError("timeout_s must be positive")
-        if response_model is not InterpretationResult:
-            raise LLMMalformedOutput("OpenAICompatibleProvider only supports InterpretationResult")
-
-        instructions = _INSTRUCTIONS + "\nCaller context: " + _redact(system)
+        interpretation, base_instructions, transport = structured_task(response_model)
+        instructions = base_instructions + "\nCaller context: " + _redact(system)
         if self._mode == "json_object":
-            instructions += _SCHEMA_SUFFIX + json.dumps(_ParsedInterpretation.model_json_schema())
+            instructions += _SCHEMA_SUFFIX + json.dumps(transport.model_json_schema())
         sanitized = [{"role": m.role, "content": _redact(m.content)} for m in messages]
         payload = cast(
             list[ChatCompletionMessageParam],
@@ -205,7 +201,7 @@ class OpenAICompatibleProvider:
                 parsed_response = self._client.chat.completions.parse(
                     model=self._model,
                     messages=payload,
-                    response_format=_ParsedInterpretation,
+                    response_format=transport,
                     max_tokens=self._max_output_tokens,
                     timeout=timeout_s,
                 )
@@ -225,7 +221,7 @@ class OpenAICompatibleProvider:
                 choice = raw_response.choices[0] if raw_response.choices else None
                 refusal = choice.message.refusal if choice is not None else None
                 content = choice.message.content if choice is not None else None
-                parsed = _ParsedInterpretation.model_validate_json(content) if content else None
+                parsed = transport.model_validate_json(content) if content else None
         except APITimeoutError as exc:
             self._charge(reservation)
             raise LLMTimeout("LLM request timed out") from exc
@@ -257,16 +253,13 @@ class OpenAICompatibleProvider:
         self._charge(cost)
         if refusal or parsed is None:
             raise LLMMalformedOutput("LLM returned no parsed output")
+        fields: dict[str, Any] = parsed.model_dump()
+        if interpretation:
+            fields |= {"model": self._model, "prompt_version": self._prompt_version}
         try:
-            output = response_model.model_validate(
-                {
-                    **parsed.model_dump(),
-                    "model": self._model,
-                    "prompt_version": self._prompt_version,
-                }
-            )
+            output = response_model.model_validate(fields)
         except ValidationError as exc:
-            raise LLMMalformedOutput("LLM returned invalid interpretation") from exc
+            raise LLMMalformedOutput("LLM returned invalid structured output") from exc
         return StructuredCompletion[response_model](
             output=output,
             usage=TokenUsage(tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost),
@@ -298,13 +291,16 @@ class OpenAICompatibleProvider:
         ) / _MILLION
 
 
-def from_env(env: Mapping[str, str]) -> OpenAICompatibleProvider:
+def from_env(
+    env: Mapping[str, str], *, spend_limit_usd: Decimal | None = None
+) -> OpenAICompatibleProvider:
     """Build the provider from environment variables. Errors name keys, never values.
 
     Required: ``LLM_BASE_URL``, ``LLM_API_KEY``, ``LLM_MODEL``. Optional: ``LLM_RESPONSE_MODE``
     (``json_schema`` or ``json_object``), ``LLM_DAILY_CALL_LIMIT``, ``LLM_ALLOW_UNPRICED``
-    (``true``). The key is deliberately not ``OPENAI_API_KEY``: that one must never be sent to a
-    third-party endpoint.
+    (``true``). ``spend_limit_usd`` overrides the default run limit (the evaluation shares one
+    provider per run so the daily call limit holds). The key is deliberately not
+    ``OPENAI_API_KEY``: that one must never be sent to a third-party endpoint.
     """
     required = ("LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL")
     missing = [key for key in required if not env.get(key)]
@@ -325,4 +321,5 @@ def from_env(env: Mapping[str, str]) -> OpenAICompatibleProvider:
         response_mode=cast(ResponseMode, mode),
         allow_unpriced=env.get("LLM_ALLOW_UNPRICED", "").lower() == "true",
         daily_call_limit=limit,
+        spend_limit_usd=spend_limit_usd,
     )

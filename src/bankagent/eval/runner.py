@@ -2,23 +2,19 @@
 
 For every (system, case, repeat) the runner opens a fresh server-side ``Session`` for the case
 customer (already expired when the case injects ``session_expired``), a fresh LLM provider with
-the case's LLM faults, the same instrumented tools and the same spend limit. With
-``RunConfig.bank`` it also opens a fresh bank state (an empty ops store and the tools on it) for
-that run only. Latency is the harness wall clock around each ``respond`` call.
+the case's LLM faults, the same instrumented tools and the same spend limit. Latency is the
+harness wall clock around each ``respond`` call.
 """
 
 from __future__ import annotations
 
 import hashlib
 import time
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import AbstractContextManager, contextmanager
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from pathlib import Path
 from typing import Any, Literal
-from uuid import uuid4
 
 from bankagent.contracts.domain import Session
 from bankagent.contracts.enums import ActionType, FaultInjection, SystemVariant, ToolName
@@ -26,20 +22,11 @@ from bankagent.contracts.evaluation import EvalCase
 from bankagent.contracts.llm import LLMProvider
 from bankagent.contracts.records import ExecutionRecord
 from bankagent.contracts.tools import Tool
+from bankagent.eval.backend import RunBackend
 from bankagent.eval.simulator import ScriptedUser, SimEvent
-from bankagent.eval.system import (
-    BankState,
-    EvalEnvironment,
-    System,
-    SystemTurn,
-    ToolObservation,
-    ToolObserver,
-)
+from bankagent.eval.system import EvalEnvironment, System, SystemTurn, ToolObservation, ToolObserver
 from bankagent.eval.tools import instrument_tools
 from bankagent.interpret.stub import FAULTS_BY_INJECTION, StubProvider
-from bankagent.store.ops import OpsStore
-from bankagent.store.serving import ServingDB
-from bankagent.tools import build_tools
 
 DEFAULT_MAX_USER_TURNS = 8
 SESSION_TTL = timedelta(minutes=15)
@@ -97,33 +84,6 @@ class CaseTrace:
 
 
 ProviderFactory = Callable[[EvalCase], LLMProvider]
-BankFactory = Callable[[], AbstractContextManager[BankState]]
-"""Opens the bank state of one case run and closes it when the run ends."""
-
-
-def fresh_bank(serving: ServingDB, directory: Path, *, require_policy: bool) -> BankFactory:
-    """Bank states over one serving DB: every call opens a new, empty ops store in ``directory``.
-
-    ``require_policy`` is passed to ``build_tools``. A suite that includes the LLM-only baseline
-    needs ``False`` (it has no policy by design, and both systems must get identical tools); a
-    run of the proposed agent alone can keep ``True``, which also fails a write whose context
-    carries no decision.
-
-    The file name is random, so no call can reopen a store: not a second repeat, and not a
-    second factory over the same directory (a counter per factory would start again at zero and
-    hand the next case the previous case's disputes).
-    """
-
-    @contextmanager
-    def open_bank() -> Iterator[BankState]:
-        with OpsStore(directory / f"ops-{uuid4().hex}.sqlite") as store:
-            yield BankState(
-                serving=serving,
-                store=store,
-                tools=build_tools(serving, store, require_policy=require_policy),
-            )
-
-    return open_bank
 
 
 def stub_provider_for(case: EvalCase) -> LLMProvider:
@@ -151,10 +111,14 @@ def utc_now() -> datetime:
 
 @dataclass(slots=True)
 class RunConfig:
-    """``bank``, when set, replaces ``tools``: every case run gets its own bank state."""
+    """``backend_factory`` (real Task 8 tools, a fresh ops store per case run) replaces ``tools``.
+
+    ``tools`` stays for the scripted fakes and tests; real tools must come from the factory,
+    because a shared ops store would carry one run's disputes into the next.
+    """
 
     tools: Mapping[ToolName, Tool[Any, Any]] = field(default_factory=dict)
-    bank: BankFactory | None = None
+    backend_factory: Callable[[], RunBackend] | None = None
     provider_factory: ProviderFactory = stub_provider_for
     clock: Callable[[], datetime] = utc_now
     max_user_turns: int = DEFAULT_MAX_USER_TURNS
@@ -169,34 +133,43 @@ def run_case(
     config: RunConfig,
     spend: SpendGuard,
 ) -> CaseTrace:
-    if config.bank is None:
-        return _run_case(system, case, run_id, repeat_index, config, spend, None)
-    with config.bank() as bank:
-        return _run_case(system, case, run_id, repeat_index, config, spend, bank)
+    backend = config.backend_factory() if config.backend_factory is not None else None
+    try:
+        return _run_case(
+            system,
+            case,
+            run_id=run_id,
+            repeat_index=repeat_index,
+            config=config,
+            spend=spend,
+            backend=backend,
+        )
+    finally:
+        if backend is not None:
+            backend.close()
 
 
 def _run_case(
     system: System,
     case: EvalCase,
+    *,
     run_id: str,
     repeat_index: int,
     config: RunConfig,
     spend: SpendGuard,
-    bank: BankState | None,
+    backend: RunBackend | None,
 ) -> CaseTrace:
     observer = ToolObserver()
     session = _session_for(case, run_id, config.clock())
+    tools = backend.tools if backend is not None else config.tools
     env = EvalEnvironment(
         case_id=case.case_id,
         session=session,
         llm=config.provider_factory(case),
-        tools=instrument_tools(
-            bank.tools if bank is not None else config.tools, observer, case.fault_injections
-        ),
+        tools=instrument_tools(tools, observer, case.fault_injections),
         observer=observer,
         clock=config.clock,
-        serving=bank.serving if bank is not None else None,
-        store=bank.store if bank is not None else None,
+        backend=backend,
     )
     user = ScriptedUser(case)
     turns: list[TurnLog] = []
