@@ -54,14 +54,15 @@ from bankagent.interpret.openai_provider import (
     MAX_OUTPUT_TOKENS,
     SpendLimitExceeded,
     _redact,
+    normalize_amount_slot,
     structured_task,
 )
 
 ResponseMode = Literal["json_schema", "json_object"]
 RESPONSE_MODES: tuple[ResponseMode, ...] = ("json_schema", "json_object")
-# Same instructions as interpret-v1 in json_schema mode; json_object mode adds the schema text.
-PROMPT_VERSION = "interpret-v1"
-PROMPT_VERSION_JSON_OBJECT = "interpret-v1-json"
+# Same instructions as interpret-v2 in json_schema mode; json_object mode adds the schema text.
+PROMPT_VERSION = "interpret-v2"
+PROMPT_VERSION_JSON_OBJECT = "interpret-v2-json"
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 _SCHEMA_SUFFIX = (
     "\nRespond with a single JSON object that matches this JSON Schema and nothing else:\n"
@@ -255,6 +256,7 @@ class OpenAICompatibleProvider:
             raise LLMMalformedOutput("LLM returned no parsed output")
         fields: dict[str, Any] = parsed.model_dump()
         if interpretation:
+            normalize_amount_slot(fields)
             fields |= {"model": self._model, "prompt_version": self._prompt_version}
         try:
             output = response_model.model_validate(fields)
