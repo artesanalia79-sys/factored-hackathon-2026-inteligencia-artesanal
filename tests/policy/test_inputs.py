@@ -257,6 +257,18 @@ def test_a_card_the_core_has_blocked_gets_a_dispute_but_no_block(bank_copy: Path
     assert decision.explanation_keys == ("dispute.card_not_blockable",)
 
 
+def test_a_charge_on_the_second_card_reads_that_card(serving: ServingDB) -> None:
+    # TXN-FX-BG-012-04 is on Mariana's debit card CARD-FX-012, not on CARD-FX-011, the first of
+    # her cards by id: the card the policy reads must be the transaction's own (audit mutant).
+    inputs = build_inputs(serving, None, MARIANA, "TXN-FX-BG-012-04", filed_on=serving.as_of_date())
+    assert inputs is not None
+    assert inputs.card is not None
+    assert inputs.card.product_id == "CARD-FX-012"
+    decision = evaluate(load_policy(), inputs)
+    assert decision.allowed_actions == (ActionType.CREATE_DISPUTE, ActionType.BLOCK_CARD)
+    assert decision.target_product_id == "CARD-FX-012"
+
+
 # -- the policy-only reads are scoped to the customer ---------------------------------------
 
 
