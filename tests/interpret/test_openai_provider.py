@@ -36,6 +36,7 @@ from bankagent.interpret.openai_provider import (
     SpendLimitExceeded,
     _ParsedInterpretation,
     normalize_amount_slot,
+    normalize_currency_slot,
 )
 from bankagent.interpret.records import interpretation_record
 
@@ -330,3 +331,67 @@ def test_a_silently_wrong_amount_is_corrected_before_it_reaches_the_agent() -> N
     client.responses.parse.return_value = _response(output)
     completion = _complete(OpenAIProvider(client=client))
     assert str(completion.output.slots.amount) == "1249.00"
+
+
+# What gpt-6-luna returned on 2026-10-03 for "Tengo un cargo de 2,450 pesos en ELECTROMUNDO que no
+# reconozco": right in every field but the currency, which it copied as typed.
+LIVE_PESOS = {
+    "intent": "dispute_unrecognized",
+    "dialogue_act": "new_request",
+    "slots": {
+        "amount": "2450.00",
+        "currency": "pesos",
+        "merchant_query": "ELECTROMUNDO",
+        "card_last4": None,
+        "date_text": None,
+        "transaction_ref": None,
+        "card_block_requested": False,
+    },
+    "language": "es",
+    "dialect": "es-MX",
+    "confidence": 0.99,
+    "injection_suspected": False,
+}
+
+
+@pytest.mark.parametrize(
+    ("typed", "expected"),
+    [
+        ("MXN", "MXN"),
+        (" cop ", "COP"),
+        ("ars", "ARS"),
+        ("pesos mexicanos", "MXN"),
+        ("dólares", "USD"),
+        ("US$", "USD"),
+        ("reais", "BRL"),
+        ("R$", "BRL"),
+        ("pesos", None),
+        ("Pesos", None),
+        ("$", None),
+        ("", None),
+        ("euros de prueba", None),
+    ],
+)
+def test_currencies_are_read_like_the_keyword_interpreter(typed: str, expected: str | None) -> None:
+    fields = {"slots": {"amount": "2450.00", "currency": typed}}
+    normalize_currency_slot(fields)
+    assert fields["slots"]["currency"] == expected
+    assert fields["slots"]["amount"] == "2450.00"
+
+
+def test_missing_currency_and_odd_shapes_are_left_alone() -> None:
+    for fields in ({"slots": {"currency": None}}, {"slots": {}}, {"slots": "x"}, {}):
+        before = repr(fields)
+        normalize_currency_slot(fields)
+        assert repr(fields) == before
+
+
+def test_a_currency_word_no_longer_discards_the_interpretation() -> None:
+    """Regression: "pesos" made the whole live interpretation malformed (keyword fallback)."""
+    client = Mock()
+    client.responses.parse.return_value = _response(LIVE_PESOS)
+    completion = _complete(OpenAIProvider(client=client))
+    assert completion.output.intent.value == "dispute_unrecognized"
+    assert completion.output.slots.amount == Decimal("2450.00")
+    assert completion.output.slots.merchant_query == "ELECTROMUNDO"
+    assert completion.output.slots.currency is None
