@@ -7,6 +7,7 @@ import type {
   LoginRequest,
   LoginResponse,
   PersonaResponse,
+  TransactionView,
   VerifyRequest,
   VerifyResponse,
 } from './contracts.gen.ts'
@@ -83,4 +84,6 @@ export const api = {
   logout: (token: string) => call<void>('/api/auth/logout', { method: 'POST', token }),
   turn: (token: string, body: ChatTurnRequest) =>
     call<ChatTurnResponse>('/api/chat/turn', { method: 'POST', body, token }),
+  transactions: (token: string) =>
+    call<TransactionView[]>('/api/chat/transactions', { token }),
 }

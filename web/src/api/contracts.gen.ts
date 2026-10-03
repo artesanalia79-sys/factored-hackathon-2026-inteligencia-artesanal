@@ -3,6 +3,10 @@
 
 export type Language = 'es' | 'pt'
 export type ActionType = 'create_dispute' | 'block_card' | 'create_handoff'
+export type Channel = 'ATM' | 'Branch' | 'Web' | 'App' | 'POS' | 'Transfer'
+export type TransactionStatus = 'Approved' | 'Declined' | 'Pending' | 'Reversed'
+export type TransactionType =
+  'Deposit' | 'Withdrawal' | 'Transfer' | 'Payment' | 'Purchase' | 'Adjustment'
 
 export interface ApiContracts {
   PersonaResponse: PersonaResponse
@@ -14,6 +18,7 @@ export interface ApiContracts {
   ChatTurnRequest: ChatTurnRequest
   ChatTurnResponse: ChatTurnResponse
   ConfirmationView: ConfirmationView
+  TransactionView: TransactionView
 }
 /**
  * A demo persona: an opaque id (a keyed hash), never the customer id.
@@ -56,6 +61,10 @@ export interface SessionResponse {
   language: Language | null
 }
 export interface ChatTurnRequest {
+  /**
+   * preferred response language; omitted requests follow the customer's message
+   */
+  language?: Language | null
   text: string
 }
 /**
@@ -64,7 +73,8 @@ export interface ChatTurnRequest {
  * ``claimed_actions`` lists only writes verified by read-back. ``confirmation`` is set exactly
  * when the reply asks the customer to confirm a write; the customer answers in the chat ("Sí"
  * or "No"), and the token for the write is issued at that yes, server side. ``language`` is the
- * language the agent replied in, which follows the customer's messages.
+ * language the agent replied in, which follows the requested preference when provided, or the
+ * customer's message otherwise.
  */
 export interface ChatTurnResponse {
   claimed_actions: ActionType[]
@@ -90,6 +100,27 @@ export interface ConfirmationView {
   date?: string | null
   merchant?: string | null
   reason?: string | null
+}
+/**
+ * A transaction as the agent may see it. No fraud label or score by design (ADR 0003).
+ */
+export interface TransactionView {
+  amount: number | string
+  amount_usd?: number | string | null
+  card_last4?: string | null
+  channel: Channel
+  currency: string
+  is_foreign: boolean
+  merchant_category?: string | null
+  merchant_name?: string | null
+  product_id: string
+  transaction_category?: string | null
+  transaction_city?: string | null
+  transaction_country: string
+  transaction_id: string
+  transaction_status: TransactionStatus
+  transaction_ts: string
+  transaction_type: TransactionType
 }
 
 /** Length limits of the request fields, from the same schemas: inputs take maxLength here. */

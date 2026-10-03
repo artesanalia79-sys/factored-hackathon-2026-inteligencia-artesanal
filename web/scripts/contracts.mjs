@@ -17,6 +17,7 @@ const MODELS = [
   'ChatTurnRequest',
   'ChatTurnResponse',
   'ConfirmationView',
+  'TransactionView',
 ]
 const SCHEMAS = new URL('../../docs/contracts/', import.meta.url)
 const OUT = new URL('../src/api/contracts.gen.ts', import.meta.url)

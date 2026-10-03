@@ -1,5 +1,5 @@
 import { Clock, Info, SignOut, Warning } from '@phosphor-icons/react'
-import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import { ApiError, api } from '../api/client.ts'
 import type { Language } from '../api/contracts.gen.ts'
 import { BrandMark } from '../BrandMark.tsx'
@@ -11,6 +11,7 @@ import { ConfirmationPanel } from './ConfirmationPanel.tsx'
 import { Message, Typing } from './Message.tsx'
 import { chatReducer, initialChat } from './state.ts'
 import { Suggestions } from './Suggestions.tsx'
+import { Transactions } from './Transactions.tsx'
 
 interface Props {
   session: ChatSession
@@ -28,6 +29,7 @@ export function ChatScreen({ session, onLanguageChange, onSignedOut }: Props) {
   const copy = COPY[state.language]
   const scenarios = scenariosFor(session.firstName, session.country, state.language)
   const last = state.items.at(-1)
+  const expire = useCallback(() => dispatch({ type: 'expired' }), [])
 
   // Keep the newest entry in view.
   useLayoutEffect(() => {
@@ -55,7 +57,7 @@ export function ChatScreen({ session, onLanguageChange, onSignedOut }: Props) {
     // A panel answer leaves a half-written message in the composer alone.
     if (from === 'composer') setDraft('')
     try {
-      const reply = await api.turn(session.token, { text: message })
+      const reply = await api.turn(session.token, { text: message, language: state.language })
       dispatch({ type: 'replied', reply })
       onLanguageChange(reply.language)
     } catch (failure) {
@@ -137,8 +139,16 @@ export function ChatScreen({ session, onLanguageChange, onSignedOut }: Props) {
               <div className="welcome">
                 <h1 className="welcome__title">{copy.greeting(session.firstName)}</h1>
                 <p className="lead">{copy.greetingLead}</p>
-                <Suggestions title={copy.tryLabel} scenarios={scenarios} onPick={pick} />
               </div>
+            )}
+            <Transactions
+              token={session.token}
+              copy={copy}
+              onExpired={expire}
+              onPick={pick}
+            />
+            {state.items.length === 0 && (
+              <Suggestions title={copy.tryLabel} scenarios={scenarios} onPick={pick} />
             )}
             <div className="log" role="log" aria-live="polite" aria-label={copy.messagesLabel}>
               {state.items.map((item) => (

@@ -76,7 +76,7 @@ test('keyboard only, in Portuguese: sign in, dispute and block the card', async 
   await expect(rafael).toBeChecked()
   await expect(rafael).toBeFocused()
   await page.keyboard.press('Tab')
-  await expect(page.getByRole('button', { name: 'Enviar código' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Solicitar código' })).toBeFocused()
   await page.keyboard.press('Enter')
 
   await expect(page.getByRole('heading', { name: 'Código de acesso de Rafael' })).toBeFocused()
@@ -121,6 +121,61 @@ test('keyboard only, in Portuguese: sign in, dispute and block the card', async 
   await expect(page.getByText('Bloqueio do cartão verificado')).toBeVisible()
   await expect(log(page)).toContainText('Conversa encerrada')
   await expect(composer(page)).toBeFocused()
+})
+
+test('Portuguese selection carries through login and a Spanish-profile demo', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Português' }).click()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR')
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+    'content',
+    /Assistente de contestações de cartão/,
+  )
+  await expect(page.getByRole('heading', { name: 'Analise uma cobrança do seu cartão' })).toBeVisible()
+  await expect(page.getByText('Escolha um cliente de teste')).toBeVisible()
+  await expect(page.getByRole('radio', { name: /Andrés.*Espanhol/ })).toBeVisible()
+  await page.getByRole('radio', { name: /Andrés/ }).check()
+  await page.getByRole('button', { name: 'Solicitar código' }).click()
+  await expect(page.getByRole('heading', { name: 'Código de acesso de Andrés' })).toBeVisible()
+  await expect(page.getByText('Nesta demo não há SMS: o código aparece aqui embaixo.')).toBeVisible()
+  await page.getByRole('button', { name: 'Usar código' }).click()
+  await page.getByRole('button', { name: 'Entrar' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Olá, Andrés' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Cobrança duplicada/ })).toBeVisible()
+  await page.getByRole('button', { name: /Cobrança duplicada/ }).click()
+  await composer(page).press('Enter')
+  await expect(log(page)).toContainText('Você reconhece esta transação?')
+  await say(page, 'Não')
+  await expect(confirmation(page)).toContainText('Abrir uma contestação')
+  await expect(fact(page, 'Estabelecimento')).toContainText('RAPPI')
+})
+
+test('the chosen language controls an ambiguous first message', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Português' }).click()
+  await page.getByRole('radio', { name: /Valentina/ }).check()
+  await page.getByRole('button', { name: 'Solicitar código' }).click()
+  await page.getByRole('button', { name: 'Usar código' }).click()
+  await page.getByRole('button', { name: 'Entrar' }).click()
+
+  await say(page, 'Hola')
+  await expect(log(page)).toContainText('Posso ajudar com uma cobrança')
+  await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR')
+})
+
+test('Spanish selection offers Rafael transactions in Spanish', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('radio', { name: /Rafael/ }).check()
+  await page.getByRole('button', { name: 'Enviar código' }).click()
+  await page.getByRole('button', { name: 'Usar código' }).click()
+  await page.getByRole('button', { name: 'Entrar' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Hola, Rafael' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Compra no reconocida/ })).toBeVisible()
+  await page.getByRole('button', { name: /Compra no reconocida/ }).click()
+  await composer(page).press('Enter')
+  await expect(log(page)).toContainText('¿Reconoces este movimiento?')
 })
 
 test('a case that needs a person ends in a visible handoff', async ({ page }) => {
