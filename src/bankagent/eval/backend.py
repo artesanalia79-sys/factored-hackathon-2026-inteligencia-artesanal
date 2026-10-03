@@ -4,8 +4,8 @@ One dispute per transaction and one block per card are permanent, and the repeat
 counts the agent's own disputes, so a case run must never see the writes of another run (or of
 another repeat of the same case). ``FixtureBackendFactory`` builds the synthetic fixture bank
 once and opens a new, empty ``OpsStore`` file for every case run. The file name is random, so
-no call can reopen a store: a counter per factory starts again at zero, and a second factory
-over the same directory would hand its first run the previous run's disputes with no error.
+no call can reopen a store: a counter per factory starts again with each factory, so a second
+one over the same directory would hand its first run the previous run's disputes, silently.
 
 Both systems get the same tools, built with ``require_policy=False``: the LLM-only baseline has no
 policy by design, and a decision the proposed agent passes is still enforced by the tools.
