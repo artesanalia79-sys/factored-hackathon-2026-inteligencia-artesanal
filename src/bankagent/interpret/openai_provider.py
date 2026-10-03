@@ -40,7 +40,7 @@ from bankagent.contracts.llm import (
     StructuredCompletion,
     TokenUsage,
 )
-from bankagent.interpret.keywords import parse_amount
+from bankagent.interpret.keywords import parse_amount, parse_currency
 
 MODEL = "gpt-6-luna"
 # v2: an explicit request for a person wins over the charge described in the same message.
@@ -100,6 +100,7 @@ def _redact(text: str) -> str:
 
 
 _AMOUNT_TOKEN = re.compile(r"\d[\d.,\s]*\d|\d")
+_CURRENCY_CODE = re.compile(r"[A-Z]{3}")
 
 
 def normalize_amount_slot(fields: dict[str, Any]) -> None:
@@ -119,6 +120,26 @@ def normalize_amount_slot(fields: dict[str, Any]) -> None:
     match = _AMOUNT_TOKEN.search(str(raw))
     parsed = parse_amount(match.group(0)) if match else None
     cast(dict[str, Any], slots)["amount"] = None if parsed is None else str(parsed)
+
+
+def normalize_currency_slot(fields: dict[str, Any]) -> None:
+    """Read the model's currency the way the keyword interpreter does, in place.
+
+    The model may copy the word the customer typed ("pesos", "reais") where the contract wants an
+    ISO 4217 code, and that one slot used to make the whole interpretation malformed: the agent
+    fell back to the keyword interpreter without saying so. A code is kept, a word that names one
+    currency is read as it ("dólares" is USD), and anything else is dropped, never guessed:
+    "pesos" alone may be MXN, COP or ARS.
+    """
+    slots = fields.get("slots")
+    if not isinstance(slots, dict):
+        return
+    raw = cast(dict[str, Any], slots).get("currency")
+    if raw is None:
+        return
+    text = str(raw).strip()
+    code = text.upper() if _CURRENCY_CODE.fullmatch(text.upper()) else parse_currency(text)
+    cast(dict[str, Any], slots)["currency"] = code
 
 
 def structured_task(response_model: type[BaseModel]) -> tuple[bool, str, type[BaseModel]]:
@@ -253,6 +274,7 @@ class OpenAIProvider:
         fields: dict[str, Any] = parsed.model_dump()
         if interpretation:
             normalize_amount_slot(fields)
+            normalize_currency_slot(fields)
             fields |= {"model": self._model, "prompt_version": PROMPT_VERSION}
         try:
             output = response_model.model_validate(fields)
