@@ -8,6 +8,7 @@ dependencies = [
     "duckdb==1.5.5",
     "pydantic==2.13.5",
     "pyyaml==6.0.3",
+    "tzdata==2026.4",
 ]
 
 # Lane-specific dependencies are added by the task that needs them, always pinned, e.g.
