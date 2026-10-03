@@ -649,6 +649,31 @@ def test_a_decision_bound_to_another_transaction_is_refused_and_spends_nothing(
     assert desk.run(ToolName.CREATE_DISPUTE, unbound_args, token=token2, policy=unbound).created
 
 
+def test_a_decision_bound_to_another_card_is_refused_and_spends_nothing(desk: Desk) -> None:
+    # A PolicyDecision evaluated for a transaction on CARD-FX-011 allows blocking that card only,
+    # not another card of the same customer (T8 PR #43 / T9 PR #44 review).
+    bound_to_011 = PolicyDecision(
+        decision=DecisionType.PROCEED,
+        allowed_actions=(ActionType.CREATE_DISPUTE, ActionType.BLOCK_CARD),
+        requires_confirmation=True,
+        target_transaction_id="TXN-FX-0101",
+        target_product_id="CARD-FX-011",
+        policy_version="test-policy-v1",
+    )
+    other_card = _block("CARD-FX-012", key="idem-wrong-card-0001")
+    token = desk.confirm(ToolName.BLOCK_CARD, other_card)
+    with pytest.raises(InvalidArguments, match="different card"):
+        desk.run(ToolName.BLOCK_CARD, other_card, token=token, policy=bound_to_011)
+    assert desk.store.count("card_blocks") == 0
+    assert desk.token_is_spent(token) is False
+    own_card = _block("CARD-FX-011", key="idem-right-card-0001")
+    token2 = desk.confirm(ToolName.BLOCK_CARD, own_card)
+    assert desk.run(ToolName.BLOCK_CARD, own_card, token=token2, policy=bound_to_011).created
+    # No bound card (the baseline, ad hoc decisions): unrestricted, as before.
+    unbound = bound_to_011.model_copy(update={"target_product_id": None})
+    assert desk.run(ToolName.BLOCK_CARD, other_card, token=token, policy=unbound).created
+
+
 @WRITES
 def test_the_baseline_wiring_writes_without_a_policy_decision(
     make_desk: MakeDesk, write: Write

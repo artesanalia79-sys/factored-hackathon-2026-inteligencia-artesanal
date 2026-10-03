@@ -444,9 +444,9 @@ def test_no_runtime_statement_reads_fraud_labels_or_risk_columns() -> None:
         text = path.read_text("utf-8")
         assert "is_fraud" not in text, path.name
     serving = (SRC / "store" / "serving.py").read_text("utf-8")
-    # Policy-only statements (T9, ADR 0003) are the sole, named exception to "no fraud_score":
-    # the tools never read them, and every other statement in this file still must not.
-    policy_only = {"_RISK_SQL", "_LAST_CLAIM_SQL"}
+    # Policy-only statements (T9, ADR 0003) are the sole, named exception to "no fraud_score or
+    # dq_flags": the tools never read them, and every other statement in this file still must not.
+    policy_only = {"_RISK_SQL", "_LAST_DISPUTE_SQL"}
     statements = dict(re.findall(r'(\w+)_SQL = """(.*?)"""', serving, re.S))
     assert {f"{name}_SQL" for name in statements} - policy_only == {
         "_CARDS_SQL",
@@ -454,11 +454,13 @@ def test_no_runtime_statement_reads_fraud_labels_or_risk_columns() -> None:
         "_OPEN_COMPLAINT_SQL",
     }
     for name, statement in statements.items():
-        assert "dq_flags" not in statement
         assert "*" not in statement  # columns are always listed, never SELECT *
         assert "{" not in statement  # nothing is ever formatted into SQL
         if f"{name}_SQL" not in policy_only:
             assert "fraud" not in statement
+            assert "dq_flags" not in statement
+        else:
+            assert "WHERE customer_id = ?" in statement  # scoped like every tool read
 
 
 def test_the_tools_never_print_or_log() -> None:

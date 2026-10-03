@@ -2,7 +2,8 @@
 
 Evaluates one case against the real serving DB (fixture bank by default) and prints the
 ``PolicyDecision`` with the description and provenance of every rule it names, so a human can
-see why the policy decided what it decided without reading the engine.
+see why the policy decided what it decided without reading the engine. Each rule is marked
+``fired`` (it produced the decision or restricted it, with its explanation key) or ``passed``.
 """
 
 from __future__ import annotations
@@ -12,68 +13,35 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from bankagent.contracts.enums import DecisionType
+from bankagent.contracts.decisions import PolicyDecision
 from bankagent.fixtures.builder import DEFAULT_OUT as DEFAULT_BANK
-from bankagent.policy.engine import PolicyInputs, evaluate
+from bankagent.policy.engine import evaluate
+from bankagent.policy.inputs import build_inputs
 from bankagent.policy.schema import POLICY_FILE, PolicyConfig, load_policy
 from bankagent.store.ops import OpsStore
 from bankagent.store.serving import ServingDB
 
 
-def _latest(*dates: date | None) -> date | None:
-    found = [d for d in dates if d is not None]
-    return max(found) if found else None
-
-
-def _inputs(
-    serving: ServingDB,
-    store: OpsStore | None,
-    customer_id: str,
-    transaction_id: str,
-    filed_on: date,
-) -> PolicyInputs:
-    transaction = serving.transaction(customer_id, transaction_id)
-    if transaction is None:
-        raise SystemExit(f"no transaction {transaction_id!r} for customer {customer_id!r}")
-    customer = serving.customer(customer_id)
-    if customer is None:
-        raise SystemExit(f"no customer {customer_id!r}")
-    own_dispute = store.get_dispute(customer_id, transaction_id=transaction_id) if store else None
-    open_dispute_id = (
-        own_dispute.dispute_id
-        if own_dispute is not None
-        else serving.open_complaint_id(customer_id, transaction_id)
-    )
-    return PolicyInputs(
-        transaction=transaction,
-        customer_country=customer.country,
-        as_of_date=serving.as_of_date(),
-        filed_on=filed_on,
-        open_dispute_id=open_dispute_id,
-        risk=serving.risk_signals(customer_id, transaction_id),
-        last_claim_date=_latest(
-            serving.last_claim_date(customer_id),
-            store.last_dispute_date(customer_id) if store else None,
-        ),
-    )
-
-
-def _print_decision(
-    config: PolicyConfig, decision: DecisionType, rule_ids: tuple[str, ...]
-) -> None:
+def _print_decision(config: PolicyConfig, decision: PolicyDecision) -> None:
     by_id = {rule.rule_id: rule for rule in config.rules}
-    print(f"decision: {decision.value}")
-    for rule_id in rule_ids:
+    print(f"decision: {decision.decision.value}")
+    actions = ", ".join(action.value for action in decision.allowed_actions) or "none"
+    print(f"allowed_actions: {actions}")
+    for rule_id in decision.rule_ids:
         rule = by_id.get(rule_id)
         if rule is None:
-            print(f"  {rule_id}: (not found in {POLICY_FILE})")
+            print(f"  {rule_id}: (not found in the policy file)")
             continue
-        flag = "synthetic" if rule.provenance.synthetic else "verified"
-        print(f"  {rule.rule_id} [{flag}] {rule.description.strip()}")
-        print(f"    explanation_key: {rule.explanation_key}")
+        print(f"  {rule.rule_id} [{rule.provenance.label}] {rule.description.strip()}")
+        if rule.explanation_key in decision.explanation_keys:
+            print(f"    fired: {rule.explanation_key}")
+        else:
+            print("    passed")
         print(f"    source: {rule.provenance.source}")
         if rule.todo:
             print(f"    {rule.todo}")
+    if decision.sla_due_date is not None:
+        print(f"sla_due_date: {decision.sla_due_date.isoformat()}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,20 +55,28 @@ def main(argv: list[str] | None = None) -> int:
         "--filed-on",
         type=date.fromisoformat,
         default=None,
-        help="day the dispute is filed (default: today); drives the SLA due date, never the "
-        "eligibility window (that compares to the bank's as_of_date)",
+        help="day the dispute is filed (default: today); drives the SLA due date and the age of "
+        "the agent's own disputes, never the eligibility window (that compares to the bank's "
+        "as_of_date)",
     )
     args = parser.parse_args(argv)
 
     serving = ServingDB(args.bank)
-    store = OpsStore(args.ops_store) if args.ops_store else None
     config = load_policy(args.policy)
     filed_on = args.filed_on or date.today()
-    inputs = _inputs(serving, store, args.customer_id, args.transaction_id, filed_on)
-    decision = evaluate(config, inputs)
-    _print_decision(config, decision.decision, decision.rule_ids)
-    if decision.sla_due_date is not None:
-        print(f"sla_due_date: {decision.sla_due_date.isoformat()}")
+    store = OpsStore(args.ops_store) if args.ops_store else None
+    try:
+        inputs = build_inputs(
+            serving, store, args.customer_id, args.transaction_id, filed_on=filed_on
+        )
+    finally:
+        if store is not None:
+            store.close()
+    if inputs is None:
+        raise SystemExit(
+            f"no transaction {args.transaction_id!r} for customer {args.customer_id!r}"
+        )
+    _print_decision(config, evaluate(config, inputs))
     return 0
 
 

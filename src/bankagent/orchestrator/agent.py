@@ -44,7 +44,7 @@ from bankagent.contracts.tools import (
     Tool,
     ToolContext,
 )
-from bankagent.interpret.keywords import interpret_text
+from bankagent.interpret.keywords import interpret_text, language_evidence, normalize
 from bankagent.render.templates import (
     UnverifiedRenderError,
     render_confirmation,
@@ -69,6 +69,11 @@ REASONS = {
     Intent.DISPUTE_DUPLICATE: DisputeReason.DUPLICATE,
     Intent.DISPUTE_NOT_RECEIVED: DisputeReason.NOT_RECEIVED,
 }
+
+
+def _compact(text: str) -> str:
+    """No case, accents, spaces or punctuation: "Electro Mundo" is in "ELECTROMUNDO ONLINE"."""
+    return "".join(char for char in normalize(text) if char.isalnum())
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +106,7 @@ class Agent:
         self._records: list[ExecutionRecord] = []
         self._state = ConversationState.UNDERSTAND
         self._language = Language.ES
+        self._language_known = False
         self._transaction: TransactionView | None = None
         self._read_args: GetTransactionArgs | None = None
         self._read_result: GetTransactionResult | None = None
@@ -234,17 +240,56 @@ class Agent:
             return None, call.record
         return call.result, call.record
 
+    def _abstain(self, session: Session) -> AgentTurnOutput:
+        # Not a policy step: a `policy`/`blocked` record would be scored as a refusal (denied).
+        self._state = ConversationState.ABSTAIN
+        self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
+        return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
+
     def _clarify(self, session: Session) -> AgentTurnOutput:
         self._clarifications += 1
         if self._clarifications > 2:
-            self._state = ConversationState.ABSTAIN
-            self._record(session, StepKind.POLICY, self._state, StepOutcome.BLOCKED)
-            return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
+            return self._abstain(session)
         self._state = ConversationState.CLARIFY
         self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
         return self._reply(render_state(self._state, self._language))
 
-    def _escalate(self, session: Session, *, rule_ids: tuple[str, ...] = ()) -> AgentTurnOutput:
+    def _reask(self, session: Session) -> AgentTurnOutput:
+        """Repeat the recognition or confirmation question after an unclear answer.
+
+        A generic clarification here would send the next answer back to the transaction search,
+        which loses the question the customer was answering. Counts as a clarification round.
+        """
+        self._clarifications += 1
+        if (
+            self._clarifications > 2
+            or self._read_args is None
+            or self._read_result is None
+            or self._read_record is None
+        ):
+            return self._abstain(session)
+        self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
+        if self._state == ConversationState.CONFIRM and self._pending_args is not None:
+            reply = render_confirmation(
+                self._language,
+                self._pending_args,
+                self._read_args,
+                self._read_result,
+                self._read_record,
+            )
+        else:
+            reply = render_recognition(
+                self._language, self._read_args, self._read_result, self._read_record
+            )
+        return self._reply(reply)
+
+    def _escalate(
+        self,
+        session: Session,
+        *,
+        rule_ids: tuple[str, ...] = (),
+        open_question: str = "Review eligibility and next steps",
+    ) -> AgentTurnOutput:
         self._state = ConversationState.ESCALATE
         if ToolName.CREATE_HANDOFF not in self._tools:
             self._record(session, StepKind.HANDOFF, self._state, StepOutcome.FAILURE)
@@ -274,7 +319,7 @@ class Agent:
             ),
             intent=self._intent or Intent.HUMAN_REQUEST,
             verified_facts=facts,
-            open_questions=("Review eligibility and next steps",),
+            open_questions=(open_question,),
             trigger_rule_ids=rule_ids,
             policy_version=self._decision.policy_version if self._decision else "pending-policy",
             routing=HandoffRouting(
@@ -306,7 +351,9 @@ class Agent:
             decision = self._policy(session, self._read_result, self._reason)
         except ToolError:
             self._record(session, StepKind.POLICY, self._state, StepOutcome.FAILURE)
-            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+            return self._escalate(
+                session, open_question="Policy inputs were unavailable; check eligibility"
+            )
         self._decision = decision
         self._record(
             session,
@@ -341,14 +388,73 @@ class Agent:
         )
         return self._reply(reply)
 
+    def _deflect(self, session: Session) -> AgentTurnOutput:
+        self._record(session, StepKind.RENDER, ConversationState.RESPOND, StepOutcome.SUCCESS)
+        return self._reply(render_outcome(Outcome.DEFLECTED_RECOGNIZED, self._language), ended=True)
+
+    def _points_elsewhere(self, slots: DisputeSlots) -> bool:
+        """The answer describes a charge other than the one on screen: a correction."""
+        txn = self._transaction
+        if txn is None:
+            return False
+        return (
+            (slots.transaction_ref is not None and slots.transaction_ref != txn.transaction_id)
+            or (slots.amount is not None and slots.amount != txn.amount)
+            or (slots.card_last4 is not None and slots.card_last4 != txn.card_last4)
+            or (
+                slots.merchant_query is not None
+                and _compact(slots.merchant_query) not in _compact(txn.merchant_name or "")
+            )
+        )
+
+    def _start_over(self, session: Session) -> AgentTurnOutput | None:
+        """Drop the charge on screen so this turn searches again with the customer's new clues.
+
+        Counts as a clarification round; returns the abstention once the rounds are used up.
+        """
+        self._clarifications += 1
+        if self._clarifications > 2:
+            return self._abstain(session)
+        self._transaction = None
+        self._read_args = None
+        self._read_result = None
+        self._read_record = None
+        self._decision = None
+        self._pending_args = None
+        # The correction describes the charge afresh: an old amount would filter out a merchant
+        # named now, so only the card-block request carries over.
+        self._slots = DisputeSlots(card_block_requested=self._slots.card_block_requested)
+        self._state = ConversationState.CLARIFY
+        return None
+
+    def _recognize(self, session: Session, interpreted: InterpretationResult) -> AgentTurnOutput:
+        # "¿Reconoces este movimiento?" is a yes/no question, and the interpreter never sees it:
+        # a bare "Sí" or "No" arrives as affirm or deny and still answers it.
+        act = interpreted.dialogue_act
+        if act in {DialogueAct.RECOGNIZE_CHARGE, DialogueAct.AFFIRM}:
+            if self._reason == DisputeReason.UNRECOGNIZED:
+                return self._deflect(session)
+            return self._check_policy(session)
+        if act in {DialogueAct.NOT_RECOGNIZE_CHARGE, DialogueAct.DENY}:
+            return self._check_policy(session)
+        return self._reask(session)
+
     def _confirm(self, session: Session, interpreted: InterpretationResult) -> AgentTurnOutput:
-        if interpreted.dialogue_act == DialogueAct.DENY:
+        act = interpreted.dialogue_act
+        if act == DialogueAct.RECOGNIZE_CHARGE and self._reason == DisputeReason.UNRECOGNIZED:
+            # "Ah, sí, fui yo": the customer now recognizes the charge, so nothing is disputed.
+            return self._deflect(session)
+        if act == DialogueAct.DENY:
             return self._reply(render_outcome(Outcome.INCOMPLETE, self._language), ended=True)
-        if interpreted.dialogue_act != DialogueAct.AFFIRM:
-            return self._clarify(session)
+        if act != DialogueAct.AFFIRM:
+            return self._reask(session)
         if self._pending_args is None or self._issue_confirmation is None:
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
         args = self._pending_args
+        not_created = (
+            "The confirmed dispute was not created; check for an existing dispute on this "
+            "transaction, then file it if there is none"
+        )
         tool = self._tools.get(ToolName.CREATE_DISPUTE)
         if tool is None:
             self._record(
@@ -360,11 +466,11 @@ class Agent:
                 args=args,
                 error_code=ToolErrorCode.TOOL_UNAVAILABLE,
             )
-            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+            return self._escalate(session, open_question=not_created)
         try:
             token = self._issue_confirmation(session, ToolName.CREATE_DISPUTE, args, self._clock())
         except ToolError:
-            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+            return self._escalate(session, open_question=not_created)
         self._record(
             session,
             StepKind.CONFIRMATION,
@@ -390,20 +496,45 @@ class Agent:
         )
         self._records.append(call.record)
         result = call.result
+        # A refused or failed write commits nothing (T8); an unverified one may exist. Either
+        # way a person must finish the confirmed request (T8 ledger: the tool-failure path).
         if call.error is not None or not isinstance(result, CreateDisputeResult):
-            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+            return self._escalate(session, open_question=not_created)
         self._state = ConversationState.VERIFY
         try:
             reply = render_created_dispute(self._language, args, result, call.record)
         except UnverifiedRenderError:
-            return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+            return self._escalate(
+                session,
+                open_question=(
+                    "The dispute write was not verified by read-back; check whether it exists "
+                    "before filing it again"
+                ),
+            )
         self._record(session, StepKind.VERIFY, self._state, StepOutcome.SUCCESS, args=args)
         return self._reply(reply, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
+
+    def _follow_language(self, session: Session, text: str) -> None:
+        """Keep the conversation's language; switch only on a message clearly in the other one.
+
+        The interpreter judges each message alone, and a message with no language markers
+        ("Ok", "No", a number) used to fall back to Spanish mid-conversation. The first turn
+        starts from the customer's profile language when the message itself does not tell.
+        """
+        evidence = language_evidence(normalize(text))
+        if evidence is not None:
+            self._language = evidence
+        elif not self._language_known and session.language is not None:
+            self._language = session.language
+        self._language_known = True
 
     def handle_turn(self, session: Session, text: str, /) -> AgentTurnOutput:
         self._records = []
         if self._ended:
             return self._reply(render_state(ConversationState.DONE, self._language), ended=True)
+        # Before the expiry check, so even the re-authentication message is in the right language
+        # (keyword markers only: nothing is read and no provider is called).
+        self._follow_language(session, text)
         if not session.is_active(self._clock()):
             self._record(
                 session,
@@ -415,28 +546,22 @@ class Agent:
             return self._reply(render_outcome(Outcome.REAUTH_REQUIRED, self._language), ended=True)
         self._record(session, StepKind.AUTHENTICATE, ConversationState.AUTH, StepOutcome.SUCCESS)
         interpreted = self._interpret(session, text)
-        self._language = interpreted.language
         if interpreted.injection_suspected or interpreted.intent == Intent.ATTACK:
             self._record(session, StepKind.POLICY, ConversationState.ABSTAIN, StepOutcome.BLOCKED)
             return self._reply(render_outcome(Outcome.DENIED, self._language), ended=True)
         if interpreted.intent == Intent.HUMAN_REQUEST:
             self._intent = Intent.HUMAN_REQUEST
             return self._escalate(session)
-        if self._state == ConversationState.CONFIRM:
-            return self._confirm(session, interpreted)
-        if self._state == ConversationState.RECOGNIZE:
-            if interpreted.dialogue_act == DialogueAct.RECOGNIZE_CHARGE:
-                if self._reason == DisputeReason.UNRECOGNIZED:
-                    self._record(
-                        session, StepKind.RENDER, ConversationState.RESPOND, StepOutcome.SUCCESS
-                    )
-                    return self._reply(
-                        render_outcome(Outcome.DEFLECTED_RECOGNIZED, self._language), ended=True
-                    )
-                return self._check_policy(session)
-            if interpreted.dialogue_act == DialogueAct.NOT_RECOGNIZE_CHARGE:
-                return self._check_policy(session)
-            return self._clarify(session)
+        if self._state in {ConversationState.RECOGNIZE, ConversationState.CONFIRM}:
+            if not self._points_elsewhere(interpreted.slots):
+                if self._state == ConversationState.CONFIRM:
+                    return self._confirm(session, interpreted)
+                return self._recognize(session, interpreted)
+            # "No, ese no es, es el de 1,249": answering for the charge on screen would dispute
+            # the wrong one, so this turn searches again below with the new clues.
+            stopped = self._start_over(session)
+            if stopped is not None:
+                return stopped
         if self._state != ConversationState.CLARIFY and interpreted.intent not in {
             Intent.DISPUTE_UNRECOGNIZED,
             Intent.DISPUTE_DUPLICATE,
@@ -477,7 +602,10 @@ class Agent:
             )
             if found is None:
                 if search_record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
-                    return self._reply(render_outcome(Outcome.FAILED, self._language), ended=True)
+                    return self._escalate(
+                        session,
+                        open_question="Transaction search was unavailable; identify the charge",
+                    )
                 return self._clarify(session)
             if not found.transactions:
                 return self._clarify(session)
@@ -507,8 +635,12 @@ class Agent:
             ConversationState.RECOGNIZE,
         )
         if read is None or not record.verified:
-            self._state = ConversationState.ABSTAIN
-            return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
+            if record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
+                return self._escalate(
+                    session,
+                    open_question="Transaction lookup was unavailable; identify the charge",
+                )
+            return self._abstain(session)
         self._transaction = read.transaction
         self._read_args = read_args
         self._read_result = read

@@ -3,15 +3,24 @@
 # Evaluated in this order by `bankagent.policy.engine.evaluate`:
 #   1. eligibility rules (approved_status, no_open_case, window), short-circuit on the first
 #      failure -> decision: ineligible, no write actions.
-#   2. escalation rules (fraud_score, repeat_disputer), evaluated together if eligibility
-#      passed -> decision: escalate (no write actions) when any trigger fires.
-#   3. otherwise -> decision: proceed, create_dispute and block_card allowed, confirmation
-#      required, sla_due_date = as_of_date + sla_days.
+#   2. escalation rules (fraud_score, repeat_disputer, dq_flag), evaluated together if
+#      eligibility passed -> decision: escalate (no write actions) when any trigger fires.
+#   3. otherwise -> decision: proceed, create_dispute allowed, block_card allowed only when the
+#      action rule (card_blockable) allows the transaction's card; confirmation required,
+#      sla_due_date = filed_on + sla_days.
+# The schema requires exactly one rule of each kind.
 #
-# `provenance.synthetic: true` means the parameter is a placeholder, not checked against a
-# primary source. See docs/limitations.md.
+# Provenance labels (`poe policy-explain` prints them):
+#   synthetic: true  -> a placeholder, not checked against a primary source (docs/limitations.md)
+#   internal: true   -> a system invariant (what the bank's own records allow); nothing external
+#                       to verify
+#   neither          -> verified; needs verified_by and verified_on
+#
+# Not rules (descoped from issue #9 on 2026-10-02, docs/decision_ledger.md): high amount and
+# foreign transaction. No verified threshold exists for either, and fraud_score (DSP-ESC-01)
+# is the risk signal ADR 0003 measured.
 
-policy_version: dispute-v1
+policy_version: dispute-v1.1
 sla_days: 30
 
 rules:
@@ -23,6 +32,7 @@ rules:
     explanation_key: dispute.not_settled
     provenance:
       synthetic: false
+      internal: true
       source: "bankagent.contracts.enums.TransactionStatus; a non-Approved transaction has no
         completed charge to dispute"
 
@@ -35,6 +45,7 @@ rules:
     explanation_key: dispute.already_disputed
     provenance:
       synthetic: false
+      internal: true
       source: "store/ops.py DisputeAlreadyExists (one dispute per transaction) and
         tools/writes.py open_complaint_id check (T8 PR #43 review); defense in depth, CHECK_POLICY
         refuses before CONFIRM/ACT"
@@ -61,7 +72,9 @@ rules:
     kind: fraud_score
     description: >
       A disputed transaction at or above the fraud_score threshold is escalated to a human
-      instead of auto-creating the dispute.
+      instead of auto-creating the dispute. A missing score (no row, or NULL: about 20% of
+      curated transactions) does not escalate: escalating them would send a fifth of all
+      disputes to a human, and ADR 0003 accepts that score-based escalation misses them.
     explanation_key: dispute.fraud_risk
     threshold: 30.0
     provenance:
@@ -75,8 +88,12 @@ rules:
   - rule_id: DSP-ESC-02
     kind: repeat_disputer
     description: >
-      A customer with a prior claim (dispute_history, case_type Claim, any status) in the last
-      window_days is escalated to a human for this dispute instead of auto-creating it.
+      A customer with a prior dispute in the last window_days is escalated to a human for this
+      dispute instead of auto-creating it. A prior dispute is either a case in the bank's
+      dispute_history (category Transactions, case type Complaint or Claim, any status: T16's
+      strict definition), counted against as_of_date, or a dispute the agent itself created,
+      counted against the filing day. So a second dispute in the same conversation escalates:
+      several unrecognized charges are worth a human look, even when they are one incident.
     explanation_key: dispute.repeat_disputer
     window_days: 90
     provenance:
@@ -84,3 +101,34 @@ rules:
       source: "business heuristic (serial-dispute risk signal), not externally verified"
     todo: "TODO(T9, Santiago): business sign-off on the repeat-disputer window and on whether a
       repeat disputer should escalate or only add context to a human review."
+
+  - rule_id: DSP-ESC-03
+    kind: dq_flag
+    description: >
+      A transaction whose own record is inconsistent is escalated to a human instead of
+      auto-creating the dispute: a charge dated before its card was opened. Other data-quality
+      flags do not escalate: dq_possible_duplicate is the very thing a duplicate-charge dispute
+      is about, and dq_txn_after_card_expiry is on 46% of the disputable curated transactions
+      (a generator artefact), so escalating it would send half of all disputes to a human.
+    explanation_key: dispute.data_inconsistent
+    flags: [dq_txn_before_product_opening]
+    provenance:
+      synthetic: true
+      source: "data-quality heuristic; curated serving DB 2026-06-17: 1,934 of 121,244 disputable
+        transactions (Approved, last 90 days) carry dq_txn_before_product_opening (1.6%)"
+    todo: "TODO(T9, Juan José): business sign-off on which data-quality flags should stop an
+      automatic dispute."
+
+  - rule_id: DSP-ACT-01
+    kind: card_blockable
+    description: >
+      On proceed, block_card is allowed only for the transaction's own card, and only while the
+      core reports it Active. A Blocked, Closed or Suspended card is already out of use, so the
+      dispute is still created but no block is offered.
+    explanation_key: dispute.card_not_blockable
+    statuses: [Active]
+    provenance:
+      synthetic: false
+      internal: true
+      source: "bankagent.contracts.enums.ProductStatus; T8 PR #43 review follow-up (block_card
+        ignored the core status)"
