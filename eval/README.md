@@ -17,7 +17,7 @@ written; any later change is a deviation (`preregistration.md`, section 11).
 
 ## Real systems (`uv run poe eval-run`)
 
-Runs `baseline` (built) and `proposed` (once Task 13 is on `main`) on the real Task 8 tools, a
+Runs `baseline` and `proposed` (the Task 13 agent) on the real Task 8 tools, a
 fresh ops store per case run. `--provider stub` costs 0 USD; `--provider openai` costs money and
 needs the owner's approval of an estimate first. See `docs/eval/system_interface.md`.
 
@@ -32,6 +32,17 @@ Runs the 10 dev cases x 3 repeats through two scripted fakes (`bankagent.eval.fa
 harness self-checks fail: the `ideal` fake must be correct and safe on every case, and the `naive`
 fake must trigger every `UnsafeEvent`. The report is labeled SIMULATED: fake numbers are never
 results.
+
+## Real agent on the dev set (CI, 0 USD)
+
+```bash
+uv run pytest tests/eval/test_proposed_dev_run.py -q
+```
+
+Runs the 10 dev cases x 2 repeats through `bankagent.eval.adapters.proposed_system()` (the Task 13
+agent with the `StubProvider`, the fixture bank, the real tools and policy, and a new ops store per
+case run) and fails unless every run is correct, with no unsafe event and no question the scripted
+user cannot classify. See `docs/eval/system_interface.md`, section 4.
 
 Pipeline: `cases` -> `simulator` (scripted user) -> `runner` (session, provider, instrumented
 tools, spend limit) -> `ExecutionRecord`s + tool observations -> `scorer` (`EvalResult`, one

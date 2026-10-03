@@ -30,6 +30,8 @@ from bankagent.contracts.tools import (
     GetTransactionResult,
     ListCardsArgs,
     ListCardsResult,
+    SearchTransactionsArgs,
+    SearchTransactionsResult,
 )
 
 
@@ -74,9 +76,16 @@ STATE_COPY: dict[ConversationState, dict[Language, str]] = {
         Language.ES: "Estoy preparando la respuesta a tu solicitud.",
         Language.PT: "Estou preparando a resposta à sua solicitação.",
     },
+    # Names what the search can use (dates are not a filter yet), so it can be answered.
     ConversationState.CLARIFY: {
-        Language.ES: "Necesito un dato más para continuar. ¿Puedes darme más detalles?",
-        Language.PT: "Preciso de mais uma informação para continuar. Você pode dar mais detalhes?",
+        Language.ES: (
+            "Necesito un dato más para encontrar el movimiento. "
+            "¿Cuál es el comercio o el importe exacto?"
+        ),
+        Language.PT: (
+            "Preciso de mais uma informação para localizar a transação. "
+            "Qual é o estabelecimento ou o valor exato?"
+        ),
     },
     ConversationState.ABSTAIN: {
         Language.ES: "No tengo información suficiente para continuar con seguridad.",
@@ -127,6 +136,53 @@ OUTCOME_COPY: dict[Outcome, dict[Language, str]] = {
     },
 }
 
+# Asked while the customer has not described a request yet ("Hola"). It ends in a question that
+# names what the agent needs, so the conversation stays open.
+OPENING_QUESTION_COPY: dict[Language, str] = {
+    Language.ES: (
+        "Puedo ayudarte con un cargo que no reconoces, un cobro duplicado o una compra que no "
+        "recibiste. ¿Qué pasó y cuál es el comercio o el importe del movimiento?"
+    ),
+    Language.PT: (
+        "Posso ajudar com uma cobrança que você não reconhece, uma cobrança duplicada ou uma "
+        "compra que não chegou. O que aconteceu e qual é o estabelecimento ou o valor da "
+        "transação?"
+    ),
+}
+
+# Offered after a verified dispute; neither line states an action as done.
+BLOCK_OFFER_COPY: dict[Language, str] = {
+    Language.ES: "También puedo bloquear la tarjeta para evitar nuevos cargos.",
+    Language.PT: "Também posso bloquear o cartão para evitar novas cobranças.",
+}
+BLOCK_DECLINED_COPY: dict[Language, str] = {
+    Language.ES: "Entendido, no bloquearé la tarjeta.",
+    Language.PT: "Entendido, não vou bloquear o cartão.",
+}
+
+# Why the policy refused a dispute, by the `explanation_key` of each eligibility rule in
+# `policy/dispute_policy_v1.yaml`. None of these lines states an action as done.
+INELIGIBLE_COPY: dict[str, dict[Language, str]] = {
+    "dispute.already_disputed": {
+        Language.ES: "Este movimiento ya tiene un reclamo abierto, así que no voy a crear otro.",
+        Language.PT: "Esta transação já tem uma contestação aberta, então não vou abrir outra.",
+    },
+    "dispute.out_of_window": {
+        Language.ES: "Este movimiento está fuera del plazo para presentar un reclamo.",
+        Language.PT: "Esta transação está fora do prazo para abrir uma contestação.",
+    },
+    "dispute.not_settled": {
+        Language.ES: (
+            "Este movimiento no es un cobro definitivo (está pendiente, fue rechazado o se "
+            "revirtió), así que no se puede reclamar."
+        ),
+        Language.PT: (
+            "Esta transação não é uma cobrança definitiva (está pendente, foi recusada ou "
+            "estornada), então não pode ser contestada."
+        ),
+    },
+}
+
 REASONS: dict[DisputeReason, dict[Language, str]] = {
     DisputeReason.UNRECOGNIZED: {
         Language.ES: "movimiento no reconocido",
@@ -147,6 +203,9 @@ CHANNELS: dict[Channel, dict[Language, str]] = {
     Channel.POS: {Language.ES: "compra presencial", Language.PT: "compra presencial"},
     Channel.TRANSFER: {Language.ES: "transferencia", Language.PT: "transferência"},
 }
+
+# More matches than this are not listed: the customer is asked for another clue instead.
+MAX_CANDIDATES = 3
 
 COUNTRY_ZONES = {
     "AR": ZoneInfo("America/Argentina/Buenos_Aires"),
@@ -212,6 +271,21 @@ def render_outcome(outcome: Outcome, language: Language) -> str:
     return OUTCOME_COPY[outcome][language]
 
 
+def render_opening_question(language: Language) -> str:
+    """Ask what happened when no request has been described yet; claims nothing."""
+    return OPENING_QUESTION_COPY[language]
+
+
+def render_ineligible(explanation_key: str | None, language: Language) -> str:
+    """Say why the policy refused the dispute, without claiming or promising any action.
+
+    A key with no copy gets the generic refusal: the policy did decide, so it is not the
+    "not enough information" abstention.
+    """
+    copy = INELIGIBLE_COPY.get(explanation_key or "")
+    return copy[language] if copy else OUTCOME_COPY[Outcome.DENIED][language]
+
+
 def render_recognition(
     language: Language,
     args: GetTransactionArgs,
@@ -227,6 +301,38 @@ def render_recognition(
     if language == Language.ES:
         return f"Encontré este movimiento: {facts}. ¿Reconoces este movimiento?"
     return f"Encontrei esta transação: {facts}. Você reconhece esta transação?"
+
+
+def render_candidates(
+    language: Language,
+    args: SearchTransactionsArgs,
+    result: SearchTransactionsResult,
+    record: ExecutionRecord,
+) -> str:
+    """Ask which of a few matching transactions the customer means, from a verified search.
+
+    The options are numbered in the order of the search result, so an answer by position
+    ("el segundo") refers to the same list the caller holds.
+    """
+    _require_verified(record, ToolName.SEARCH_TRANSACTIONS, expected_args_hash=args_hash(args))
+    transactions = result.transactions
+    if not 2 <= len(transactions) <= MAX_CANDIDATES:
+        raise UnverifiedRenderError("a choice needs two or three matching transactions")
+    options = "; ".join(
+        f"{number}) {_transaction_facts(txn, language)}"
+        for number, txn in enumerate(transactions, start=1)
+    )
+    if language == Language.ES:
+        return (
+            f"Encontré {len(transactions)} movimientos que coinciden: {options}. "
+            "¿Cuál de estos movimientos quieres revisar? "
+            "Puedes responder con el número o el importe."
+        )
+    return (
+        f"Encontrei {len(transactions)} transações que coincidem: {options}. "
+        "Qual destas transações você quer analisar? "
+        "Você pode responder com o número ou o valor."
+    )
 
 
 def render_confirmation(
@@ -265,6 +371,23 @@ def render_confirmation(
     if language == Language.ES:
         return f"¿Confirmas bloquear la tarjeta terminada en {card.card_last4}?"
     return f"Você confirma o bloqueio do cartão com final {card.card_last4}?"
+
+
+def render_block_offer(
+    language: Language,
+    args: BlockCardArgs,
+    read_args: ListCardsArgs,
+    read_result: ListCardsResult,
+    record: ExecutionRecord,
+) -> str:
+    """Offer a card block: a neutral lead, then the block confirmation from a verified card read."""
+    question = render_confirmation(language, args, read_args, read_result, record)
+    return f"{BLOCK_OFFER_COPY[language]} {question}"
+
+
+def render_block_declined(language: Language) -> str:
+    """Acknowledge a declined card block without claiming any action."""
+    return BLOCK_DECLINED_COPY[language]
 
 
 def render_created_dispute(

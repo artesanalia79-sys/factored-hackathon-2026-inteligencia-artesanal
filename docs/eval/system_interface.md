@@ -25,7 +25,11 @@ def create_agent(
   evaluation.
 - It must read the time only from `clock` (session expiry and confirmation-token TTLs are tested
   with it).
-- Any other dependency (policy, templates, router, ops store) may be built inside the factory.
+- The policy evaluator and the confirmation issuer are the two dependencies the factory cannot
+  build alone: both must live on the databases under the tools it receives. `create_agent` takes
+  them as `policy` and `issue_confirmation` (`bankagent.orchestrator.wiring`); without them the
+  agent abstains on every dispute and never writes. The harness binds them per case run
+  (section 4). Templates and the router may be built inside the factory.
 
 ## 2. A turn method
 
@@ -74,14 +78,15 @@ to the tool, so the confirmation, the tool call and the harness observation line
 
 Real runs use the real Task 8 tools through `RunConfig.backend_factory`
 (`bankagent.eval.backend.FixtureBackendFactory`): the fixture bank is shared and every case run
-gets a fresh, empty ops store, so one run's disputes never reach another run or repeat. The
-run's stores are in `EvalEnvironment.backend`; the T13 agent's policy evaluator and
-confirmation issuer must be bound to them, not to stores of their own.
+gets a fresh, empty ops store, so one run's disputes never reach another run or repeat (one
+dispute per transaction and one block per card are permanent). The run's stores are in
+`EvalEnvironment.backend`.
 
-When T13 is on `main`, `bankagent.eval.adapters.proposed_system` becomes (`TODO(T13, Santiago)`):
+`bankagent.eval.adapters.proposed_system()` wraps `create_agent`. For every case run it binds the
+policy evaluator and the confirmation issuer to that run's stores, not to stores of their own:
 
 ```python
-class _ProposedSystem:
+class ProposedSystem:
     name = "proposed"
     variant = SystemVariant.PROPOSED
 
@@ -97,18 +102,20 @@ class _ProposedSystem:
         return _AgentSession(agent, env.session)
 ```
 
-The LLM-only baseline (`bankagent.eval.baseline`, decision D1) already runs this way:
+The LLM-only baseline (`bankagent.eval.baseline`, decision D1) runs the same way:
 
 ```bash
-uv run poe eval-run --system baseline                      # dev cases, StubProvider, 0 USD
+uv run poe eval-run --system proposed                      # dev cases, StubProvider, 0 USD
 uv run poe eval-run --system baseline --system proposed \
     --provider openai --repeats 3 --budget-usd 5          # real cost: owner approval first
 uv run poe eval-run --system baseline --provider compat     # LLM_* variables in .env (PR #51)
 ```
 
-With the `StubProvider` the baseline cannot act (the stub only produces interpretations), so a
-stub run checks the plumbing, not the baseline. `uv run poe eval-smoke` still runs the scripted
-fakes in `bankagent.eval.fake`, which follow this interface and serve as an executable example.
+With the `StubProvider` the proposed agent can act (its keyword interpreter is the stub) and the
+baseline cannot (the stub only produces interpretations), so a stub run of the baseline checks
+the plumbing, not the baseline. `tests/eval/test_proposed_dev_run.py` runs the dev cases through
+`proposed_system()` and is the executable example. `uv run poe eval-smoke` still runs the
+scripted fakes in `bankagent.eval.fake`, which check the harness itself.
 
 ## 5. Quick self-check for Task 13
 
@@ -117,5 +124,9 @@ uv run poe eval-smoke          # harness self-check with the fakes (CI)
 uv run pytest tests/eval -q    # scorer, detectors, simulator, pipeline
 ```
 
-Once the adapter is wired, a dev run of the real agent on `eval/dev/` must show zero unsafe events
-and zero unclassified simulator questions before the held-out run.
+```bash
+uv run pytest tests/eval/test_proposed_dev_run.py -q   # the real agent on eval/dev (CI)
+```
+
+A dev run of the real agent on `eval/dev/` must show zero unsafe events and zero unclassified
+simulator questions before the held-out run; that test enforces it.

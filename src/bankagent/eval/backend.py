@@ -3,7 +3,9 @@
 One dispute per transaction and one block per card are permanent, and the repeat-disputer rule
 counts the agent's own disputes, so a case run must never see the writes of another run (or of
 another repeat of the same case). ``FixtureBackendFactory`` builds the synthetic fixture bank
-once and opens a new, empty ``OpsStore`` file for every case run.
+once and opens a new, empty ``OpsStore`` file for every case run. The file name is random, so
+no call can reopen a store: a counter per factory starts again at zero, and a second factory
+over the same directory would hand its first run the previous run's disputes with no error.
 
 Both systems get the same tools, built with ``require_policy=False``: the LLM-only baseline has no
 policy by design, and a decision the proposed agent passes is still enforced by the tools.
@@ -13,11 +15,11 @@ The confirmation tokens a confirmed write needs are issued on the run's own stor
 
 from __future__ import annotations
 
-import itertools
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from bankagent.contracts.base import Contract
 from bankagent.contracts.domain import ConfirmationToken, Session
@@ -58,9 +60,8 @@ class FixtureBackendFactory:
             raise RuntimeError(f"fixture bank failed its contract: {problems}")
         self._workdir = workdir
         self._serving = ServingDB(bank)
-        self._runs = itertools.count(1)
 
     def __call__(self) -> RunBackend:
-        store = OpsStore(self._workdir / f"ops-{next(self._runs):05d}.sqlite")
+        store = OpsStore(self._workdir / f"ops-{uuid4().hex}.sqlite")
         tools = build_tools(self._serving, store, require_policy=False)
         return RunBackend(serving=self._serving, store=store, tools=tools)
