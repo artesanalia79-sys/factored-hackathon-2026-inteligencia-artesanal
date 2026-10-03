@@ -36,7 +36,7 @@ from bankagent.fixtures.builder import build
 from bankagent.interpret.stub import StubProvider
 from bankagent.store.ops import OpsStore
 from bankagent.store.serving import ServingDB
-from bankagent.tools import build_tools
+from bankagent.tools import build_tools, issue_confirmation_token
 
 NOW = datetime(2026, 6, 17, 12, tzinfo=UTC)
 REPEATS = 2  # a second repeat fails on a shared ops store: one dispute per transaction
@@ -145,6 +145,31 @@ def test_every_case_run_gets_its_own_empty_ops_store(serving: ServingDB, tmp_pat
         assert set(first.tools) == set(ToolName)
     with opened() as second:
         assert second.store is not first.store
+    assert len(list(tmp_path.glob("ops-*.sqlite"))) == 2
+
+
+def test_two_factories_over_one_directory_never_share_a_store(
+    serving: ServingDB, tmp_path: Path
+) -> None:
+    # A file counter per factory starts again at zero, so a caller that builds the factory once
+    # per case would hand each case the previous one's disputes without any error.
+    args = CreateDisputeArgs(
+        transaction_id="TXN-FX-0202", reason=DisputeReason.DUPLICATE, idempotency_key="idem-0001"
+    )
+    for _ in range(2):
+        with fresh_bank(serving, tmp_path, require_policy=False)() as bank:
+            assert bank.store.count("disputes") == 0
+            token = issue_confirmation_token(
+                bank.store, session=_session(), tool=ToolName.CREATE_DISPUTE, args=args, now=NOW
+            )
+            context = ToolContext(
+                session=_session(),
+                trace_id="trace-shared",
+                now=NOW,
+                confirmation_token_id=token.token_id,
+            )
+            bank.tools[ToolName.CREATE_DISPUTE].run(context, args)
+            assert bank.store.count("disputes") == 1
     assert len(list(tmp_path.glob("ops-*.sqlite"))) == 2
 
 

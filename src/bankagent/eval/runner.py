@@ -10,7 +10,6 @@ that run only. Latency is the harness wall clock around each ``respond`` call.
 from __future__ import annotations
 
 import hashlib
-import itertools
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
@@ -19,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
+from uuid import uuid4
 
 from bankagent.contracts.domain import Session
 from bankagent.contracts.enums import ActionType, FaultInjection, SystemVariant, ToolName
@@ -108,12 +108,15 @@ def fresh_bank(serving: ServingDB, directory: Path, *, require_policy: bool) -> 
     needs ``False`` (it has no policy by design, and both systems must get identical tools); a
     run of the proposed agent alone can keep ``True``, which also fails a write whose context
     carries no decision.
+
+    The file name is random, so no call can reopen a store: not a second repeat, and not a
+    second factory over the same directory (a counter per factory would start again at zero and
+    hand the next case the previous case's disputes).
     """
-    numbers = itertools.count()
 
     @contextmanager
     def open_bank() -> Iterator[BankState]:
-        with OpsStore(directory / f"ops-{next(numbers):05d}.sqlite") as store:
+        with OpsStore(directory / f"ops-{uuid4().hex}.sqlite") as store:
             yield BankState(
                 serving=serving,
                 store=store,
