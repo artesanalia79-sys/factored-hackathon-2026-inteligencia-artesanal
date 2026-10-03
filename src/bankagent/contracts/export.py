@@ -18,7 +18,17 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from bankagent.contracts import decisions, domain, errors, evaluation, handoff, llm, records, tools
+from bankagent.contracts import (
+    api,
+    decisions,
+    domain,
+    errors,
+    evaluation,
+    handoff,
+    llm,
+    records,
+    tools,
+)
 from bankagent.contracts.serving import (
     FORBIDDEN_COLUMNS,
     REQUIRED_METADATA_KEYS,
@@ -70,6 +80,16 @@ EXPORTED_MODELS: tuple[type[BaseModel], ...] = (
     # llm
     llm.ChatMessage,
     llm.TokenUsage,
+    # api (the web UI generates its types from these, `web/scripts/contracts.mjs`)
+    api.PersonaResponse,
+    api.LoginRequest,
+    api.LoginResponse,
+    api.VerifyRequest,
+    api.VerifyResponse,
+    api.SessionResponse,
+    api.ChatTurnRequest,
+    api.ChatTurnResponse,
+    api.ConfirmationView,
 )
 
 

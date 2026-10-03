@@ -1,0 +1,31 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "access_code": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "the code shared with the people invited to a public demo (DEMO_ACCESS_CODE, T15); a deployment that sets one refuses a login without it with 403 access_code_required",
+      "title": "Access Code"
+    },
+    "persona_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Persona Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "persona_id"
+  ],
+  "title": "LoginRequest",
+  "type": "object"
+}

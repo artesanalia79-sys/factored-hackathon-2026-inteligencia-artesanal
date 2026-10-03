@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "Language": {
+      "enum": [
+        "es",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A demo persona: an opaque id (a keyed hash), never the customer id.",
+  "properties": {
+    "country": {
+      "title": "Country",
+      "type": "string"
+    },
+    "first_name": {
+      "title": "First Name",
+      "type": "string"
+    },
+    "language": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Language"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "persona_id": {
+      "title": "Persona Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "persona_id",
+    "first_name",
+    "country",
+    "language"
+  ],
+  "title": "PersonaResponse",
+  "type": "object"
+}

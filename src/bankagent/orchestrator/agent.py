@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
+from bankagent.contracts.api import ConfirmationView
 from bankagent.contracts.base import Contract, args_hash
 from bankagent.contracts.decisions import DisputeSlots, InterpretationResult, PolicyDecision
 from bankagent.contracts.domain import ConfirmationToken, Session, TransactionView
@@ -58,6 +59,7 @@ from bankagent.interpret.keywords import (
 from bankagent.render.templates import (
     MAX_CANDIDATES,
     UnverifiedRenderError,
+    confirmation_view,
     render_block_declined,
     render_block_offer,
     render_blocked_card,
@@ -181,6 +183,10 @@ class AgentTurnOutput:
     records: tuple[ExecutionRecord, ...]
     ended: bool
     claimed_actions: tuple[ActionType, ...] = ()
+    # The language of ``reply_text``, and the write it asks the customer to confirm, if it asks
+    # (the UI's confirmation panel, T14).
+    language: Language = Language.ES
+    confirmation: ConfirmationView | None = None
 
 
 class Agent:
@@ -282,9 +288,17 @@ class Agent:
         *,
         ended: bool = False,
         claimed_actions: tuple[ActionType, ...] = (),
+        confirmation: ConfirmationView | None = None,
     ) -> AgentTurnOutput:
         self._ended = ended
-        output = AgentTurnOutput(text, tuple(self._records), ended, claimed_actions)
+        output = AgentTurnOutput(
+            text,
+            tuple(self._records),
+            ended,
+            claimed_actions,
+            language=self._language,
+            confirmation=confirmation,
+        )
         self._turn_index += 1
         return output
 
@@ -485,17 +499,25 @@ class Agent:
             return self._abstain(session)
         self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
         if self._state == ConversationState.CONFIRM and self._pending_args is not None:
-            reply = render_confirmation(
-                self._language,
-                self._pending_args,
-                self._read_args,
-                self._read_result,
-                self._read_record,
+            return self._reply(
+                render_confirmation(
+                    self._language,
+                    self._pending_args,
+                    self._read_args,
+                    self._read_result,
+                    self._read_record,
+                ),
+                confirmation=confirmation_view(
+                    self._language,
+                    self._pending_args,
+                    self._read_args,
+                    self._read_result,
+                    self._read_record,
+                ),
             )
-        else:
-            reply = render_recognition(
-                self._language, self._read_args, self._read_result, self._read_record
-            )
+        reply = render_recognition(
+            self._language, self._read_args, self._read_result, self._read_record
+        )
         return self._reply(reply)
 
     def _escalate(
@@ -618,7 +640,10 @@ class Agent:
         reply = render_confirmation(
             self._language, args, self._read_args, self._read_result, self._read_record
         )
-        return self._reply(reply)
+        view = confirmation_view(
+            self._language, args, self._read_args, self._read_result, self._read_record
+        )
+        return self._reply(reply, confirmation=view)
 
     def _deflect(self, session: Session) -> AgentTurnOutput:
         self._record(session, StepKind.RENDER, ConversationState.RESPOND, StepOutcome.SUCCESS)
@@ -702,11 +727,14 @@ class Agent:
         if isinstance(written, AgentTurnOutput):
             return written
         self._pending_args = None
-        offer = self._offer_block(session)
-        if offer is None:
+        offered = self._offer_block(session)
+        if offered is None:
             return self._reply(written, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
         # The dispute is claimed now, and the conversation stays open for the block question.
-        return self._reply(f"{written} {offer}", claimed_actions=(ActionType.CREATE_DISPUTE,))
+        offer, view = offered
+        return self._reply(
+            f"{written} {offer}", claimed_actions=(ActionType.CREATE_DISPUTE,), confirmation=view
+        )
 
     def _write[ArgsT: Contract, ResultT: Contract](
         self,
@@ -778,13 +806,14 @@ class Agent:
         self._record(session, StepKind.VERIFY, self._state, StepOutcome.SUCCESS, args=args)
         return reply
 
-    def _offer_block(self, session: Session) -> str | None:
+    def _offer_block(self, session: Session) -> tuple[str, ConfirmationView] | None:
         """The question offering to block the card, after a verified dispute; None for no offer.
 
         Plan step ACT: offer the block when the customer did not recognize the charge (or asked
         for a block). Only when the policy allows it: ``dispute-v1.1`` puts ``block_card`` in
         ``allowed_actions`` for the transaction's own Active card only (``DSP-ACT-01``) and binds
-        it with ``target_product_id``, which the ``block_card`` tool checks again.
+        it with ``target_product_id``, which the ``block_card`` tool checks again. Returns the
+        question with the block it asks to confirm.
         """
         decision = self._decision
         if (
@@ -810,6 +839,7 @@ class Agent:
         )
         try:
             offer = render_block_offer(self._language, args, cards_args, cards, record)
+            view = confirmation_view(self._language, args, cards_args, cards, record)
         except UnverifiedRenderError:
             return None  # the card is no longer among the active ones: nothing to block
         self._pending_block = args
@@ -817,7 +847,7 @@ class Agent:
         self._cards_result = cards
         self._cards_record = record
         self._state = ConversationState.CONFIRM
-        return offer
+        return offer, view
 
     def _confirm_block(
         self, session: Session, interpreted: InterpretationResult
@@ -845,7 +875,14 @@ class Agent:
                         self._cards_args,
                         self._cards_result,
                         self._cards_record,
-                    )
+                    ),
+                    confirmation=confirmation_view(
+                        self._language,
+                        args,
+                        self._cards_args,
+                        self._cards_result,
+                        self._cards_record,
+                    ),
                 )
         self._pending_block = None
         if act != DialogueAct.AFFIRM or args is None or self._issue_confirmation is None:

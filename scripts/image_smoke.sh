@@ -9,7 +9,8 @@
 #   - the image is under 512 MB, runs as a non-root user that cannot write the code, holds
 #     nothing but the checkout layout and the fixture bank, and that bank matches its hash;
 #   - started with only the documented variables, Render's PORT and a 512 MB memory limit, it
-#     answers /health and /ready and completes a dispute over HTTP that ends verified;
+#     answers /health and /ready, serves the web UI at / with its security headers, and
+#     completes a dispute over HTTP that ends verified;
 #   - the same flow again is refused (the demo wears out) and a new container is clean again
 #     (the reset);
 #   - SIGTERM stops it cleanly.
@@ -33,7 +34,7 @@ cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 if [[ "${1:-}" == "--plant-decoys" ]]; then
-  mkdir -p private data/raw eval/heldout .venv
+  mkdir -p private data/raw eval/heldout .venv web/node_modules web/dist
   echo "DECOY=1" >.env
   echo decoy >private/decoy.txt
   echo decoy >data/raw/decoy.parquet
@@ -42,6 +43,8 @@ if [[ "${1:-}" == "--plant-decoys" ]]; then
   echo decoy >.venv/decoy.txt
   echo decoy >src/bankagent/decoy.sqlite
   echo "DECOY=1" >src/.env
+  echo decoy >web/node_modules/decoy.txt
+  echo decoy >web/dist/decoy.txt
 fi
 
 echo "== build context: what .dockerignore lets through"
@@ -50,9 +53,9 @@ BASE_IMAGE="$(sed -n 's/^ARG PYTHON_BASE_IMAGE=//p' Dockerfile)"
 printf 'FROM %s\nCOPY . /ctx\n' "$BASE_IMAGE" |
   docker build --quiet --file - --tag bankagent:context-audit . >/dev/null
 CONTEXT="$(docker run --rm bankagent:context-audit sh -c 'cd /ctx && find . -type f | sort')"
-OUTSIDE="$(grep -vE '^\./(pyproject\.toml|uv\.lock|src/|policy/|config/|tests/fixtures/bank/)' <<<"$CONTEXT" || true)"
+OUTSIDE="$(grep -vE '^\./(pyproject\.toml|uv\.lock|src/|policy/|config/|tests/fixtures/bank/|web/)' <<<"$CONTEXT" || true)"
 [[ -z "$OUTSIDE" ]] || fail "outside the allowlist, in the build context:"$'\n'"$OUTSIDE"
-FORBIDDEN="$(grep -E '(^|/)\.env(\.|$)|\.duckdb(\.wal)?$|\.sqlite3?$|\.parquet$|__pycache__|\.pyc$|decoy' <<<"$CONTEXT" || true)"
+FORBIDDEN="$(grep -E '(^|/)\.env(\.|$)|\.duckdb(\.wal)?$|\.sqlite3?$|\.parquet$|__pycache__|\.pyc$|decoy|(^|/)node_modules/|^\./web/(dist|test-results|playwright-report)/' <<<"$CONTEXT" || true)"
 [[ -z "$FORBIDDEN" ]] || fail "forbidden files in the build context:"$'\n'"$FORBIDDEN"
 echo "$(wc -l <<<"$CONTEXT") files, all inside the allowlist"
 
@@ -66,7 +69,10 @@ echo "== image content"
 IMAGE_UID="$(docker run --rm "$IMAGE" id -u)"
 [[ "$IMAGE_UID" != "0" ]] || fail "the image runs as root"
 TOP="$(docker run --rm "$IMAGE" sh -c 'ls -A /app | sort | tr "\n" " "')"
-[[ "$TOP" == ".venv config data policy src tests " ]] || fail "unexpected entries in /app: $TOP"
+[[ "$TOP" == ".venv config data policy src tests web " ]] || fail "unexpected entries in /app: $TOP"
+WEB="$(docker run --rm "$IMAGE" sh -c 'ls -A /app/web | tr "\n" " "')"
+[[ "$WEB" == "dist " ]] || fail "/app/web must hold only the built UI, found: $WEB"
+docker run --rm "$IMAGE" test -f /app/web/dist/index.html || fail "the built UI is missing"
 DATA="$(docker run --rm "$IMAGE" sh -c 'find /app/data /app/tests -type f | sort')"
 EXTRA="$(grep -vE '^/app/(data/fixtures/bank_fixture\.duckdb|tests/fixtures/bank/[a-z_]+\.(yaml|txt))$' <<<"$DATA" || true)"
 [[ -z "$EXTRA" ]] || fail "unexpected data files in the image:"$'\n'"$EXTRA"
@@ -92,6 +98,15 @@ DEMO_ACCESS_CODE="$(python3 -c 'import secrets; print(secrets.token_urlsafe(12))
 export APP_SECRET_KEY DEMO_ACCESS_CODE
 start
 python3 scripts/smoke_dispute.py "$URL" --wait-ready 90 || fail "the dispute flow failed"
+# The chat UI (Task 14) at /, with the headers that keep it to its own origin.
+python3 - "$URL" <<'PY' || fail "the web UI is not served at /"
+import sys, urllib.request
+with urllib.request.urlopen(sys.argv[1] + "/", timeout=10) as page:
+    body = page.read().decode()
+    assert page.status == 200 and "<div id=\"root\">" in body, "no UI page"
+    assert "frame-ancestors 'none'" in page.headers.get("Content-Security-Policy", ""), "no CSP"
+print("GET / -> 200, the web UI with its Content-Security-Policy")
+PY
 
 [[ "$(docker exec "$NAME" id -u)" != "0" ]] || fail "the service process runs as root"
 PID1="$(docker exec "$NAME" sh -c "tr '\0' ' ' </proc/1/cmdline")"

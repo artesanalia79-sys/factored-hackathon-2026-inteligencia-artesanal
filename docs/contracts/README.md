@@ -41,5 +41,14 @@ JSON Schemas use Pydantic *validation* mode (what producers must send).
 | [`ToolErrorInfo`](ToolErrorInfo.schema.json) | `errors` |
 | [`ChatMessage`](ChatMessage.schema.json) | `llm` |
 | [`TokenUsage`](TokenUsage.schema.json) | `llm` |
+| [`PersonaResponse`](PersonaResponse.schema.json) | `api` |
+| [`LoginRequest`](LoginRequest.schema.json) | `api` |
+| [`LoginResponse`](LoginResponse.schema.json) | `api` |
+| [`VerifyRequest`](VerifyRequest.schema.json) | `api` |
+| [`VerifyResponse`](VerifyResponse.schema.json) | `api` |
+| [`SessionResponse`](SessionResponse.schema.json) | `api` |
+| [`ChatTurnRequest`](ChatTurnRequest.schema.json) | `api` |
+| [`ChatTurnResponse`](ChatTurnResponse.schema.json) | `api` |
+| [`ConfirmationView`](ConfirmationView.schema.json) | `api` |
 
 Serving DB contract v1.0.0: [`serving_tables.json`](serving_tables.json).

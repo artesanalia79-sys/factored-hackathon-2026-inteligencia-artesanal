@@ -1,0 +1,36 @@
+{
+  "$defs": {
+    "Language": {
+      "enum": [
+        "es",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "language": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Language"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "expires_at",
+    "language"
+  ],
+  "title": "SessionResponse",
+  "type": "object"
+}

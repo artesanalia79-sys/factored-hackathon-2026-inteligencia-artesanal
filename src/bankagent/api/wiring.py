@@ -70,7 +70,11 @@ def build_llm(env: Mapping[str, str]) -> LLMProvider:
 
 
 def create_default_app() -> FastAPI:
-    """Build all components over one serving DB and one ops store."""
+    """Build all components over one serving DB and one ops store.
+
+    The web UI is served from ``WEB_DIST_DIR`` (default ``web/dist``) once it is built
+    (``npm --prefix web run build``); without a build the app serves the API only.
+    """
     env = os.environ
     clock = utc_now
     store = OpsStore(_configured_path(env, "OPS_DB_PATH", DEFAULT_OPS_DB))
@@ -90,4 +94,5 @@ def create_default_app() -> FastAPI:
             "serving_db": serving.as_of_date,
             "ops_store": lambda: store.count("sessions"),
         },
+        web_dist=_configured_path(env, "WEB_DIST_DIR", ROOT / "web" / "dist"),
     )

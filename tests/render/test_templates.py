@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -10,9 +11,11 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
+from bankagent.contracts.api import ConfirmationView
 from bankagent.contracts.base import args_hash
 from bankagent.contracts.domain import CardBlockEvent, CardView, DisputeCase, TransactionView
 from bankagent.contracts.enums import (
+    ActionType,
     CardType,
     Channel,
     ConversationState,
@@ -51,6 +54,7 @@ from bankagent.eval.simulator import QuestionKind, classify_question
 from bankagent.policy import load_policy
 from bankagent.render import (
     UnverifiedRenderError,
+    confirmation_view,
     render_block_declined,
     render_block_offer,
     render_blocked_card,
@@ -478,13 +482,16 @@ def test_confirmation_hides_internal_ids_and_free_text(
     assert "1234" in block_copy
 
 
-def test_confirmation_rejects_unverified_or_mismatched_read(transaction: TransactionView) -> None:
+@pytest.mark.parametrize("render", [render_confirmation, confirmation_view])
+def test_confirmation_rejects_unverified_or_mismatched_read(
+    render: Callable[..., object], transaction: TransactionView
+) -> None:
     txn_args = GetTransactionArgs(transaction_id="txn-1")
     args = CreateDisputeArgs(
         transaction_id="txn-1", reason=DisputeReason.DUPLICATE, idempotency_key="request-1"
     )
     with pytest.raises(UnverifiedRenderError):
-        render_confirmation(
+        render(
             Language.ES,
             args,
             txn_args,
@@ -492,7 +499,7 @@ def test_confirmation_rejects_unverified_or_mismatched_read(transaction: Transac
             _record(ToolName.GET_TRANSACTION, txn_args, verified=False),
         )
     with pytest.raises(UnverifiedRenderError):
-        render_confirmation(
+        render(
             Language.ES,
             args,
             txn_args,
@@ -501,6 +508,51 @@ def test_confirmation_rejects_unverified_or_mismatched_read(transaction: Transac
             ),
             _record(ToolName.GET_TRANSACTION, txn_args),
         )
+    card_args = ListCardsArgs()
+    block_args = BlockCardArgs(
+        product_id="card-1", reason="customer request", idempotency_key="request-2"
+    )
+    with pytest.raises(UnverifiedRenderError):
+        render(
+            Language.ES,
+            block_args,
+            card_args,
+            _active_card("card-2"),
+            _record(ToolName.LIST_CARDS, card_args),
+        )
+
+
+@pytest.mark.parametrize("language", list(Language))
+def test_confirmation_view_is_the_question_as_data(
+    language: Language, transaction: TransactionView
+) -> None:
+    """The UI's panel shows the question's own strings: nothing it does not say, nothing more."""
+    txn_args = GetTransactionArgs(transaction_id="txn-1")
+    args = CreateDisputeArgs(
+        transaction_id="txn-1", reason=DisputeReason.UNRECOGNIZED, idempotency_key="request-1"
+    )
+    read = GetTransactionResult(transaction=transaction)
+    record = _record(ToolName.GET_TRANSACTION, txn_args)
+    question = render_confirmation(language, args, txn_args, read, record)
+    view = confirmation_view(language, args, txn_args, read, record)
+    assert view.action == ActionType.CREATE_DISPUTE
+    shown = (view.reason, view.merchant, view.date, view.channel, view.card_last4, view.amount)
+    assert all(value is not None and value in question for value in shown)
+    reason = "movimiento no reconocido" if language == Language.ES else "transação não reconhecida"
+    assert shown == (reason, "Mercado Sol", "17/06/2026", "compra presencial", "1234", "42,50 USD")
+    assert all(value not in view.model_dump_json() for value in ("txn-1", "card-1", "request-1"))
+
+    card_args = ListCardsArgs()
+    block_args = BlockCardArgs(
+        product_id="card-1", reason="ya quedó bloqueada", idempotency_key="request-2"
+    )
+    cards = _active_card()
+    card_record = _record(ToolName.LIST_CARDS, card_args)
+    block = confirmation_view(language, block_args, card_args, cards, card_record)
+    assert block == ConfirmationView(action=ActionType.BLOCK_CARD, card_last4="1234")
+    assert block.card_last4 in render_confirmation(
+        language, block_args, card_args, cards, card_record
+    )
 
 
 def test_merchant_name_is_single_line_and_bounded(transaction: TransactionView) -> None:

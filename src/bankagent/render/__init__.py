@@ -2,6 +2,7 @@
 
 from bankagent.render.templates import (
     UnverifiedRenderError,
+    confirmation_view,
     render_block_declined,
     render_block_offer,
     render_blocked_card,
@@ -18,6 +19,7 @@ from bankagent.render.templates import (
 
 __all__ = [
     "UnverifiedRenderError",
+    "confirmation_view",
     "render_block_declined",
     "render_block_offer",
     "render_blocked_card",

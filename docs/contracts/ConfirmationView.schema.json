@@ -1,0 +1,96 @@
+{
+  "$defs": {
+    "ActionType": {
+      "enum": [
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The write a confirmation question asks about, as the question states it.\n\nBuilt from the same verified read as the question (``bankagent.render``), and the values are\nthe question's own display strings in the conversation's language: the UI labels them and\nnever formats or derives them, so the panel cannot show other facts than the question. A\ndispute shows the reason and the charge (merchant, date, channel, amount, card ending); a\ncard block shows the card ending only.",
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/ActionType"
+    },
+    "amount": {
+      "anyOf": [
+        {
+          "maxLength": 48,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Amount"
+    },
+    "card_last4": {
+      "pattern": "^\\d{4}$",
+      "title": "Card Last4",
+      "type": "string"
+    },
+    "channel": {
+      "anyOf": [
+        {
+          "maxLength": 32,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Channel"
+    },
+    "date": {
+      "anyOf": [
+        {
+          "maxLength": 32,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Date"
+    },
+    "merchant": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Merchant"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    }
+  },
+  "required": [
+    "action",
+    "card_last4"
+  ],
+  "title": "ConfirmationView",
+  "type": "object"
+}

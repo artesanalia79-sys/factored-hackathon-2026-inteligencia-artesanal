@@ -9,9 +9,10 @@
 # into site-packages would not find them.
 #
 # Render passes every service environment variable to this build as a build argument. The
-# only ARG declared here is the base image, so no secret can end up in a layer.
+# only ARGs declared here are the base images, so no secret can end up in a layer.
 
 ARG PYTHON_BASE_IMAGE=python:3.12.14-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
+ARG NODE_BASE_IMAGE=node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9
 
 FROM ghcr.io/astral-sh/uv:0.12.19@sha256:04d046b13e60d6bcec73cbc5e1cad25d680dea90c8573340950a0ac2d1aef424 AS uv
 
@@ -46,9 +47,17 @@ RUN python -m bankagent.fixtures.builder --check \
  && python -m bankagent.fixtures.builder \
  && python -m compileall -q src
 
-# TODO(T14, Jacobo): add the web build stage (a pinned node image running `npm ci` and
-# `npm run build` in web/) and copy web/dist into the runtime stage; allow web/ in
-# .dockerignore. Steps in docs/operations.md, "Adding the web UI to the image".
+# ---------------------------------------------------------------------------
+# web: the chat UI (Task 14), built once; only web/dist reaches the runtime image
+# ---------------------------------------------------------------------------
+FROM ${NODE_BASE_IMAGE} AS web
+WORKDIR /app/web
+# The lockfile first, so a UI change does not reinstall the packages. No npm cache in a layer.
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund && npm cache clean --force
+COPY web ./
+# `tsc -b` type-checks the UI and its tests, then Vite writes web/dist.
+RUN npm run build
 
 # ---------------------------------------------------------------------------
 # runtime: no uv, no build tools, non-root
@@ -68,6 +77,8 @@ COPY --from=build /app/policy ./policy
 COPY --from=build /app/config ./config
 COPY --from=build /app/tests/fixtures/bank ./tests/fixtures/bank
 COPY --from=build /app/data/fixtures ./data/fixtures
+# The built UI; FastAPI serves it at / (WEB_DIST_DIR defaults to web/dist under /app).
+COPY --from=web /app/web/dist ./web/dist
 
 # Not secrets, and fixed on purpose: this image only ever serves the synthetic bank. On a
 # platform with an ephemeral disk (Render free) the ops store is new on every start, which is

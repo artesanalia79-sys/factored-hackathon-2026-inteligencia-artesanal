@@ -40,8 +40,20 @@ def test_chat_turn_requires_authentication_and_reuses_agent_until_done(
     first = client.post("/api/chat/turn", json={"text": "hola"}, headers=header)
     second = client.post("/api/chat/turn", json={"text": "sí"}, headers=header)
     third = client.post("/api/chat/turn", json={"text": "otra consulta"}, headers=header)
-    assert first.json() == {"reply_text": "turno 1", "ended": False, "claimed_actions": []}
-    assert second.json() == {"reply_text": "turno 2", "ended": True, "claimed_actions": []}
+    assert first.json() == {
+        "reply_text": "turno 1",
+        "ended": False,
+        "claimed_actions": [],
+        "language": "es",
+        "confirmation": None,
+    }
+    assert second.json() == {
+        "reply_text": "turno 2",
+        "ended": True,
+        "claimed_actions": [],
+        "language": "es",
+        "confirmation": None,
+    }
     assert third.json()["reply_text"] == "turno 1"
     assert len(instances) == 2
     assert "customer_id" not in first.text + second.text + third.text
