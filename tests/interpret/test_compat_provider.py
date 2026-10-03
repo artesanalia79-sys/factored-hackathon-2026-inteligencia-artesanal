@@ -430,3 +430,16 @@ def test_instructions_sent_to_a_compatible_endpoint_put_a_request_for_a_person_f
     system_prompt = client.chat.completions.parse.call_args.kwargs["messages"][0]["content"]
     assert "human_request" in system_prompt
     assert "even when the same message also describes" in system_prompt
+
+
+def test_a_currency_word_no_longer_discards_the_interpretation() -> None:
+    """Same regression as the OpenAI provider's: one shared normalization for both."""
+    live = {
+        **FIXTURES[0]["output"],
+        "intent": "dispute_unrecognized",
+        "slots": {**FIXTURES[0]["output"]["slots"], "amount": "2,450", "currency": "pesos"},
+    }
+    client = _client_returning(_completion(parsed=_parsed(live)))
+    completion = _complete(_provider(client))
+    assert completion.output.slots.amount == Decimal("2450.00")
+    assert completion.output.slots.currency is None
