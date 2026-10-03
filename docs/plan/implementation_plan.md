@@ -21,6 +21,56 @@ teammate has parallel work from day 1 thanks to shared contracts, a stub LLM and
 **Cut order if behind:** 25 → 24 → 22 → 23 → evidence-view polish (21) → LLM comparator (18).
 **Never cut:** 1-3, 11-15, 17, 26-28.
 
+> Superseded by the scope reduction below (2026-10-02): the cut order above already happened for
+> T22-T25, and T18-T21 shrank to a minimum version. Nothing is deleted; the rest moves to T29.
+
+## Scope reduction (2026-10-02)
+
+Why: three days to submission (freeze end of Sat Oct 3, email Mon Oct 5) and the visible part of
+the product does not exist yet: no UI (T14), no public URL (T15), no held-out set (T17), no final
+numbers (T27), no video or slides (T28). Review rounds on T9 and T11 went deeper than the
+remaining budget allows. This is a change of priority, not a verdict that the work is not worth
+doing: everything that is reduced or postponed is listed in **T29** so it is not lost.
+
+**Rule from now on.** A review blocks a merge only when it would break the demo, break a safety
+rule in `AGENTS.md`, or make a claim we cannot back. Everything else becomes a line in
+`docs/limitations.md` with an owner and a task number. The policy (`dispute-v1.1`) is frozen: no
+new rules and no more tuning of the synthetic placeholders.
+
+**Critical path (ship this first, in this order).**
+
+| # | Task | What "done" means now |
+|---|---|---|
+| 1 | T13 finish | The four demo-visible gaps from the PR #46 review: card-block offer, copy for an ineligible decision, a first "Hola" does not end the chat, two matching charges get a question a customer can answer. Plus the simulator order fix (`_CONFIRM` before `_RECOGNIZE`). Merge. |
+| 2 | T15 | Dockerfile, `/health`, `/ready`, a public URL. Independent of T13, start now. Include a way to reset the demo (a persona escalates on its second dispute until the ops store is reset, `docs/limitations.md`). |
+| 3 | T14 | One screen: persona login, chat, confirm/cancel. No console, no side-by-side. |
+| 4 | T17 | Reduced held-out, see below. |
+| 5 | T27 | One run, both systems, deviations from the pre-registration listed. |
+| 6 | T28 | README, 4-6 slides, 3-minute video, fresh-clone dry run, email. |
+
+**Reduced (minimum version, still P0 unless noted).**
+
+| Task | Before | Now |
+|---|---|---|
+| T17 | ≥ 200 cases, ≥ 80 automatable, ≥ 30 escalating | Floor n ≥ 80 (`eval/gates.yaml`: G2 cannot pass below n = 73). Keep the dialect quotas (each of es-MX, es-CO, es-AR, pt-BR ≥ 20%), the sha256 manifest and the 20% second-annotator sample with kappa. Include about 10 attack cases (prompt injection, access to another customer's transaction). Any size below the pre-registered n ≥ 200 is a deviation: list it in `eval/preregistration.md` before unsealing and in T27. |
+| T18 | ONNX embeddings + logistic regression vs. keywords vs. LLM zero-shot | TF-IDF (char n-grams) + logistic regression vs. the keyword router, split-conformal α = 0.1, MLflow run, one-page model card. ONNX and the LLM zero-shot comparator move to T29. |
+| T20 | Fallback matrix, PII redaction, operations doc | PII redaction in logs and a short `docs/operations.md`. The tool-unavailable fallback is already in T13. |
+| T21 | Console, evidence view, `/lineage` | `/lineage` only (static `dbt docs generate`, served by FastAPI), plus a plain handoff list if time allows. Evidence view moves to T29. |
+
+**Lower priority (T19: P0 → P2; T22-T25: P1 → P2; not started, moved to T29).** T19 (the public demo runs on fixtures
+anyway, because no data is committed; the agent on curated data stays a local check), T22, T23,
+T24, T25. For T24: the attack cases inside T17 cover the safety claim we can back in time, and the
+promptfoo plugins stay as the follow-up.
+
+**Schedule.**
+
+| When | Target |
+|---|---|
+| Fri Oct 2 evening | T13 merged. T15 started. T17 case writing split across the team (about 20 cases each, cross-authored). |
+| Sat Oct 3 | T14, T15 live, T18 minimum, `/lineage`, T20 minimum. Freeze and tag at end of day (T26). |
+| Sun Oct 4 | T27 single run. T28: README, slides, video, clean-clone dry run. |
+| Mon Oct 5 | Send the email in the morning, with margin before the deadline. |
+
 ## Dependencies
 
 ```
@@ -31,6 +81,9 @@ T3 → T10 → T11             T12 → T17         T14 → T22
 T3 → T12                   T13 → T20         T15 → T23, T25
 T9, T11 → T13 → T14 → T15  T19 → T24         T17, T18, T19, T20 → T26 → T27 → T28
 ```
+
+After the scope reduction T26 waits on T14, T15, T17, T18 (minimum), T20 (minimum) only; T19 and
+T22-T25 no longer block it.
 
 ## Conversation flow
 
@@ -117,7 +170,9 @@ idempotency, read-back verification.
 
 **T9. Policy engine** [P0] (Juan José)
 `policy/dispute_policy_v1.yaml` with stable rule ids, labeled synthetic unless verified
-(Argentina Ley 25.065 arts. 26-29 verified; MX/CO TODO-verify by a human); `poe policy-explain`.
+(no country's dispute window is verified yet: `DSP-WIN-01` is a synthetic 90-day placeholder
+until a human checks Argentina Ley 25.065 arts. 26-29 and the MX/CO equivalents, see
+`docs/limitations.md` and T29); `poe policy-explain`.
 
 **T10. LLM interpreter** [P0] (Jacobo)
 OpenAI `gpt-6-luna` structured outputs behind `LLMProvider`; cassettes; `config/pricing.yaml`;
@@ -186,6 +241,24 @@ Unseal once, 3 repeats, both systems, deviations from the pre-registration liste
 
 **T28. Submission package** [P0] (all)
 README, 4-6 slides, video, fresh-clone dry run, email to hackathon.admin@factored.ai.
+
+### Cleanup
+
+**T29. Post-freeze cleanup of what the plan did not reach** [P2] (whoever has time; owner per line)
+One place for the work that was reduced or postponed by the scope reduction, so it is tracked and
+not forgotten. Each line keeps its original task number. Nothing here blocks the submission.
+
+| From | Pending work |
+|---|---|
+| T9 | Primary-source check of the dispute windows for AR, MX and CO (`DSP-WIN-01`); business sign-off on `DSP-ESC-02` and `DSP-ESC-03`; the two descoped rules (high amount, foreign transaction) if a threshold is ever signed off. |
+| T13 | What the T13 finish left open (`docs/limitations.md`): a lock per session instead of the global one, which first needs the OpenAI provider's spend accounting made atomic (T10); conversation state persisted and expired for more than one worker; the keyword limits at the new questions (a negated answer to "which charge?", dates, a correction typed at the card-block question); the refusal copy for a card block with no dispute and for a claim's status; a native review of the new Portuguese copy. Done or decided in the T13 finish (decision ledger, 2026-10-02): handoff routing, rule ids on the refusal records, and the confirmation token issued at the "yes" (kept). |
+| T17 | Grow the held-out set toward the pre-registered n ≥ 200. |
+| T18 | ONNX embeddings and the LLM zero-shot comparator. |
+| T19 | Agent on `DATA_MODE=curated` end to end, with evidence from a local run. |
+| T20 | Full fallback matrix (LLM timeout, malformed, unavailable), Langfuse export. |
+| T21 | Agent console and evidence view per case. |
+| T22-T25 | Side-by-side UI, load test, promptfoo red team (plugins listed in T24), external pilot. |
+| T8 | Customer-local date parsing and a one-day search window (`docs/limitations.md`). |
 
 ## P2 backlog
 

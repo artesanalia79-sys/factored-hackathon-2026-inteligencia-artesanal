@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -33,23 +34,39 @@ from bankagent.contracts.handoff import HandoffDraft, HandoffRouting, VerifiedFa
 from bankagent.contracts.llm import ChatMessage, LLMError, LLMProvider
 from bankagent.contracts.records import ExecutionRecord
 from bankagent.contracts.tools import (
+    BlockCardArgs,
+    BlockCardResult,
     CreateDisputeArgs,
     CreateDisputeResult,
     CreateHandoffArgs,
     CreateHandoffResult,
     GetTransactionArgs,
     GetTransactionResult,
+    ListCardsArgs,
+    ListCardsResult,
     SearchTransactionsArgs,
     SearchTransactionsResult,
     Tool,
     ToolContext,
 )
-from bankagent.interpret.keywords import interpret_text, language_evidence, normalize
+from bankagent.interpret.keywords import (
+    interpret_text,
+    language_evidence,
+    normalize,
+    parse_amount,
+)
 from bankagent.render.templates import (
+    MAX_CANDIDATES,
     UnverifiedRenderError,
+    render_block_declined,
+    render_block_offer,
+    render_blocked_card,
+    render_candidates,
     render_confirmation,
     render_created_dispute,
     render_created_handoff,
+    render_ineligible,
+    render_opening_question,
     render_outcome,
     render_recognition,
     render_state,
@@ -70,10 +87,92 @@ REASONS = {
     Intent.DISPUTE_NOT_RECEIVED: DisputeReason.NOT_RECEIVED,
 }
 
+# Refusals the orchestrator decides before any policy rule runs. They are not rules of
+# `policy/dispute_policy_v1.yaml` (those are `DSP-...`), so they have their own stable ids.
+ATTACK_RULE_ID = "GATE-ATTACK-01"  # prompt injection or an attack intent
+UNSUPPORTED_RULE_ID = "GATE-SCOPE-01"  # a request the agent recognizes and does not serve
+# The policy rule kind (`PolicyDecision.escalation_triggers`) that is a fraud signal (ADR 0003).
+FRAUD_TRIGGER = "fraud_score"
+
+# Stored with the card block for the bank's staff; never shown to the customer.
+BLOCK_REASONS = {
+    DisputeReason.UNRECOGNIZED: "Customer did not recognize a disputed charge",
+    DisputeReason.DUPLICATE: "Customer asked for a block while disputing a duplicate charge",
+    DisputeReason.NOT_RECEIVED: "Customer asked for a block while disputing a missing purchase",
+}
+
+
+# An answer that only names a position in the list of matching charges: "2", "el segundo",
+# "opción 1", "o último". Runs on normalized text; anchored, so "dos veces" is not a position.
+_POSITION = re.compile(
+    r"^(?:(?:es|e|el|la|o|a|opcion|opcao|numero|nro|#)\s*)*"
+    r"(?:(?P<p0>1|uno|una|um|uma|primer[oa]?|primeir[oa])"
+    r"|(?P<p1>2|dos|dois|duas|segund[oa])"
+    r"|(?P<p2>3|tres|tercer[oa]?|terceir[oa])"
+    r"|(?P<last>ultim[oa]))"
+    r"(?:\s+(?:opcion|opcao|movimiento|cargo|cobro|compra|transacao|cobranca))?[.!)]*$"
+)
+_NUMBERS = re.compile(r"\d[\d.,]*\d|\d")
+_WORDS = re.compile(r"[a-z]{4,}")
+
 
 def _compact(text: str) -> str:
     """No case, accents, spaces or punctuation: "Electro Mundo" is in "ELECTROMUNDO ONLINE"."""
     return "".join(char for char in normalize(text) if char.isalnum())
+
+
+def _position(text: str, count: int) -> int | None:
+    """The 0-based position an answer names in a list of ``count`` options, if it names one."""
+    match = _POSITION.match(normalize(text))
+    if match is None:
+        return None
+    if match.group("last"):
+        return count - 1
+    index = next(i for i, group in enumerate(("p0", "p1", "p2")) if match.group(group))
+    return index if index < count else None
+
+
+def _matching(
+    choices: tuple[TransactionView, ...], slots: DisputeSlots, text: str
+) -> tuple[TransactionView, ...]:
+    """The listed charges an answer describes: by reference, amount, card and merchant."""
+    matches = list(choices)
+    if slots.transaction_ref is not None:
+        matches = [txn for txn in matches if txn.transaction_id == slots.transaction_ref]
+    if slots.amount is not None:
+        matches = [txn for txn in matches if txn.amount == slots.amount]
+    elif slots.date_text is None and slots.card_last4 is None:
+        # "1,249" alone is not an amount for the interpreter, but here it answers the question.
+        # Not when the answer has a date or a card ending: "el del 11/06" is not 11 pesos.
+        numbers = {parse_amount(raw) for raw in _NUMBERS.findall(normalize(text))}
+        by_number = [txn for txn in matches if txn.amount in numbers]
+        matches = by_number or matches
+    if slots.card_last4 is not None:
+        matches = [txn for txn in matches if txn.card_last4 == slots.card_last4]
+    if slots.merchant_query is not None:
+        query = _compact(slots.merchant_query)
+        matches = [txn for txn in matches if query in _compact(txn.merchant_name or "")]
+    if len(matches) > 1:
+        # A word only one of them has in its merchant name: "el de marketplace".
+        names = {
+            txn.transaction_id: set(_WORDS.findall(normalize(txn.merchant_name or "")))
+            for txn in matches
+        }
+        named = {
+            holders[0]
+            for word in _WORDS.findall(normalize(text))
+            if len(holders := [key for key, words in names.items() if word in words]) == 1
+        }
+        if len(named) == 1:
+            matches = [txn for txn in matches if txn.transaction_id in named]
+    return tuple(matches)
+
+
+def _has_clues(slots: DisputeSlots) -> bool:
+    return any(
+        value is not None
+        for value in (slots.transaction_ref, slots.amount, slots.card_last4, slots.merchant_query)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +216,18 @@ class Agent:
         self._decision: PolicyDecision | None = None
         self._pending_args: CreateDisputeArgs | None = None
         self._idempotency_key = f"idem-{uuid4().hex}"
+        # The card block offered after the dispute: its own key, and the card read it shows.
+        self._pending_block: BlockCardArgs | None = None
+        self._block_key = f"idem-{uuid4().hex}"
+        self._cards_args: ListCardsArgs | None = None
+        self._cards_result: ListCardsResult | None = None
+        self._cards_record: ExecutionRecord | None = None
+        # A few matching charges the customer was asked to choose from, and the search behind
+        # the question (kept to ask it again).
+        self._choices: tuple[TransactionView, ...] = ()
+        self._choice_args: SearchTransactionsArgs | None = None
+        self._choice_result: SearchTransactionsResult | None = None
+        self._choice_record: ExecutionRecord | None = None
         self._clarifications = 0
         self._ended = False
 
@@ -254,8 +365,112 @@ class Agent:
         self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
         return self._reply(render_state(self._state, self._language))
 
+    def _ask_which(
+        self,
+        session: Session,
+        args: SearchTransactionsArgs,
+        found: SearchTransactionsResult,
+        record: ExecutionRecord,
+    ) -> AgentTurnOutput:
+        """Ask which of two or three matching charges the customer means.
+
+        The generic clarification named nothing a customer could answer. This one lists the
+        verified facts of each match, and `_pick` resolves the answer. Counts as a
+        clarification round, the first time and every time it is asked again.
+        """
+        try:
+            question = render_candidates(self._language, args, found, record)
+        except UnverifiedRenderError:
+            return self._clarify(session)
+        self._clarifications += 1
+        if self._clarifications > 2:
+            return self._abstain(session)
+        self._choices = found.transactions
+        self._choice_args = args
+        self._choice_result = found
+        self._choice_record = record
+        self._state = ConversationState.CLARIFY
+        self._record(session, StepKind.RENDER, self._state, StepOutcome.SUCCESS)
+        return self._reply(question)
+
+    def _pick(
+        self, session: Session, interpreted: InterpretationResult, text: str
+    ) -> AgentTurnOutput | None:
+        """Resolve the answer to "which one?" by position, amount, card, reference or merchant.
+
+        One match: that charge goes to the recognition question. An answer that describes a
+        charge outside the list is a correction, as in `_start_over`: this returns None and
+        the turn searches again with only the new clues. Anything else repeats the list.
+        """
+        choices = self._choices
+        position = _position(text, len(choices))
+        if position is not None:
+            matches: tuple[TransactionView, ...] = (choices[position],)
+        else:
+            matches = _matching(choices, interpreted.slots, text)
+        if len(matches) == 1:
+            self._choices = ()
+            return self._show(session, GetTransactionArgs(transaction_id=matches[0].transaction_id))
+        if not matches and _has_clues(interpreted.slots):
+            return self._start_over(session)
+        if self._choice_args is None or self._choice_result is None or self._choice_record is None:
+            return self._abstain(session)
+        return self._ask_which(session, self._choice_args, self._choice_result, self._choice_record)
+
+    def _show(self, session: Session, read_args: GetTransactionArgs) -> AgentTurnOutput:
+        """Read one transaction and ask the recognition question about it."""
+        read, record = self._read(
+            session,
+            ToolName.GET_TRANSACTION,
+            read_args,
+            GetTransactionResult,
+            ConversationState.RECOGNIZE,
+        )
+        if read is None or not record.verified:
+            if record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
+                return self._escalate(
+                    session,
+                    open_question="Transaction lookup was unavailable; identify the charge",
+                )
+            return self._abstain(session)
+        self._transaction = read.transaction
+        self._read_args = read_args
+        self._read_result = read
+        self._read_record = record
+        self._state = ConversationState.RECOGNIZE
+        return self._reply(render_recognition(self._language, read_args, read, record))
+
+    def _merged(self, supplied: DisputeSlots) -> DisputeSlots:
+        """The clues of this message on top of the ones the customer gave before."""
+        kept = self._slots
+        return DisputeSlots(
+            amount=supplied.amount or kept.amount,
+            currency=supplied.currency or kept.currency,
+            merchant_query=supplied.merchant_query or kept.merchant_query,
+            card_last4=supplied.card_last4 or kept.card_last4,
+            date_text=supplied.date_text or kept.date_text,
+            transaction_ref=supplied.transaction_ref or kept.transaction_ref,
+            card_block_requested=supplied.card_block_requested or kept.card_block_requested,
+        )
+
+    def _ask_what_happened(self, session: Session, slots: DisputeSlots) -> AgentTurnOutput:
+        """Open the conversation when the message names no request yet ("Hola").
+
+        The interpreter's ``out_of_scope`` is a fallback, not a judgement: a greeting and a
+        request the agent cannot serve look the same. Ending here closed the chat on "Hola", so
+        the agent asks instead. It counts as a clarification round, so a request that really is
+        out of scope still ends after the limit. Clues given without a request ("2,450 pesos en
+        ELECTROMUNDO") are kept for the search.
+        """
+        self._clarifications += 1
+        if self._clarifications > 2:
+            return self._abstain(session)
+        self._slots = self._merged(slots)
+        self._record(session, StepKind.RENDER, ConversationState.CLARIFY, StepOutcome.SUCCESS)
+        return self._reply(render_opening_question(self._language))
+
     def _reask(self, session: Session) -> AgentTurnOutput:
-        """Repeat the recognition or confirmation question after an unclear answer.
+        """Repeat the recognition or dispute confirmation question after an unclear answer.
 
         A generic clarification here would send the next answer back to the transaction search,
         which loses the question the customer was answering. Counts as a clarification round.
@@ -289,7 +504,15 @@ class Agent:
         *,
         rule_ids: tuple[str, ...] = (),
         open_question: str = "Review eligibility and next steps",
+        specialty: Specialty = Specialty.DISPUTES,
+        priority: Priority = Priority.HIGH,
     ) -> AgentTurnOutput:
+        """Hand the case to a person. The routing says who and how urgently.
+
+        High priority by default: a policy escalation is a risk signal, and after a tool failure
+        a confirmed request is waiting to be finished. The callers lower it for a plain request
+        to talk to a person and route a fraud-score escalation to the fraud team.
+        """
         self._state = ConversationState.ESCALATE
         if ToolName.CREATE_HANDOFF not in self._tools:
             self._record(session, StepKind.HANDOFF, self._state, StepOutcome.FAILURE)
@@ -322,9 +545,7 @@ class Agent:
             open_questions=(open_question,),
             trigger_rule_ids=rule_ids,
             policy_version=self._decision.policy_version if self._decision else "pending-policy",
-            routing=HandoffRouting(
-                specialty=Specialty.DISPUTES, language=self._language, priority=Priority.HIGH
-            ),
+            routing=HandoffRouting(specialty=specialty, language=self._language, priority=priority),
         )
         args = CreateHandoffArgs(draft=draft, idempotency_key=self._idempotency_key)
         result, record = self._read(
@@ -367,9 +588,20 @@ class Agent:
             rule_ids=decision.rule_ids,
         )
         if decision.decision == DecisionType.ESCALATE:
-            return self._escalate(session, rule_ids=decision.rule_ids)
+            # A fraud-score escalation goes to the fraud team; the fixture and the curated
+            # serving DB both have fraud agents (there is no such guarantee for `cards`).
+            fraud = FRAUD_TRIGGER in decision.escalation_triggers
+            return self._escalate(
+                session,
+                rule_ids=decision.rule_ids,
+                specialty=Specialty.FRAUD if fraud else Specialty.DISPUTES,
+            )
         if decision.decision == DecisionType.CLARIFY:
             return self._clarify(session)
+        if decision.decision == DecisionType.INELIGIBLE:
+            # The decision names the reason; "not enough information" would be untrue here.
+            key = decision.explanation_keys[0] if decision.explanation_keys else None
+            return self._reply(render_ineligible(key, self._language), ended=True)
         if decision.decision != DecisionType.PROCEED:
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
         if ActionType.CREATE_DISPUTE not in decision.allowed_actions:
@@ -421,6 +653,7 @@ class Agent:
         self._read_record = None
         self._decision = None
         self._pending_args = None
+        self._choices = ()
         # The correction describes the charge afresh: an old amount would filter out a merchant
         # named now, so only the card-block request carries over.
         self._slots = DisputeSlots(card_block_requested=self._slots.card_block_requested)
@@ -450,27 +683,66 @@ class Agent:
             return self._reask(session)
         if self._pending_args is None or self._issue_confirmation is None:
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
-        args = self._pending_args
-        not_created = (
-            "The confirmed dispute was not created; check for an existing dispute on this "
-            "transaction, then file it if there is none"
+        written = self._write(
+            session,
+            ToolName.CREATE_DISPUTE,
+            self._pending_args,
+            CreateDisputeResult,
+            render_created_dispute,
+            issue=self._issue_confirmation,
+            not_done=(
+                "The confirmed dispute was not created; check for an existing dispute on this "
+                "transaction, then file it if there is none"
+            ),
+            unverified=(
+                "The dispute write was not verified by read-back; check whether it exists "
+                "before filing it again"
+            ),
         )
-        tool = self._tools.get(ToolName.CREATE_DISPUTE)
+        if isinstance(written, AgentTurnOutput):
+            return written
+        self._pending_args = None
+        offer = self._offer_block(session)
+        if offer is None:
+            return self._reply(written, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
+        # The dispute is claimed now, and the conversation stays open for the block question.
+        return self._reply(f"{written} {offer}", claimed_actions=(ActionType.CREATE_DISPUTE,))
+
+    def _write[ArgsT: Contract, ResultT: Contract](
+        self,
+        session: Session,
+        tool_name: ToolName,
+        args: ArgsT,
+        result_type: type[ResultT],
+        render: Callable[[Language, ArgsT, ResultT, ExecutionRecord], str],
+        *,
+        issue: ConfirmationIssuer,
+        not_done: str,
+        unverified: str,
+    ) -> str | AgentTurnOutput:
+        """Run the write the customer just said yes to; return its verified claim.
+
+        The token is issued for exactly ``args`` in this turn, and the confirmation record carries
+        the same args hash as the write it authorizes. A refused or failed write commits nothing
+        (T8); an unverified one may exist. Either way a person must finish the confirmed request
+        (T8 ledger: the tool-failure path), so those return the escalation instead of a claim.
+        """
+        tool = self._tools.get(tool_name)
         if tool is None:
             self._record(
                 session,
                 StepKind.TOOL_CALL,
                 ConversationState.ACT,
                 StepOutcome.FAILURE,
-                tool=ToolName.CREATE_DISPUTE,
+                tool=tool_name,
                 args=args,
                 error_code=ToolErrorCode.TOOL_UNAVAILABLE,
             )
-            return self._escalate(session, open_question=not_created)
+            return self._escalate(session, open_question=not_done)
         try:
-            token = self._issue_confirmation(session, ToolName.CREATE_DISPUTE, args, self._clock())
+            token = issue(session, tool_name, args, self._clock())
         except ToolError:
-            return self._escalate(session, open_question=not_created)
+            return self._escalate(session, open_question=not_done)
         self._record(
             session,
             StepKind.CONFIRMATION,
@@ -496,23 +768,110 @@ class Agent:
         )
         self._records.append(call.record)
         result = call.result
-        # A refused or failed write commits nothing (T8); an unverified one may exist. Either
-        # way a person must finish the confirmed request (T8 ledger: the tool-failure path).
-        if call.error is not None or not isinstance(result, CreateDisputeResult):
-            return self._escalate(session, open_question=not_created)
+        if call.error is not None or not isinstance(result, result_type):
+            return self._escalate(session, open_question=not_done)
         self._state = ConversationState.VERIFY
         try:
-            reply = render_created_dispute(self._language, args, result, call.record)
+            reply = render(self._language, args, result, call.record)
         except UnverifiedRenderError:
-            return self._escalate(
-                session,
-                open_question=(
-                    "The dispute write was not verified by read-back; check whether it exists "
-                    "before filing it again"
-                ),
-            )
+            return self._escalate(session, open_question=unverified)
         self._record(session, StepKind.VERIFY, self._state, StepOutcome.SUCCESS, args=args)
-        return self._reply(reply, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
+        return reply
+
+    def _offer_block(self, session: Session) -> str | None:
+        """The question offering to block the card, after a verified dispute; None for no offer.
+
+        Plan step ACT: offer the block when the customer did not recognize the charge (or asked
+        for a block). Only when the policy allows it: ``dispute-v1.1`` puts ``block_card`` in
+        ``allowed_actions`` for the transaction's own Active card only (``DSP-ACT-01``) and binds
+        it with ``target_product_id``, which the ``block_card`` tool checks again.
+        """
+        decision = self._decision
+        if (
+            decision is None
+            or ActionType.BLOCK_CARD not in decision.allowed_actions
+            or decision.target_product_id is None
+            or self._reason is None
+            or not (self._reason == DisputeReason.UNRECOGNIZED or self._slots.card_block_requested)
+            or ToolName.BLOCK_CARD not in self._tools
+            or ToolName.LIST_CARDS not in self._tools
+        ):
+            return None
+        cards_args = ListCardsArgs()
+        cards, record = self._read(
+            session, ToolName.LIST_CARDS, cards_args, ListCardsResult, ConversationState.CONFIRM
+        )
+        if cards is None:
+            return None
+        args = BlockCardArgs(
+            product_id=decision.target_product_id,
+            reason=BLOCK_REASONS[self._reason],
+            idempotency_key=self._block_key,
+        )
+        try:
+            offer = render_block_offer(self._language, args, cards_args, cards, record)
+        except UnverifiedRenderError:
+            return None  # the card is no longer among the active ones: nothing to block
+        self._pending_block = args
+        self._cards_args = cards_args
+        self._cards_result = cards
+        self._cards_record = record
+        self._state = ConversationState.CONFIRM
+        return offer
+
+    def _confirm_block(
+        self, session: Session, interpreted: InterpretationResult
+    ) -> AgentTurnOutput:
+        act = interpreted.dialogue_act
+        args = self._pending_block
+        if (
+            act not in {DialogueAct.AFFIRM, DialogueAct.DENY}
+            and args is not None
+            and self._cards_args is not None
+            and self._cards_result is not None
+            and self._cards_record is not None
+        ):
+            # Unclear: ask again while clarification rounds remain. Once they are used up the
+            # answer is read as a no below, since only an explicit yes blocks a card.
+            self._clarifications += 1
+            if self._clarifications <= 2:
+                self._record(
+                    session, StepKind.RENDER, ConversationState.CONFIRM, StepOutcome.SUCCESS
+                )
+                return self._reply(
+                    render_confirmation(
+                        self._language,
+                        args,
+                        self._cards_args,
+                        self._cards_result,
+                        self._cards_record,
+                    )
+                )
+        self._pending_block = None
+        if act != DialogueAct.AFFIRM or args is None or self._issue_confirmation is None:
+            # The dispute was already claimed in the previous reply; nothing else is written.
+            self._record(session, StepKind.RENDER, ConversationState.RESPOND, StepOutcome.SUCCESS)
+            return self._reply(render_block_declined(self._language), ended=True)
+        written = self._write(
+            session,
+            ToolName.BLOCK_CARD,
+            args,
+            BlockCardResult,
+            render_blocked_card,
+            issue=self._issue_confirmation,
+            # (2) the person who picks this up must know the dispute is already filed
+            not_done=(
+                "The dispute was created, but the confirmed card block was not completed; "
+                "check the card's status, then block it if it is still active"
+            ),
+            unverified=(
+                "The dispute was created, but the card block was not verified by read-back; "
+                "check the card's status before blocking it again"
+            ),
+        )
+        if isinstance(written, AgentTurnOutput):
+            return written
+        return self._reply(written, ended=True, claimed_actions=(ActionType.BLOCK_CARD,))
 
     def _follow_language(self, session: Session, text: str) -> None:
         """Keep the conversation's language; switch only on a message clearly in the other one.
@@ -547,11 +906,24 @@ class Agent:
         self._record(session, StepKind.AUTHENTICATE, ConversationState.AUTH, StepOutcome.SUCCESS)
         interpreted = self._interpret(session, text)
         if interpreted.injection_suspected or interpreted.intent == Intent.ATTACK:
-            self._record(session, StepKind.POLICY, ConversationState.ABSTAIN, StepOutcome.BLOCKED)
+            self._record(
+                session,
+                StepKind.POLICY,
+                ConversationState.ABSTAIN,
+                StepOutcome.BLOCKED,
+                rule_ids=(ATTACK_RULE_ID,),
+            )
             return self._reply(render_outcome(Outcome.DENIED, self._language), ended=True)
         if interpreted.intent == Intent.HUMAN_REQUEST:
             self._intent = Intent.HUMAN_REQUEST
-            return self._escalate(session)
+            return self._escalate(session, priority=Priority.MEDIUM)
+        if self._pending_block is not None:
+            # Before the intent check below: "Sí, bloquéala" is a card_block intent, not a dispute.
+            return self._confirm_block(session, interpreted)
+        if self._choices:
+            answered = self._pick(session, interpreted, text)
+            if answered is not None:
+                return answered
         if self._state in {ConversationState.RECOGNIZE, ConversationState.CONFIRM}:
             if not self._points_elsewhere(interpreted.slots):
                 if self._state == ConversationState.CONFIRM:
@@ -567,21 +939,22 @@ class Agent:
             Intent.DISPUTE_DUPLICATE,
             Intent.DISPUTE_NOT_RECEIVED,
         }:
-            self._record(session, StepKind.POLICY, ConversationState.ABSTAIN, StepOutcome.BLOCKED)
+            if interpreted.intent == Intent.OUT_OF_SCOPE:
+                return self._ask_what_happened(session, interpreted.slots)
+            # A request the agent recognizes and does not serve (a claim's status, a card block
+            # with no dispute) is refused at once.
+            self._record(
+                session,
+                StepKind.POLICY,
+                ConversationState.ABSTAIN,
+                StepOutcome.BLOCKED,
+                rule_ids=(UNSUPPORTED_RULE_ID,),
+            )
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
         if self._state != ConversationState.CLARIFY:
             self._intent = interpreted.intent
             self._reason = REASONS[interpreted.intent]
-        supplied = interpreted.slots
-        slots = DisputeSlots(
-            amount=supplied.amount or self._slots.amount,
-            currency=supplied.currency or self._slots.currency,
-            merchant_query=supplied.merchant_query or self._slots.merchant_query,
-            card_last4=supplied.card_last4 or self._slots.card_last4,
-            date_text=supplied.date_text or self._slots.date_text,
-            transaction_ref=supplied.transaction_ref or self._slots.transaction_ref,
-            card_block_requested=supplied.card_block_requested or self._slots.card_block_requested,
-        )
+        slots = self._merged(interpreted.slots)
         self._slots = slots
         search_args = SearchTransactionsArgs(
             amount_min=slots.amount,
@@ -591,62 +964,42 @@ class Agent:
             card_last4=slots.card_last4,
         )
         if slots.transaction_ref is not None:
-            read_args = GetTransactionArgs(transaction_id=slots.transaction_ref)
-        else:
-            found, search_record = self._read(
-                session,
-                ToolName.SEARCH_TRANSACTIONS,
-                search_args,
-                SearchTransactionsResult,
-                ConversationState.IDENTIFY_TXN,
-            )
-            if found is None:
-                if search_record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
-                    return self._escalate(
-                        session,
-                        open_question="Transaction search was unavailable; identify the charge",
-                    )
-                return self._clarify(session)
-            if not found.transactions:
-                return self._clarify(session)
-            candidates = found.transactions
-            if len(candidates) == 1:
-                chosen = candidates[0]
-            elif self._reason == DisputeReason.DUPLICATE and len(candidates) == 2:
-                earlier, later = sorted(candidates, key=lambda txn: txn.transaction_ts)
-                same_charge = (
-                    earlier.product_id == later.product_id
-                    and earlier.merchant_name == later.merchant_name
-                    and earlier.amount == later.amount
-                    and earlier.currency == later.currency
-                    and (later.transaction_ts - earlier.transaction_ts).total_seconds() <= 120
-                )
-                if not same_charge:
-                    return self._clarify(session)
-                chosen = later
-            else:
-                return self._clarify(session)
-            read_args = GetTransactionArgs(transaction_id=chosen.transaction_id)
-        read, record = self._read(
+            return self._show(session, GetTransactionArgs(transaction_id=slots.transaction_ref))
+        found, search_record = self._read(
             session,
-            ToolName.GET_TRANSACTION,
-            read_args,
-            GetTransactionResult,
-            ConversationState.RECOGNIZE,
+            ToolName.SEARCH_TRANSACTIONS,
+            search_args,
+            SearchTransactionsResult,
+            ConversationState.IDENTIFY_TXN,
         )
-        if read is None or not record.verified:
-            if record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
+        if found is None:
+            if search_record.error_code == ToolErrorCode.TOOL_UNAVAILABLE:
                 return self._escalate(
                     session,
-                    open_question="Transaction lookup was unavailable; identify the charge",
+                    open_question="Transaction search was unavailable; identify the charge",
                 )
-            return self._abstain(session)
-        self._transaction = read.transaction
-        self._read_args = read_args
-        self._read_result = read
-        self._read_record = record
-        self._state = ConversationState.RECOGNIZE
-        return self._reply(render_recognition(self._language, read_args, read, record))
+            return self._clarify(session)
+        candidates = found.transactions
+        chosen: TransactionView | None = None
+        if len(candidates) == 1:
+            chosen = candidates[0]
+        elif self._reason == DisputeReason.DUPLICATE and len(candidates) == 2:
+            earlier, later = sorted(candidates, key=lambda txn: txn.transaction_ts)
+            same_charge = (
+                earlier.product_id == later.product_id
+                and earlier.merchant_name == later.merchant_name
+                and earlier.amount == later.amount
+                and earlier.currency == later.currency
+                and (later.transaction_ts - earlier.transaction_ts).total_seconds() <= 120
+            )
+            if same_charge:
+                chosen = later
+        if chosen is not None:
+            return self._show(session, GetTransactionArgs(transaction_id=chosen.transaction_id))
+        if 2 <= len(candidates) <= MAX_CANDIDATES and not found.truncated:
+            return self._ask_which(session, search_args, found, search_record)
+        # No match, or too many to list: ask for another clue.
+        return self._clarify(session)
 
 
 def create_agent(
@@ -657,7 +1010,14 @@ def create_agent(
     policy: PolicyEvaluator | None = None,
     issue_confirmation: ConfirmationIssuer | None = None,
 ) -> Agent:
-    """Factory shape used by the evaluation adapter."""
+    """Build the agent of one conversation.
+
+    ``llm``, ``tools`` and ``clock`` are the shape of ``docs/eval/system_interface.md``, but they
+    are not enough to resolve a dispute: ``policy`` and ``issue_confirmation`` must be bound too
+    (`bankagent.orchestrator.wiring`), over the same serving DB and ops store the tools use.
+    Without a policy the agent abstains at CHECK_POLICY; without an issuer it abstains at the
+    customer's yes. Either way it never writes, so it fails closed.
+    """
     return Agent(
         llm=llm,
         tools=tools,

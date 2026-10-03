@@ -27,6 +27,17 @@ harness self-checks fail: the `ideal` fake must be correct and safe on every cas
 fake must trigger every `UnsafeEvent`. The report is labeled SIMULATED: fake numbers are never
 results.
 
+## Real agent on the dev set (CI, 0 USD)
+
+```bash
+uv run pytest tests/eval/test_proposed_dev_run.py -q
+```
+
+Runs the 10 dev cases x 2 repeats through `bankagent.eval.adapters.proposed_system()` (the Task 13
+agent with the `StubProvider`, the fixture bank, the real tools and policy, and a new ops store per
+case run) and fails unless every run is correct, with no unsafe event and no question the scripted
+user cannot classify. See `docs/eval/system_interface.md`, section 4.
+
 Pipeline: `cases` -> `simulator` (scripted user) -> `runner` (session, provider, instrumented
 tools, spend limit) -> `ExecutionRecord`s + tool observations -> `scorer` (`EvalResult`, one
 detector per `UnsafeEvent`) -> `metrics` (case-level, Wilson 95%, slices) -> `gates` -> `report`.

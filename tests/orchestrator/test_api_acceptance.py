@@ -115,13 +115,71 @@ def test_fx001_unrecognized_charge_creates_verified_dispute(
     second = _turn(client, headers, "No fui yo")
     assert "¿Confirmas crear un reclamo" in second["reply_text"]
     assert store.count("disputes") == 0
+    # No token exists while the question is on screen: it is issued at the customer's yes.
+    assert store.count("confirmation_tokens") == 0
     third = _turn(client, headers, "Sí, confirmo")
-    assert third["ended"]
     assert third["claimed_actions"] == ["create_dispute"]
+    assert store.count("confirmation_tokens") == 1
     dispute = store.get_dispute("CUST-FX-001", transaction_id="TXN-FX-0101")
     assert dispute is not None
     assert dispute.policy_version == POLICY_VERSION
     assert store.count("disputes") == 1
+    # The charge was not recognized and its card is Active: the block is offered, not done.
+    assert not third["ended"]
+    assert third["reply_text"].endswith("¿Confirmas bloquear la tarjeta terminada en 4821?")
+    assert store.count("card_blocks") == 0
+    declined = _turn(client, headers, "No, no la bloquees.")
+    assert declined["ended"]
+    assert declined["claimed_actions"] == []
+    assert declined["reply_text"] == "Entendido, no bloquearé la tarjeta."
+    assert store.count("card_blocks") == 0
+    assert store.count("disputes") == 1
+
+
+def test_fx004_accepted_block_offer_blocks_the_disputed_card(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Rafael")
+    _turn(
+        client,
+        headers,
+        "Oi, apareceu uma compra de 32.500 pesos na GAMESTORE DIGITAL que eu não fiz. "
+        "Não reconheço essa compra.",
+    )
+    _turn(client, headers, "Não, não reconheço.")
+    created = _turn(client, headers, "Sim, confirmo.")
+    assert created["claimed_actions"] == ["create_dispute"]
+    assert not created["ended"]
+    assert created["reply_text"].startswith("Abri a contestação")
+    assert created["reply_text"].endswith("Você confirma o bloqueio do cartão com final 2208?")
+    assert store.get_card_block("CUST-FX-004", "CARD-FX-041") is None
+    blocked = _turn(client, headers, "Sim, pode bloquear o cartão.")
+    assert blocked["ended"]
+    assert blocked["claimed_actions"] == ["block_card"]
+    assert blocked["reply_text"] == "Bloqueei o cartão com final 2208."
+    block = store.get_card_block("CUST-FX-004", "CARD-FX-041")
+    assert block is not None
+    dispute = store.get_dispute("CUST-FX-004", transaction_id="TXN-FX-0401")
+    assert dispute is not None
+    assert block.idempotency_key != dispute.idempotency_key
+    assert store.count("disputes") == store.count("card_blocks") == 1
+    # Each write spent its own token, issued for its exact arguments.
+    assert store.count("confirmation_tokens") == 2
+
+
+def test_a_bare_yes_accepts_the_block_offer(system: tuple[TestClient, OpsStore]) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    _turn(client, headers, "Hola, tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    _turn(client, headers, "No")
+    _turn(client, headers, "Sí")
+    blocked = _turn(client, headers, "Sí")
+    assert blocked["claimed_actions"] == ["block_card"]
+    assert blocked["reply_text"] == "Bloqueé la tarjeta terminada en 4821."
+    # Only the card of the disputed charge: her other card stays as it was.
+    assert store.get_card_block("CUST-FX-001", "CARD-FX-011") is not None
+    assert store.get_card_block("CUST-FX-001", "CARD-FX-012") is None
 
 
 def test_fx005_recognizes_charge_without_dispute(system: tuple[TestClient, OpsStore]) -> None:
@@ -152,6 +210,9 @@ def test_fx002_duplicate_charge_disputes_later_transaction(
     assert third["claimed_actions"] == ["create_dispute"]
     assert store.get_dispute("CUST-FX-002", transaction_id="TXN-FX-0202") is not None
     assert store.count("disputes") == 1
+    # A duplicate the customer recognizes is no reason to block the card: no offer.
+    assert third["ended"]
+    assert "bloquear" not in third["reply_text"]
 
 
 def test_fx006_high_risk_escalates_with_complete_handoff(
@@ -176,7 +237,9 @@ def test_fx006_high_risk_escalates_with_complete_handoff(
     assert packet.trigger_rule_ids == ("DSP-ESC-01",)
     assert packet.verified_facts[0].ref == "TXN-FX-0601"
     assert packet.open_questions
-    assert packet.routing.specialty.value == "disputes"
+    # DSP-ESC-01 is a fraud signal: the handoff goes to the fraud team.
+    assert packet.routing.specialty.value == "fraud"
+    assert packet.routing.priority.value == "high"
 
 
 def test_attack_has_no_action_and_timeout_uses_fallback(
@@ -221,10 +284,14 @@ def test_fx007_open_claim_and_repeat_disputer_follow_the_policy(
     # TXN-FX-0701 already has an open claim in the bank's history: ineligible, nothing written.
     first = _turn(client, headers, "No reconozco el cargo de PEDIDOSYA de 15.200 pesos")
     assert "¿Reconoces este movimiento?" in first["reply_text"]
-    refused = _turn(client, headers, "No fui yo")
+    refused = _turn(client, headers, "No")
     assert refused["ended"]
     assert refused["claimed_actions"] == []
     assert store.count("disputes") == store.count("handoffs") == 0
+    # The reason, not the "no tengo información suficiente" abstention.
+    assert refused["reply_text"] == (
+        "Este movimiento ya tiene un reclamo abierto, así que no voy a crear otro."
+    )
 
     # TXN-FX-0702 has no open case, but a claim from 2026-04-02 makes her a repeat disputer.
     headers = _headers(client, "Valentina")
@@ -238,9 +305,84 @@ def test_fx007_open_claim_and_repeat_disputer_follow_the_policy(
     assert packet is not None
     assert packet.trigger_rule_ids == ("DSP-ESC-02",)
     assert packet.verified_facts[0].ref == "TXN-FX-0702"
+    # A repeat disputer is not a fraud signal: the disputes team.
+    assert packet.routing.specialty.value == "disputes"
+
+
+def test_fx007_open_claim_is_explained_in_portuguese(system: tuple[TestClient, OpsStore]) -> None:
+    client, store = system
+    headers = _headers(client, "Valentina")
+    _turn(client, headers, "Não reconheço a cobrança de PEDIDOSYA de 15.200 pesos")
+    refused = _turn(client, headers, "Não")
+    assert refused["ended"]
+    assert refused["reply_text"] == (
+        "Esta transação já tem uma contestação aberta, então não vou abrir outra."
+    )
+    assert store.count("disputes") == store.count("handoffs") == 0
+
+
+def test_fx008_old_and_unsettled_charges_get_their_own_reason(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    out_of_window = "Este movimiento está fuera del plazo para presentar un reclamo."
+    not_settled = (
+        "Este movimiento no es un cobro definitivo (está pendiente, fue rechazado o se "
+        "revirtió), así que no se puede reclamar."
+    )
+    for opening, reason in (
+        ("No reconozco el cargo de LIVERPOOL de 3,200 pesos", out_of_window),  # 127 days old
+        ("No reconozco un cargo de 1,999 pesos en ELECTRONICA EXPRESS", not_settled),  # Declined
+        ("No reconozco un cargo de UBER EATS por 560 pesos", not_settled),  # Pending
+    ):
+        headers = _headers(client, "Diego")
+        first = _turn(client, headers, opening)
+        assert "¿Reconoces este movimiento?" in first["reply_text"]
+        refused = _turn(client, headers, "No")
+        assert refused["reply_text"] == reason
+        assert refused["ended"]
+        assert refused["claimed_actions"] == []
+    assert store.count("disputes") == store.count("handoffs") == 0
 
 
 # -- what a person types, not what the simulator types ----------------------------------------
+
+
+def test_a_greeting_opens_the_conversation_instead_of_ending_it(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    hello = _turn(client, headers, "Hola")
+    assert not hello["ended"]
+    assert hello["reply_text"].endswith("?")
+    assert hello["claimed_actions"] == []
+    # The same conversation goes on: the request reaches the recognition question.
+    request = _turn(client, headers, "No reconozco el cargo de 2,450 pesos en ELECTROMUNDO")
+    assert "¿Reconoces este movimiento?" in request["reply_text"]
+    assert "ELECTROMUNDO ONLINE" in request["reply_text"]
+    # The request after the greeting is a new request, with its own reason.
+    confirm = _turn(client, headers, "No")
+    assert "¿Confirmas crear un reclamo por movimiento no reconocido" in confirm["reply_text"]
+
+    headers = _headers(client, "Rafael")
+    oi = _turn(client, headers, "Oi")
+    assert not oi["ended"]
+    assert oi["reply_text"].startswith("Posso ajudar")
+    assert store.count("disputes") == store.count("handoffs") == 0
+
+
+def test_an_out_of_scope_request_ends_after_two_rounds_over_http(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    assert not _turn(client, headers, "¿Cuál es mi saldo?")["ended"]
+    assert not _turn(client, headers, "Quiero saber mi saldo")["ended"]
+    last = _turn(client, headers, "Mi saldo, por favor")
+    assert last["ended"]
+    assert last["claimed_actions"] == []
+    assert store.count("disputes") == store.count("handoffs") == 0
 
 
 def test_bare_yes_or_no_answers_the_recognition_question(
@@ -272,6 +414,49 @@ def test_bare_yes_or_no_answers_the_recognition_question(
     assert "Você reconhece esta transação?" in opening["reply_text"]
     nao = _turn(client, headers, "Não")
     assert "Você confirma a abertura de uma contestação" in nao["reply_text"]
+
+
+def test_two_amazon_charges_are_listed_and_the_chosen_one_is_disputed(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    asked = _turn(client, headers, "Tengo un cargo de Amazon que no reconozco")
+    assert "1) comercio AMAZON MX, fecha 11/06/2026" in asked["reply_text"]
+    assert "2) comercio AMAZON MX MARKETPLACE, fecha 10/06/2026" in asked["reply_text"]
+    assert "¿Cuál de estos movimientos quieres revisar?" in asked["reply_text"]
+    shown = _turn(client, headers, "El de 1,249 pesos")
+    assert "importe 1,249.00 MXN. ¿Reconoces este movimiento?" in shown["reply_text"]
+    _turn(client, headers, "No")
+    done = _turn(client, headers, "Sí")
+    assert done["claimed_actions"] == ["create_dispute"]
+    assert store.get_dispute("CUST-FX-001", transaction_id="TXN-FX-0105") is not None
+    assert store.get_dispute("CUST-FX-001", transaction_id="TXN-FX-0104") is None
+    assert store.count("disputes") == 1
+
+
+def test_the_choice_can_be_a_position_in_the_list(system: tuple[TestClient, OpsStore]) -> None:
+    client, _ = system
+    for answer, amount in (("el segundo", "899.00 MXN"), ("1", "1,249.00 MXN")):
+        headers = _headers(client, "Mariana")
+        _turn(client, headers, "Tengo un cargo de Amazon que no reconozco")
+        shown = _turn(client, headers, answer)
+        assert f"importe {amount}. ¿Reconoces este movimiento?" in shown["reply_text"]
+
+
+def test_another_customers_reference_as_the_choice_discloses_nothing(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    _turn(client, headers, "Tengo un cargo de Amazon que no reconozco")
+    # TXN-FX-0601 is Carlos's charge at LUXURY WATCHES INTL.
+    answer = _turn(client, headers, "Es la TXN-FX-0601")
+    assert answer["ended"]
+    assert answer["claimed_actions"] == []
+    assert "LUXURY" not in answer["reply_text"]
+    assert "9.800.000" not in answer["reply_text"]
+    assert store.count("disputes") == store.count("handoffs") == 0
 
 
 def test_a_correction_searches_again_instead_of_answering_for_the_wrong_charge(

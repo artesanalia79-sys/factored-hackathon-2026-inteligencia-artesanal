@@ -25,3 +25,19 @@ must return only cards belonging to that session's customer. The renderer checks
 the selected card belongs to the returned list. A failed, unauthorized, or mismatched
 read keeps `verified=false` and cannot supply customer-facing facts. This read meaning
 does not require a second database read; write verification still requires read-back.
+
+## Copy added after the review (T13, 2026-10-02)
+
+Not covered by the review above, and not yet read by a native Portuguese speaker:
+
+- the card-block offer (`render_block_offer`) and its decline (`render_block_declined`);
+- the three ineligibility reasons (`render_ineligible`): already disputed, out of window, not
+  settled;
+- the opening question for a greeting (`render_opening_question`);
+- the list of two or three matching charges (`render_candidates`);
+- the generic clarification, reworded to ask for the merchant or the exact amount.
+
+All of it is in `tests/render/snapshots.json`. The same safety checks apply: no line states an
+action as done (checked with the evaluation's claim detector), the card-block offer needs a
+verified `LIST_CARDS` record and the list of charges a verified `SEARCH_TRANSACTIONS` record
+for the same arguments.

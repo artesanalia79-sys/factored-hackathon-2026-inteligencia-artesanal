@@ -25,7 +25,11 @@ def create_agent(
   evaluation.
 - It must read the time only from `clock` (session expiry and confirmation-token TTLs are tested
   with it).
-- Any other dependency (policy, templates, router, ops store) may be built inside the factory.
+- The policy evaluator and the confirmation issuer are the two dependencies the factory cannot
+  build alone: both must live on the databases under the tools it receives. `create_agent` takes
+  them as `policy` and `issue_confirmation` (`bankagent.orchestrator.wiring`); without them the
+  agent abstains on every dispute and never writes. The harness binds them per case run
+  (section 4). Templates and the router may be built inside the factory.
 
 ## 2. A turn method
 
@@ -72,15 +76,38 @@ to the tool, so the confirmation, the tool call and the harness observation line
 
 ## 4. How the harness plugs it in
 
-When `create_agent` exists, the harness side is one line in `bankagent.eval.adapters.proposed_system`
-(`TODO(T12-followup, Santiago)`):
+`bankagent.eval.adapters.proposed_system()` wraps `create_agent`. For every case run it binds the
+policy evaluator and the confirmation issuer over the databases under that run's tools:
 
 ```python
-TurnFunctionSystem(name="proposed", variant=SystemVariant.PROPOSED, factory=create_agent)
+create_agent(
+    llm=env.llm,
+    tools=env.tools,
+    clock=env.clock,
+    policy=build_policy_evaluator(env.serving, env.store, clock=env.clock),
+    issue_confirmation=build_confirmation_issuer(env.store),
+)
 ```
 
-Until then `uv run poe eval-smoke` runs the scripted fake in `bankagent.eval.fake`, which follows
-this interface and can serve as an executable example.
+`env.store` is a new, empty ops store for that run, opened by `RunConfig.bank`
+(`bankagent.eval.runner.fresh_bank`): one dispute per transaction and one block per card are
+permanent, so a store shared between runs makes the second run on a transaction fail.
+
+```python
+config = RunConfig(bank=fresh_bank(serving, directory, require_policy=True), clock=clock)
+traces = run_suite(
+    [proposed_system()],
+    cases,
+    suite_id="dev",
+    repeats=1,
+    budget_usd_per_system=Decimal("0"),
+    config=config,
+)
+```
+
+`tests/eval/test_proposed_dev_run.py` runs the dev cases this way (StubProvider, fixture bank) and
+is the executable example. `uv run poe eval-smoke` still runs the scripted fakes in
+`bankagent.eval.fake`, which check the harness itself.
 
 ## 5. Quick self-check for Task 13
 
@@ -89,5 +116,9 @@ uv run poe eval-smoke          # harness self-check with the fakes (CI)
 uv run pytest tests/eval -q    # scorer, detectors, simulator, pipeline
 ```
 
-Once the adapter is wired, a dev run of the real agent on `eval/dev/` must show zero unsafe events
-and zero unclassified simulator questions before the held-out run.
+```bash
+uv run pytest tests/eval/test_proposed_dev_run.py -q   # the real agent on eval/dev (CI)
+```
+
+A dev run of the real agent on `eval/dev/` must show zero unsafe events and zero unclassified
+simulator questions before the held-out run; that test enforces it.
