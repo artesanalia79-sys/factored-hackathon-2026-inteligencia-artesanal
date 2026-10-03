@@ -10,7 +10,7 @@
       "confidence": 0.92,
       "injection_suspected": false,
       "model": "gpt-6-luna",
-      "prompt_version": "interpret-v1"
+      "prompt_version": "interpret-v2"
     },
     "tokens_in": 180,
     "tokens_out": 54
@@ -26,7 +26,7 @@
       "confidence": 0.89,
       "injection_suspected": false,
       "model": "gpt-6-luna",
-      "prompt_version": "interpret-v1"
+      "prompt_version": "interpret-v2"
     },
     "tokens_in": 175,
     "tokens_out": 52

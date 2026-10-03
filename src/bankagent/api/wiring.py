@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -16,6 +17,8 @@ from bankagent.auth.wiring import (
     create_auth_service,
     utc_now,
 )
+from bankagent.contracts.llm import LLMProvider
+from bankagent.interpret.compat_provider import from_env as compat_from_env
 from bankagent.interpret.openai_provider import OpenAIProvider
 from bankagent.interpret.stub import StubProvider
 from bankagent.orchestrator.agent import create_agent
@@ -33,6 +36,39 @@ def _configured_path(env: Mapping[str, str], key: str, default: Path) -> Path:
     return path if path.is_absolute() else ROOT / path
 
 
+def _spend_limit(env: Mapping[str, str]) -> Decimal | None:
+    """``LLM_SPEND_LIMIT_USD`` for the server's whole lifetime; unset keeps the default cap."""
+    raw = env.get("LLM_SPEND_LIMIT_USD")
+    if not raw:
+        return None
+    try:
+        limit = Decimal(raw)
+    except InvalidOperation as exc:
+        raise ValueError("LLM_SPEND_LIMIT_USD must be a number") from exc
+    if not limit.is_finite() or limit <= 0:
+        raise ValueError("LLM_SPEND_LIMIT_USD must be a positive number")
+    return limit
+
+
+def build_llm(env: Mapping[str, str]) -> LLMProvider:
+    """The interpreter behind ``LLM_PROVIDER``: ``stub`` (default, 0 USD), ``openai`` or ``compat``.
+
+    One provider serves every conversation of the process, so its spend limit is the server's
+    lifetime budget: once reached the agent falls back to the keyword interpreter instead of
+    failing. Errors name variables, never values.
+    """
+    provider_name = env.get("LLM_PROVIDER", "stub")
+    if provider_name == "stub":
+        return StubProvider()
+    if provider_name == "openai":
+        return OpenAIProvider(
+            model=env.get("LLM_MODEL") or "gpt-6-luna", spend_limit_usd=_spend_limit(env)
+        )
+    if provider_name == "compat":
+        return compat_from_env(env, spend_limit_usd=_spend_limit(env))
+    raise ValueError("LLM_PROVIDER must be 'stub', 'openai' or 'compat'")
+
+
 def create_default_app() -> FastAPI:
     """Build all components over one serving DB and one ops store."""
     env = os.environ
@@ -43,13 +79,7 @@ def create_default_app() -> FastAPI:
     tools = build_tools(serving, store)
     policy = build_policy_evaluator(serving, store, clock=clock)
     issuer = build_confirmation_issuer(store)
-    provider_name = env.get("LLM_PROVIDER", "stub")
-    if provider_name == "openai":
-        llm = OpenAIProvider(model=env.get("LLM_MODEL", "gpt-6-luna"))
-    elif provider_name == "stub":
-        llm = StubProvider()
-    else:
-        raise ValueError("LLM_PROVIDER must be 'stub' or 'openai'")
+    llm = build_llm(env)
     return create_app(
         auth=auth,
         agent_factory=lambda: create_agent(

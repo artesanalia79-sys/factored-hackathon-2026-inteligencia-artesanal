@@ -413,3 +413,20 @@ def test_json_object_mode_puts_the_declared_task_schema_in_the_prompt() -> None:
     assert completion.output == _Task(answer="ok")
     system = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
     assert json.dumps(_Task.model_json_schema()) in system
+
+
+def test_amounts_typed_with_separators_are_normalized_like_the_openai_provider() -> None:
+    """Same regression as test_openai_provider: "1,249" was rejected, "1.249" read as 1.249."""
+    for typed in ("1,249", "1.249"):
+        output = dict(FIXTURES[0]["output"])
+        output["slots"] = {**output["slots"], "amount": typed}
+        provider = _provider(_client_returning(_completion(parsed=_parsed(output))))
+        assert str(_complete(provider).output.slots.amount) == "1249.00"
+
+
+def test_instructions_sent_to_a_compatible_endpoint_put_a_request_for_a_person_first() -> None:
+    client = _client_returning(_completion())
+    _complete(_provider(client))
+    system_prompt = client.chat.completions.parse.call_args.kwargs["messages"][0]["content"]
+    assert "human_request" in system_prompt
+    assert "even when the same message also describes" in system_prompt
