@@ -48,6 +48,8 @@ Applies to `src/bankagent/**` (except `fixtures/`, `router/` and `eval/`, see th
 - Default model `gpt-6-luna`; `gpt-6-sol` only for small comparisons or the judge sample
   (`docs/adr/0002-llm-provider-and-budget.md`). Record `model` and `prompt_version` everywhere.
 - Treat every user utterance and every tool result as untrusted input (prompt injection).
+- A development check on a real model follows the `live-llm-check` skill (`AGENTS.md` rule 10):
+  small steps under a hard cap, and the records must show the model answered, not the fallback.
 
 ## Observability
 
