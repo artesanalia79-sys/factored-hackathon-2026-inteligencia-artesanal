@@ -8,6 +8,16 @@ description: Train, evaluate and document the learned intent router (embeddings 
 Goal: a small, honest learned component that beats the keyword baseline and knows when to abstain.
 Read `docs/rules/eval.md` first. Owners: Juan José + Santiago (Task 18).
 
+**What exists (T18 minimum, scope reduction of 2026-10-02).** `src/bankagent/router/` (model,
+conformal sets, corpus loader; its evaluation is in the harness, `src/bankagent/eval/router/`): TF-IDF
+character n-grams + logistic regression instead of ONNX embeddings, compared with the keyword
+router only (the LLM zero-shot comparison and ONNX are T29), trained on the synthetic corpus in
+`eval/router/corpus/` (one file per intent, scenario groups in five dialects) and checked on
+`eval/router/external_check.yaml`. `uv run poe router` evaluates and writes
+`docs/evidence/router_eval.md`; the card is `docs/models/router.md`. The router is offline: the
+agent's router gate is still the keyword attack gate. After any corpus edit, rerun `poe router`
+and commit the report (a test compares its corpus sha256).
+
 ## 1. Data and splits
 
 - Training data: dev-pool utterances (`eval/dev/`) plus synthetic paraphrases. **Never** held-out.
@@ -23,6 +33,8 @@ train_idx, test_idx = next(gss.split(X, y, groups=groups))
 ```
 
 - Keep three disjoint sets: `fit`, `calibration`, `test`. Record their sizes and label counts.
+- In T18 the group is the corpus scenario, and `StratifiedGroupKFold` (5 folds: test,
+  calibration, three fit) also balances intents; choose hyperparameters inside `fit` only.
 
 ## 2. Baselines (always report all three)
 
@@ -38,14 +50,18 @@ accuracy on covered cases, and empirical set coverage. Slice by language and dia
 ## 4. Split-conformal abstention (α = 0.1)
 
 ```python
+import math
+
 import numpy as np
 
 def conformal_threshold(cal_probs: np.ndarray, cal_labels: np.ndarray, alpha: float = 0.1) -> float:
-    """Nonconformity = 1 - p(true class). Returns q_hat for the (1 - alpha) guarantee."""
+    """Nonconformity = 1 - p(true class). q_hat is the ceil((n + 1)(1 - alpha))-th smallest score."""
     n = len(cal_labels)
     scores = 1.0 - cal_probs[np.arange(n), cal_labels]
-    level = min(1.0, np.ceil((n + 1) * (1 - alpha)) / n)
-    return float(np.quantile(scores, level, method="higher"))
+    rank = math.ceil((n + 1) * (1 - alpha) - 1e-9)  # 160 * 0.9 is 144.00000000000003 in floats
+    if rank > n:
+        return 1.0  # too few calibration points: every class enters the set
+    return float(np.sort(scores)[rank - 1])
 
 def prediction_set(probs: np.ndarray, q_hat: float) -> list[int]:
     return [k for k, p in enumerate(probs) if 1.0 - p <= q_hat]
@@ -53,19 +69,26 @@ def prediction_set(probs: np.ndarray, q_hat: float) -> list[int]:
 
 - The router abstains when the prediction set is not a singleton (`RouterResult` enforces
   `abstain == (len(prediction_set) != 1)`). Abstention hands off to the LLM interpreter or clarify.
-- Verify empirical coverage on `test` is ≥ 1 − α (within sampling error) and report it.
+- Verify empirical coverage on `test` is ≥ 1 − α (within sampling error) and report it. With
+  grouped data one split's coverage varies a lot: report its mean over repeated splits too.
+- Do not use `np.quantile(scores, level, method="higher")` with `level = ceil(...) / n`: numpy's
+  index `(n - 1) * level` lands one rank above the order statistic. `bankagent.router.conformal`
+  has the tested version.
 
 ## 5. Tracking
 
 ```python
 import mlflow
 
-mlflow.set_tracking_uri("file:./mlruns")  # gitignored
+mlflow.set_tracking_uri("file:./mlruns")  # gitignored; MLflow 3.16 needs MLFLOW_ALLOW_FILE_STORE=true
 mlflow.set_experiment("router")
 with mlflow.start_run(run_name="logreg-onnx-v1"):
     mlflow.log_params({"alpha": 0.1, "embedder": EMBEDDER, "C": C, "seed": 42})
     mlflow.log_metrics({"macro_f1": f1, "coverage": cov, "covered_accuracy": acc})
 ```
+
+`bankagent.eval.router.tracking.log_run` sets `MLFLOW_ALLOW_FILE_STORE` and `MLFLOW_DISABLE_TELEMETRY`
+before importing MLflow; do the same in any new script.
 
 ## 6. Model card (`docs/models/router.md`)
 
