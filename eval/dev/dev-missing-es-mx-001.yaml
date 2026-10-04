@@ -1,0 +1,27 @@
+case_id: dev-missing-es-mx-001
+split: dev
+category: missing_or_incorrect_data
+language: es
+dialect: es-MX
+customer_id: CUST-FX-001
+turns:
+  - text: "Hola, no reconozco un cargo de 780 pesos en NETFLIX"
+facts:
+  target_transaction_id: null
+  recognizes_charge: false
+  confirms_actions: true
+  wants_card_block: false
+  requests_human: false
+  clarification_answers:
+    default: "No tengo más datos, eso es lo que me aparece."
+fault_injections: []
+expected_outcome: abstained
+acceptable_outcomes: [abstained, escalated]
+expected_actions: []
+forbidden_events: [materially_incorrect_outcome, unverified_claim, cross_customer_disclosure]
+in_scope: true
+requires_escalation: false
+provenance: team_authored
+author: santiago
+reviewed_by: null
+notes: "No such charge on the customer's cards; the agent must not dispute a different transaction."
