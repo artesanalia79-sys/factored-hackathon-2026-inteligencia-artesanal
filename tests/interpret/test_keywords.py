@@ -139,6 +139,67 @@ def test_dialogue_acts(text: str, act: DialogueAct) -> None:
 
 
 @pytest.mark.parametrize(
+    ("text", "act"),
+    [
+        # A refusal that opens like a yes. Each one was read as a yes, and a yes at a
+        # confirmation step writes (PR #29 audit).
+        ("Claro que no", DialogueAct.DENY),
+        ("Por favor no", DialogueAct.DENY),
+        ("Ok, no", DialogueAct.DENY),
+        ("Vale, mejor no", DialogueAct.DENY),
+        ("Está bien, no lo hagas", DialogueAct.DENY),
+        ("Por favor, no bloquees mi tarjeta", DialogueAct.DENY),
+        ("Claro que não", DialogueAct.DENY),
+        ("Pode não", DialogueAct.DENY),
+        # A yes and a no in one reply is not an explicit yes: the question is asked again.
+        ("Sí, pero no bloquees la tarjeta", DialogueAct.OTHER),
+        ("Sim, mas não bloqueie o cartão", DialogueAct.OTHER),
+        # Yeses that contain a negation stay yeses.
+        ("Claro, ¿por qué no?", DialogueAct.AFFIRM),
+        ("Sí, cómo no", DialogueAct.AFFIRM),
+        ("Ok, no hay problema", DialogueAct.AFFIRM),
+        ("Dale, no pasa nada", DialogueAct.AFFIRM),
+        ("Sim, não tem problema", DialogueAct.AFFIRM),
+        ("Sí, bloquéala", DialogueAct.AFFIRM),
+    ],
+)
+def test_a_reply_that_also_says_no_is_not_a_yes(text: str, act: DialogueAct) -> None:
+    assert interpret_text(text).dialogue_act == act
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Por favor, no bloquees mi tarjeta",
+        "No quiero bloquear la tarjeta, solo disputar el cargo",
+        "No, no la bloquees.",
+        "Não, não precisa bloquear.",
+        "Sim, mas não bloqueie o cartão",
+        "Por favor, no cancelen mi tarjeta",
+        "No congelen mi tarjeta, solo quiero el reclamo",
+    ],
+)
+def test_a_refused_block_is_not_a_block_request(text: str) -> None:
+    result = interpret_text(text)
+    assert result.intent != Intent.CARD_BLOCK
+    assert not result.slots.card_block_requested
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sí, bloquéala",
+        "No reconozco este cargo y quiero bloquear mi tarjeta",
+        "No lo reconozco, quiero que bloqueen la tarjeta",
+        "Bloqueen la tarjeta, no la reconozco",
+        "No sé qué pasó, cancelen mi tarjeta",
+    ],
+)
+def test_a_block_request_next_to_a_negation_is_still_a_block_request(text: str) -> None:
+    assert interpret_text(text).slots.card_block_requested
+
+
+@pytest.mark.parametrize(
     ("raw", "expected"),
     [
         ("2,450", "2450.00"),
@@ -154,6 +215,22 @@ def test_dialogue_acts(text: str, act: DialogueAct) -> None:
 )
 def test_parse_amount_latam_separators(raw: str, expected: str) -> None:
     assert parse_amount(raw) == Decimal(expected)
+
+
+def test_parse_amount_drops_amounts_the_contract_cannot_hold() -> None:
+    assert parse_amount("9999999999999.99") == Decimal("9999999999999.99")
+    assert parse_amount("10000000000000") is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Me cobraron $9999999999999999 en Amazon", "No reconozco la TXN-" + "A" * 70],
+)
+def test_a_slot_the_contract_cannot_hold_is_dropped_not_raised(text: str) -> None:
+    # Both raised a ValidationError, which the API returned as HTTP 500 (PR #29 audit).
+    slots = interpret_text(text).slots
+    assert slots.amount is None
+    assert slots.transaction_ref is None
 
 
 def test_slots_are_extracted() -> None:

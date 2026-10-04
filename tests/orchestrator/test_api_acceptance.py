@@ -523,6 +523,84 @@ def test_recognizing_the_charge_at_confirmation_creates_no_dispute(
     assert store.count("disputes") == 0
 
 
+@pytest.mark.parametrize("refusal", ["Claro que no", "Por favor no", "Ok, no", "Vale, mejor no"])
+def test_a_refusal_that_opens_like_a_yes_files_nothing(
+    system: tuple[TestClient, OpsStore], refusal: str
+) -> None:
+    # PR #29 audit: the keyword rules read each of these as a yes, and the dispute was filed.
+    client, store = system
+    headers = _headers(client, "Mariana")
+    _turn(client, headers, "Hola, tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    _turn(client, headers, "No fui yo")
+    answer = _turn(client, headers, refusal)
+    assert answer["ended"]
+    assert answer["claimed_actions"] == []
+    assert store.count("confirmation_tokens") == 0
+    assert store.count("disputes") == 0
+
+
+def test_a_refusal_files_nothing_when_the_llm_is_down(fixture_bank: Path, tmp_path: Path) -> None:
+    # Any LLMError, and a spent LLM budget, hand the turn to the keyword rules.
+    with OpsStore(tmp_path / "llm-down.sqlite") as store:
+        serving = ServingDB(fixture_bank)
+        agent = create_agent(
+            llm=StubProvider(always_fault=StubFault.UNAVAILABLE),
+            tools=build_tools(serving, store),
+            clock=lambda: NOW,
+            policy=build_policy_evaluator(serving, store, clock=lambda: NOW),
+            issue_confirmation=build_confirmation_issuer(store),
+        )
+        session = Session(
+            session_id="llm-down-session",
+            customer_id="CUST-FX-001",
+            issued_at=NOW - timedelta(minutes=1),
+            expires_at=NOW + timedelta(minutes=10),
+        )
+        agent.handle_turn(
+            session, "Hola, tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco"
+        )
+        asked = agent.handle_turn(session, "No fui yo")
+        assert "¿Confirmas crear un reclamo" in asked.reply_text
+        refused = agent.handle_turn(session, "Claro que no")
+        assert any(record.outcome == StepOutcome.FALLBACK for record in refused.records)
+        assert refused.claimed_actions == ()
+        assert store.count("disputes") == 0
+
+
+def test_a_polite_or_mixed_answer_to_the_block_offer_blocks_nothing(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    _turn(client, headers, "Hola, tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    _turn(client, headers, "No fui yo")
+    created = _turn(client, headers, "Sí, confirmo")
+    assert created["reply_text"].endswith("¿Confirmas bloquear la tarjeta terminada en 4821?")
+    # A yes and a no at once is not an explicit yes: the block question is asked again.
+    mixed = _turn(client, headers, "Sí, pero no bloquees la tarjeta")
+    assert mixed["claimed_actions"] == []
+    assert mixed["reply_text"].endswith("¿Confirmas bloquear la tarjeta terminada en 4821?")
+    declined = _turn(client, headers, "Por favor, no bloquees mi tarjeta")
+    assert declined["ended"]
+    assert declined["claimed_actions"] == []
+    assert declined["reply_text"] == "Entendido, no bloquearé la tarjeta."
+    assert store.count("card_blocks") == 0
+    assert store.count("disputes") == 1
+
+
+@pytest.mark.parametrize(
+    "text", ["Me cobraron $9999999999999999 en Amazon", "No reconozco la TXN-" + "A" * 70]
+)
+def test_an_oversized_amount_or_reference_gets_a_reply_not_a_500(
+    system: tuple[TestClient, OpsStore], text: str
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    reply = _turn(client, headers, text)  # asserts HTTP 200; both were HTTP 500 (PR #29 audit)
+    assert reply["claimed_actions"] == []
+    assert store.count("disputes") == 0
+
+
 def test_corrections_count_as_clarification_rounds(system: tuple[TestClient, OpsStore]) -> None:
     client, store = system
     headers = _headers(client, "Mariana")

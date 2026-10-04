@@ -14,7 +14,9 @@ from bankagent.contracts.decisions import DisputeSlots, InterpretationResult
 from bankagent.contracts.enums import Dialect, DialogueAct, Intent, Language
 
 MODEL_NAME = "stub-keywords"
-PROMPT_VERSION = "stub-v2"  # v2: language markers expanded (PR #48)
+# v2: language markers expanded (PR #48). v3: a yes that refuses is not a yes, a refused card
+# block is not a block request, and a slot the contract cannot hold is dropped (PR #29 audit).
+PROMPT_VERSION = "stub-v3"
 
 
 def normalize(text: str) -> str:
@@ -189,6 +191,16 @@ _CARD_BLOCK = _rx(
     r"\bcancel\w* (?:la|mi) tarjeta\b",
     r"\bcongel\w* (?:la|mi) tarjeta\b",
 )
+# A block the customer refuses ("no la bloquees", "no quiero bloquear", "não precisa bloquear",
+# "no cancelen mi tarjeta"): a negation, at most three helper words, then a verb that blocks.
+# Removed before `_CARD_BLOCK` is read.
+_REFUSED_BLOCK = re.compile(
+    r"\b(?:no|nao|nunca|sin|sem)\s+"
+    r"(?:(?:me|te|se|la|lo|le|les|a|o|que|quiero|quero|quisiera|queria|necesito|preciso|precisa"
+    r"|hace falta|hay que|tem que|tiene que|vayan a|van a|vai|deben|debe|pueden|puede"
+    r"|es necesario|e necessario|voy a|vou)\s+){0,3}"
+    r"(?:bloque|cancel|congel)\w*"
+)
 _GENERIC_DISPUTE = _rx(
     r"\bcargo\b", r"\bcobro\b", r"\bcobraron\b", r"\bcobranca\b", r"\bcobraram\b"
 )
@@ -224,6 +236,30 @@ _AFFIRM = re.compile(
 _DENY = re.compile(
     r"^(?:no|nao|nop|nel|para nada|cancel\w*|mejor no|todavia no|ainda nao|negativo)\b"
 )
+# A reply that opens like a yes may still refuse: "Claro que no", "Ok, no", "Por favor, no la
+# bloquees". Yeses that contain a negation are taken out before looking for one ("¿por qué no?").
+_NEGATION = _words("no", "nao", "nunca", "jamas", "tampoco", "nem")
+_YES_IDIOMS = _words(
+    "como no",
+    "por que no",
+    "porque no",
+    "no hay problema",
+    "no hay lio",
+    "no pasa nada",
+    "no te preocupes",
+    "no se preocupe",
+    "como nao",
+    "por que nao",
+    "porque nao",
+    "nao tem problema",
+    "nao ha problema",
+    "nao se preocupe",
+)
+# The negation right after the opening word is a refusal; one further on ("Sí, pero no bloquees
+# la tarjeta") answers two things at once, and the question is asked again.
+_REFUSAL_AFTER_YES = re.compile(
+    _AFFIRM.pattern + r"\W*(?:que\s+|pues\s+|mejor\s+|entonces\s+|entao\s+)?(?:no|nao)\b"
+)
 
 # ---------------------------------------------------------------------------
 # Slots
@@ -235,6 +271,8 @@ _LAST4 = re.compile(
     r"|ultimos\s+(?:4|cuatro|quatro)\s+(?:digitos\s+)?(?:son\s+|sao\s+|:\s*)?(\d{4})\b"
     r"|(?:\*{2,}|x{2,}|•{2,})\s*(\d{4})\b"
 )
+_MAX_REF_LENGTH = 64  # DisputeSlots.transaction_ref
+_MAX_AMOUNT = Decimal("1e13")  # Money keeps 15 digits, 2 of them decimals
 _NUMBER = r"\d{1,3}(?:[.,\s]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?"
 _AMOUNT_BEFORE = re.compile(
     rf"(?:r\$|us\$|\$|mxn|cop|ars|usd|brl)\s?({_NUMBER})"
@@ -341,10 +379,11 @@ def detect_intent(norm: str) -> tuple[Intent, float, bool]:
         (_DUPLICATE, Intent.DISPUTE_DUPLICATE),
         (_NOT_RECEIVED, Intent.DISPUTE_NOT_RECEIVED),
         (_UNRECOGNIZED, Intent.DISPUTE_UNRECOGNIZED),
-        (_CARD_BLOCK, Intent.CARD_BLOCK),
     ):
         if pattern.search(norm):
             return intent, 0.85, False
+    if block_requested(norm):
+        return Intent.CARD_BLOCK, 0.85, False
     if _GENERIC_DISPUTE.search(norm):
         # "tengo un problema con un cargo": probably a dispute, reason unknown.
         return Intent.DISPUTE_UNRECOGNIZED, 0.45, False
@@ -361,7 +400,12 @@ def detect_dialogue_act(norm: str, intent: Intent, slots: DisputeSlots) -> Dialo
     if _DENY.search(norm):
         return DialogueAct.DENY
     if _AFFIRM.search(norm):
-        return DialogueAct.AFFIRM
+        # A write needs an explicit yes (AGENTS.md rule 5): a reply that also says no is not one.
+        if not _NEGATION.search(_YES_IDIOMS.sub(" ", norm)):
+            return DialogueAct.AFFIRM
+        if _REFUSAL_AFTER_YES.search(norm):
+            return DialogueAct.DENY
+        return DialogueAct.OTHER
     if intent not in (Intent.OUT_OF_SCOPE, Intent.ATTACK):
         return DialogueAct.NEW_REQUEST
     if slots != DisputeSlots():
@@ -382,8 +426,17 @@ def parse_currency(text: str) -> str | None:
     return _currency_in(normalize(text))
 
 
+def block_requested(norm: str) -> bool:
+    """The normalized message asks for a card block and does not refuse one ("no la bloquees")."""
+    return bool(_CARD_BLOCK.search(_REFUSED_BLOCK.sub(" ", norm)))
+
+
 def parse_amount(raw: str) -> Decimal | None:
-    """Parse LATAM/US amounts: ``2.450``, ``2,450``, ``1.234,56``, ``1,234.56``, ``9.800.000``."""
+    """Parse LATAM/US amounts: ``2.450``, ``2,450``, ``1.234,56``, ``1,234.56``, ``9.800.000``.
+
+    ``None`` when the text is not a positive amount the contract can hold (13 integer digits):
+    an unreadable amount is dropped and asked for, never guessed.
+    """
     token = raw.replace(" ", "")
     if "." in token and "," in token:
         decimal_sep = "." if token.rfind(".") > token.rfind(",") else ","
@@ -401,11 +454,13 @@ def parse_amount(raw: str) -> Decimal | None:
         value = Decimal(token).quantize(Decimal("0.01"))
     except InvalidOperation:
         return None
-    return value if value > 0 else None
+    return value if 0 < value < _MAX_AMOUNT else None
 
 
 def extract_slots(norm: str, *, card_block_requested: bool = False) -> DisputeSlots:
     txn = _TXN_REF.search(norm)
+    if txn is not None and len(txn.group(0)) > _MAX_REF_LENGTH:
+        txn = None  # no real reference is that long; keeping it would fail the slot contract
     last4_match = _LAST4.search(norm)
     last4 = next((g for g in last4_match.groups() if g), None) if last4_match else None
 
@@ -450,7 +505,7 @@ def interpret_text(text: str) -> InterpretationResult:
     norm = normalize(text)
     language = detect_language(norm)
     intent, confidence, injection = detect_intent(norm)
-    wants_block = intent == Intent.CARD_BLOCK or bool(_CARD_BLOCK.search(norm))
+    wants_block = intent == Intent.CARD_BLOCK or block_requested(norm)
     slots = extract_slots(norm, card_block_requested=wants_block)
     return InterpretationResult(
         intent=intent,
