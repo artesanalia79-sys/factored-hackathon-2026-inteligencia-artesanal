@@ -237,8 +237,13 @@ def run_suite(
     repeats: int,
     budget_usd_per_system: Decimal,
     config: RunConfig | None = None,
+    on_trace: Callable[[CaseTrace], None] | None = None,
 ) -> list[CaseTrace]:
-    """Every system runs every case ``repeats`` times with the same tools and the same budget."""
+    """Every system runs every case ``repeats`` times with the same tools and the same budget.
+
+    ``on_trace`` gets every run as it ends, the one that passed the budget included, so a
+    long paid run keeps what it measured when ``BudgetExceededError`` stops it.
+    """
     config = config or RunConfig()
     variants = [s.variant for s in systems]
     if len(set(variants)) != len(variants):
@@ -253,6 +258,8 @@ def run_suite(
                     system, case, run_id=run_id, repeat_index=repeat, config=config, spend=spend
                 )
                 traces.append(trace)
+                if on_trace is not None:
+                    on_trace(trace)
                 if trace.ended_by == "budget":
                     raise BudgetExceededError(trace.error or "budget exceeded")
     return traces

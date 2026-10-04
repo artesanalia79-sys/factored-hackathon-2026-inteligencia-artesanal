@@ -110,6 +110,11 @@ else `default`) and, with none, "No estoy seguro." / "Não tenho certeza.".
 - If the opening message leaves out the merchant or the amount, or gives a wrong one, add the
   answer the customer would give (`clarification_answers: {default: "..."}`), or no system can
   finish the case.
+- When two charges match what the customer describes (a duplicate pair, two purchases at one
+  merchant), say which one in `clarification_answers` even if the opening message already
+  does: a system may still ask "which one?", and "No estoy seguro." ends the case for it. Name
+  it by what tells the charges apart (the time, the amount), not only by its place in a list
+  ("el segundo"): each system lists them in its own order (the proposed agent, newest first).
 - A case that tests what happens when the customer cannot say more leaves it empty and expects
   `abstained` or `escalated`.
 - `answer_wording` gives the customer's own words for one of the yes or no answers

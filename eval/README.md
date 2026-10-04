@@ -11,7 +11,7 @@ Owner: Santiago. Rules: `docs/rules/eval.md`. Skill: `eval-case-authoring`. Code
 | `gates.yaml` | pass/fail thresholds and the held-out plan, evaluated by `bankagent.eval.gates` | T12 |
 | `heldout_manifest.sha256` | hashes of the sealed held-out files (the files live in `HELDOUT_DIR`) | T17 |
 | `runs/` | local run outputs (`results.jsonl`, `unsafe_reasons.jsonl`, `report.md`), gitignored | T12 |
-| `reports/` | final evaluation reports | T27 |
+| `reports/` | final evaluation reports, written by `uv run poe eval-full` | T27 |
 
 `preregistration.md` and `gates.yaml` were **frozen on 2026-10-03**, before the held-out set was
 written; any later change is a deviation (`preregistration.md`, section 11).
@@ -67,6 +67,33 @@ names, never an utterance or a label, so a coding agent may run them. In this or
 A label changed while resolving a disagreement is changed before step 5: after the seal a case
 does not change. The manifest has the `sha256sum` format (`sha256sum -c` from inside
 `HELDOUT_DIR` checks it too).
+
+## Final evaluation (`uv run poe eval-full`, Task 27)
+
+Both systems on the sealed set, `heldout.repeats` times each, on the real tools with a fresh ops
+store per case run. Code: `src/bankagent/eval/final.py`.
+
+| Step | Command | What happens |
+|---|---|---|
+| 1 | `uv run poe eval-full --cases eval/dev --provider stub` | rehearsal, 0 USD: same code on the dev cases; everything goes to `runs/` and the report says REHEARSAL |
+| 2 | `uv run poe eval-full` | prints the plan (runs per system, provider and model, the 5 USD cap per system, the cost at the G5b bar) and stops. It checks the folder against the manifest, bytes only: no case is read |
+| 3 | log the estimate in `docs/decision_ledger.md`; the owner approves | `preregistration.md`, section 10 |
+| 4 | `uv run poe eval-full --approved-by <owner>` | the run. Writes `reports/heldout-<n>-<time>/` (`report.md`, `results.jsonl`, `unsafe_reasons.jsonl`, `run_record.json`: commit them, an interrupted run's folder too) and `runs/heldout-<n>-<time>/transcripts.jsonl` (git-ignored: it quotes the conversations and the kind the scripted user read for each question, for the human check of a sample) |
+
+On the held-out set it refuses, before any case is read: gates that are not frozen, the stub
+provider, a provider that is not configured (`OPENAI_API_KEY` missing), a model other than
+`gpt-6-luna`, `--repeats`, `--system` and `--budget-usd` (they are for rehearsals: the
+registered run is both systems, `heldout.repeats` times, under the registered cap) and a folder
+that does not match the manifest. It also refuses held-out cases that were never sealed.
+`run_record.json` is written with `status: running` before the first case runs, so a run that
+dies still counts as an opening of the set. A system that reaches its budget stops there, and an
+error of the harness or Ctrl-C stops the run: what was measured is kept, the exit code is 1 and
+the run record says so. The run record also counts crashed runs and the calls the model did not
+answer (the proposed agent then falls back to keyword rules), and the command prints a `CHECK:`
+line when there are any, so a network problem cannot pass for a result. The commit and whether
+the checkout had uncommitted changes are read before the run writes anything. `<n>` counts the
+runs of the held-out set in `reports/`: a second run is reported with the first, not instead of
+it.
 
 **Never read or copy held-out cases into this folder.** `load_cases` refuses `eval/heldout/` and
 `HELDOUT_DIR`.
