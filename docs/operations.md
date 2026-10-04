@@ -1,7 +1,7 @@
 # Operations
 
-How the public staging service is built, deployed, reset and rolled back (Task 15). Task 20
-adds logging and PII redaction to this file.
+How the public staging service is built, deployed, reset and rolled back (Task 15), and what
+its logs may contain (Task 20, "Logs and personal data").
 
 ## What runs
 
@@ -122,6 +122,62 @@ already disputed: reset the demo and run it again. If the service has an access 
 same value in `DEMO_ACCESS_CODE` in your local `.env`; the script never prints it.
 
 The run leaves one dispute behind, so reset the demo afterwards.
+
+## Logs and personal data
+
+The service writes to stdout and stderr only (Render's **Logs** page, `render logs`). Every
+log record of the process is redacted when it is created (`src/bankagent/obs/redaction.py`,
+installed by the first line of `create_default_app`): the message, its arguments, the
+exception text and the stack, for every logger and every handler, uvicorn's included.
+
+What writes a log line:
+
+| Logger | Content | In the output |
+|---|---|---|
+| `uvicorn.access` | method, path with its query string, status | yes |
+| `uvicorn.error` | start, stop, and the traceback of a request that failed | yes |
+| `bankagent.api` | `readiness_failed` with the dependency name and the exception type | yes (warning) |
+| `bankagent.auth` | login events with opaque ids (`chl-…`, `ses-…`), never a code, token or customer id | no: INFO lines are not emitted, see `docs/limitations.md` |
+| `openai`, `httpx` | request URL at INFO, request body at DEBUG (`OPENAI_LOG=debug`) | no, unless the level is lowered |
+
+Redacted, replaced by a marker that names the kind:
+
+| Marker | What |
+|---|---|
+| `[REDACTED:card]` | 13 to 19 digits standing alone, with spaces or hyphens or neither |
+| `[REDACTED:email]` | email addresses |
+| `[REDACTED:phone]` | phone numbers of 10 to 14 digits, with or without `+`, spaces, hyphens |
+| `[REDACTED:document]` | `FX-DOC-…` (the fixture bank), a CPF or CURP as written, `document_number=…` |
+| `[REDACTED:identity]` | `CUST-…`, `customer_id`, `is_fraud`, `fraud_score` and their values |
+| `[REDACTED:secret]` | the value after `otp`, `otp_code`, `mock_otp`, `access_code`, `token`, `api_key`, `password`, `secret` and their variants (`key=value`, `key: value`, JSON, query string); `Bearer …`; session tokens (JWT); `sk-…` and `AKIA…` keys |
+| `[REDACTED:ip]` | the client address of every `uvicorn.access` line |
+
+A URL-encoded query string is read decoded, so `%40` and `%20` do not hide an email or a
+card number. A record that cannot be redacted is replaced by `log record withheld: redaction
+failed`.
+
+Left as they are, because they are what a failure is debugged with: record and trace ids
+(`DSP-…`, `HND-…`, `trace-…`, `rec-…`, `chl-…`, `ses-…`), rule ids, error codes
+(`code=session_expired`), status codes, paths, amounts, dates, token counts and cost.
+
+The client address is redacted on purpose: the project treats an IP address as personal data
+(`FORBIDDEN_COLUMNS` in `src/bankagent/contracts/serving.py`), and nothing in this file needs
+it. The cost: the access log cannot tell one client from another. Requests are still tied
+together by the session id in the application's own lines.
+
+The mock OTP of the demo login is returned in the response body on purpose
+(`AUTH_EXPOSE_MOCK_OTP`); it is never written to a log.
+
+How to check:
+
+- `uv run pytest tests/obs -q`. `tests/obs/test_service_logs.py` starts a real uvicorn the way
+  the image does, sends a request with a card number, an email, an OTP and a session token in
+  the query string and in the message, makes the turn fail, and reads what uvicorn wrote.
+- On a running service: `curl "https://<service>/health?mail=a.b%40example.com"`, then look
+  for the line in the logs. It must read `[REDACTED:ip] - "GET /health?mail=[REDACTED:email]
+  HTTP/1.1" 200 OK`.
+
+Not checked on Render itself: the test above runs locally and in CI, not against the service.
 
 ## Roll back
 

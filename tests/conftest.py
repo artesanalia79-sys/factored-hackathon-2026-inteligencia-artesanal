@@ -9,7 +9,9 @@ collection there.
 from __future__ import annotations
 
 import importlib
+import logging
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -59,3 +61,11 @@ def _first_missing(modules: tuple[str, ...]) -> str | None:
         except ImportError:
             return module
     return None
+
+
+@pytest.fixture(autouse=True)
+def _restore_log_record_factory() -> Iterator[None]:
+    """``create_default_app`` installs the process-wide log redaction (T20); no test keeps it."""
+    factory = logging.getLogRecordFactory()
+    yield
+    logging.setLogRecordFactory(factory)
