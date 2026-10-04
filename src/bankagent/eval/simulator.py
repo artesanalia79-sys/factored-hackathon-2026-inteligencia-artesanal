@@ -56,9 +56,11 @@ _OFFER = re.compile(r"\b(?:quieres|queres|quiere|deseas|desea|gustaria|quer|dese
 _WHICH = re.compile(r"\bcual(?:es)?\b|\bqual\b|\bquais\b")
 # After an article, "cual" and "qual" are relative pronouns, not a question: "el cargo, el cual
 # aparece…", "lo cual", "a compra, a qual…". Accents are gone, so "cuál" cannot tell them apart.
+# Each language with its own articles: "¿el de 899 o cuál?" still asks which one.
 _RELATIVE = re.compile(
-    r"\b(?:el|la|lo|los|las|del|al|o|os|as|do|da|dos|das|no|na|nos|nas|pelo|pela|pelos|pelas)"
-    r" (?:cual(?:es)?|qual|quais)\b|, a (?:qual|quais)\b"
+    r"\b(?:el|la|lo|los|las|del|al) cual(?:es)?\b"
+    r"|\b(?:o|os|as|do|da|dos|das|no|na|nos|nas|pelo|pela|pelos|pelas) (?:qual|quais)\b"
+    r"|, a (?:qual|quais)\b"
 )
 # Two charges offered side by side: "¿Quieres disputar el de 1,249 o el de 899?".
 _ALTERNATIVES = re.compile(

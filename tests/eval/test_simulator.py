@@ -462,6 +462,7 @@ RULE_EXAMPLES: list[tuple[str, QuestionKind]] = [
     ("¿A cuál de los dos cargos te refieres?", QuestionKind.CLARIFY),
     ("A qual das duas compras você se refere?", QuestionKind.CLARIFY),
     ("¿Cuál de los dos quieres que dispute?", QuestionKind.CLARIFY),
+    ("¿Quieres disputar el de 899 o cuál?", QuestionKind.CLARIFY),  # Spanish "o" is "or"
     # After an article, "cual" and "qual" are relative pronouns: the frozen rules read these
     # right, and the first version of D1 read them as "which one?".
     ("¿Reconoces el cargo de Amazon, el cual aparece el 11 de junio?", QuestionKind.RECOGNIZE),
