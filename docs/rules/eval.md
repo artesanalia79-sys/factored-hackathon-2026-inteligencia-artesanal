@@ -40,7 +40,8 @@ Applies to `eval/**`, `src/bankagent/eval/**` and `src/bankagent/router/**`. Own
 ## ML component (router)
 
 - Split by conversation/customer group, never by row. Compare against the keyword baseline and
-  LLM zero-shot. Log runs to local MLflow (`mlruns/` is gitignored).
+  LLM zero-shot (the minimum T18 compares with the keyword router only; the zero-shot comparison
+  moved to T29). Log runs to local MLflow (`mlruns/` is gitignored).
 - Abstention uses split-conformal prediction (α = 0.1) on a calibration split disjoint from
   training and test. Document everything in a model card under `docs/models/`.
 - `is_fraud` may be used as an offline label only; it is never a runtime feature.

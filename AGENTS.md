@@ -86,6 +86,7 @@ Python is managed by uv (Python 3.12). Tasks run through poethepoet: `uv run poe
 | `uv run poe fmt` | auto-format and auto-fix |
 | `uv run poe contracts` / `contracts-check` | export / verify `docs/contracts/*.schema.json` |
 | `uv run poe fixtures` / `fixtures-check` | build / verify the synthetic fixture bank DuckDB |
+| `uv run poe router` / `router-predict "<msg>"` | learned intent router: evaluate it vs. keywords and write `docs/evidence/router_eval.md` / route one message (0 USD) |
 | `uv run poe sync-skills` / `skills-check` | mirror / verify skills copies |
 | `uv run poe secrets-scan` | run every pre-commit hook on the whole repo |
 | `uv run poe serve` | run the API locally (reads `.env`) |
