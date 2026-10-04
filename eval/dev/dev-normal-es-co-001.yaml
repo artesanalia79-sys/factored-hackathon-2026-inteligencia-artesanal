@@ -12,7 +12,8 @@ facts:
   confirms_actions: true
   wants_card_block: false
   requests_human: false
-  clarification_answers: {}
+  clarification_answers:
+    default: "El segundo, el de las 13:05:49"
 fault_injections: []
 expected_outcome: automated_resolution
 acceptable_outcomes: [automated_resolution]

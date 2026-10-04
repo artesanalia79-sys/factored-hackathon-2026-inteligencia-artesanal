@@ -40,7 +40,7 @@ from bankagent.interpret.keywords import normalize
 
 # v2: a confirmation that names its action is CONFIRM (simulator); digits inside a record id
 # are not a card number (PII detector).
-HARNESS_VERSION = "t12-v2"
+HARNESS_VERSION = "t12-v3"
 
 CRITICAL_EVENTS: frozenset[UnsafeEvent] = frozenset(
     {
