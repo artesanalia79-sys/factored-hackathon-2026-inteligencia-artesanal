@@ -50,27 +50,24 @@ accuracy on covered cases, and empirical set coverage. Slice by language and dia
 ## 4. Split-conformal abstention (α = 0.1)
 
 ```python
-import math
+from bankagent.router.conformal import grouped_conformal_threshold, prediction_set
 
-import numpy as np
-
-def conformal_threshold(cal_probs: np.ndarray, cal_labels: np.ndarray, alpha: float = 0.1) -> float:
-    """Nonconformity = 1 - p(true class). q_hat is the ceil((n + 1)(1 - alpha))-th smallest score."""
-    n = len(cal_labels)
-    scores = 1.0 - cal_probs[np.arange(n), cal_labels]
-    rank = math.ceil((n + 1) * (1 - alpha) - 1e-9)  # 250 * (1 - 0.172) is 207.00000000000003
-    if rank > n:
-        return 1.0  # too few calibration points: every class enters the set
-    return float(np.sort(scores)[rank - 1])
-
-def prediction_set(probs: np.ndarray, q_hat: float) -> list[int]:
-    return [k for k, p in enumerate(probs) if 1.0 - p <= q_hat]
+# One nonconformity score per scenario: the worst of its five dialect versions.
+# The rank uses the number of scenarios, not the number of messages.
+q_hat = grouped_conformal_threshold(cal_probs, cal_labels, cal_groups, alpha=0.1)
+members = prediction_set(new_probs, q_hat)
 ```
 
 - The router abstains when the prediction set is not a singleton (`RouterResult` enforces
   `abstain == (len(prediction_set) != 1)`). Abstention hands off to the LLM interpreter or clarify.
 - Verify empirical coverage on `test` is ≥ 1 − α (within sampling error) and report it. With
   grouped data one split's coverage varies a lot: report its mean over repeated splits too.
+- The finite-sample guarantee is over exchangeable scenarios. Use the maximum score per scenario
+  if all dialect versions of a new scenario must be covered together; row-level calibration on
+  five correlated dialects falsely counts five independent observations. Resample whole scenarios
+  for uncertainty intervals in the report. A higher threshold may reduce the answer rate.
+- Compute the rank with decimal arithmetic (`Decimal(str(alpha))`), not a fixed floating-point
+  tolerance: subtracting `1e-9` can lower a genuinely noninteger rank near a boundary.
 - Do not use `np.quantile(scores, level, method="higher")` with `level = ceil(...) / n`: numpy's
   index `(n - 1) * level` lands one rank above the order statistic. `bankagent.router.conformal`
   has the tested version.

@@ -10,7 +10,12 @@ from pydantic import ValidationError
 
 from bankagent.contracts.decisions import RouterResult
 from bankagent.contracts.enums import Intent
-from bankagent.router.conformal import conformal_rank, conformal_threshold, prediction_set
+from bankagent.router.conformal import (
+    conformal_rank,
+    conformal_threshold,
+    grouped_conformal_threshold,
+    prediction_set,
+)
 
 
 def _calibration(rng: np.random.Generator, n: int, k: int = 4) -> tuple[np.ndarray, np.ndarray]:
@@ -35,6 +40,12 @@ def test_rank_is_the_finite_sample_order_statistic(n: int, alpha: float, rank: i
     assert conformal_rank(n, alpha) == rank
 
 
+def test_rank_does_not_cross_a_real_integer_boundary() -> None:
+    assert conformal_rank(9, 0.09999999999) == 10
+    assert conformal_rank(9, 0.1) == 9
+    assert conformal_rank(9, 0.10000000001) == 9
+
+
 def test_threshold_is_the_rank_th_smallest_score() -> None:
     true_class_probs = np.array([0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3])
     probs = np.column_stack([true_class_probs, 1.0 - true_class_probs])
@@ -43,6 +54,17 @@ def test_threshold_is_the_rank_th_smallest_score() -> None:
     assert conformal_threshold(probs, labels, 0.1) == pytest.approx(0.7)
     # rank ceil(10 * 0.5) = 5: the fifth smallest score, 0.3.
     assert conformal_threshold(probs, labels, 0.5) == pytest.approx(0.3)
+
+
+def test_grouped_calibration_uses_scenario_maxima_and_the_group_rank() -> None:
+    # Five perfectly correlated dialect versions per scenario expose the row-level error:
+    # rank 145/160 takes scenario 29, but rank 30/32 is needed for 90% group coverage.
+    scores = np.repeat(np.arange(1, 33) / 40.0, 5)
+    probs = np.column_stack([1.0 - scores, scores])
+    labels = np.zeros(160, dtype=np.int64)
+    groups = [f"scenario-{i}" for i in range(32) for _ in range(5)]
+    assert conformal_threshold(probs, labels, 0.1) == pytest.approx(29 / 40)
+    assert grouped_conformal_threshold(probs, labels, groups, 0.1) == pytest.approx(30 / 40)
 
 
 def test_too_few_calibration_messages_put_every_intent_in_the_set() -> None:

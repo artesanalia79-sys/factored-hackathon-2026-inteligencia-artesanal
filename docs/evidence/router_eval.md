@@ -9,19 +9,22 @@ these numbers measure the method on that distribution, not accuracy on real cust
 
 - Model: `router-tfidf-logreg-v1`: TF-IDF character n-grams 2-5 inside word
   boundaries (min_df 2) on the keyword normalization, then a class-balanced
-  logistic regression; split-conformal abstention with α = 0.1.
+  logistic regression; scenario-calibrated split-conformal abstention with α = 0.1.
 - Corpus: 800 messages, 160 scenario groups, 8 intents, 5 dialects.
 - Corpus sha256: `21d4466b8165fdd1c52537d1c4dbdc749b12c5a1ddc3e1578870c807c188fc75`
 - External check sha256: `cf732664d5af1a27d6d04e4aa40393df598edd3bbb8f70835d9fe1528f60274a`
 - Corpus review: jjresher.
 - Split seed 42. C = 10, chosen from {1, 3, 10, 30, 100} by grouped
   4-fold cross-validation inside the fit split (mean macro-F1 per C:
-  1: 0.805, 3: 0.804, 10: 0.816, 30: 0.811, 100: 0.813). q̂ = 0.8528.
+  1: 0.805, 3: 0.804, 10: 0.816, 30: 0.811, 100: 0.813). Calibration takes the worst score in each scenario; q̂ = 0.9442.
 
 ## Splits
 
 Stratified by intent and grouped by scenario: the five dialect versions of a scenario
-are always in the same split.
+are always in the same split. The 32 calibration scenarios, not their 160 messages,
+are the units used to choose the conformal threshold. Under exchangeable scenarios
+the prediction set covers all five dialect versions of a new scenario with probability
+at least 90%; this is marginal over scenarios, not each intent or dialect.
 
 | Split | Messages | Groups | Per intent |
 |---|---|---|---|
@@ -31,10 +34,14 @@ are always in the same split.
 
 ## Test split: learned vs. keyword router
 
-| Router | Accuracy [95% CI] | Macro-F1 |
+The 95% percentile intervals resample whole scenario groups (5 dialect versions
+together, 5,000 draws). They describe uncertainty on this synthetic scenario source,
+not on real customer traffic.
+
+| Router | Accuracy [95% scenario bootstrap interval] | Macro-F1 |
 |---|---|---|
-| Learned (top-1) | 87.5% (140/160) [81.5%, 91.8%] | 0.875 |
-| Keyword router | 48.1% (77/160) [40.5%, 55.8%] | 0.473 |
+| Learned (top-1) | 87.5% (140/160) [78.1%, 95.6%] | 0.875 |
+| Keyword router | 48.1% (77/160) [33.1%, 63.1%] | 0.473 |
 
 ## Abstention (split-conformal, α = 0.1)
 
@@ -43,13 +50,13 @@ otherwise it abstains (in the agent that would hand over to the LLM interpreter 
 
 | Measure (test split) | Value |
 |---|---|
-| Set coverage: true intent inside the set (target ≥ 90%) | 95.0% (152/160) [90.4%, 97.4%] |
-| Answered: a one-intent set | 58.8% (94/160) [51.0%, 66.1%] |
-| Accuracy when answering | 93.6% (88/94) [86.8%, 97.0%] |
-| Mean set size | 1.54 |
+| Set coverage: true intent inside the set (target ≥ 90%) | 97.5% (156/160) [92.5%, 100.0%] |
+| Answered: a one-intent set | 26.2% (42/160) [17.5%, 36.2%] |
+| Accuracy when answering | 92.9% (39/42) [76.3%, 100.0%] |
+| Mean set size | 3.11 |
 | Empty sets | 0 |
-| Keyword router answering at confidence ≥ 0.5 | 38.1% (61/160) [31.0%, 45.8%] |
-| Keyword router accuracy when answering | 85.2% (52/61) [74.3%, 92.0%] |
+| Keyword router answering at confidence ≥ 0.5 | 38.1% (61/160) [24.4%, 52.5%] |
+| Keyword router accuracy when answering | 85.2% (52/61) [63.8%, 100.0%] |
 
 ## Recall per intent (test split)
 
@@ -96,29 +103,29 @@ Keyword router:
 
 | Slice | Messages | Learned accuracy | Keyword accuracy | Set coverage | Answered |
 |---|---|---|---|---|---|
-| es | 128 | 88.3% (113/128) | 46.9% (60/128) | 94.5% (121/128) | 57.0% (73/128) |
-| pt | 32 | 84.4% (27/32) | 53.1% (17/32) | 96.9% (31/32) | 65.6% (21/32) |
-| es-AR | 32 | 90.6% (29/32) | 40.6% (13/32) | 90.6% (29/32) | 68.8% (22/32) |
-| es-CO | 32 | 93.8% (30/32) | 53.1% (17/32) | 96.9% (31/32) | 53.1% (17/32) |
-| es-MX | 32 | 87.5% (28/32) | 46.9% (15/32) | 100.0% (32/32) | 53.1% (17/32) |
-| es-neutral | 32 | 81.2% (26/32) | 46.9% (15/32) | 90.6% (29/32) | 53.1% (17/32) |
-| pt-BR | 32 | 84.4% (27/32) | 53.1% (17/32) | 96.9% (31/32) | 65.6% (21/32) |
+| es | 128 | 88.3% (113/128) | 46.9% (60/128) | 97.7% (125/128) | 25.0% (32/128) |
+| pt | 32 | 84.4% (27/32) | 53.1% (17/32) | 96.9% (31/32) | 31.2% (10/32) |
+| es-AR | 32 | 90.6% (29/32) | 40.6% (13/32) | 96.9% (31/32) | 31.2% (10/32) |
+| es-CO | 32 | 93.8% (30/32) | 53.1% (17/32) | 96.9% (31/32) | 25.0% (8/32) |
+| es-MX | 32 | 87.5% (28/32) | 46.9% (15/32) | 100.0% (32/32) | 15.6% (5/32) |
+| es-neutral | 32 | 81.2% (26/32) | 46.9% (15/32) | 96.9% (31/32) | 28.1% (9/32) |
+| pt-BR | 32 | 84.4% (27/32) | 53.1% (17/32) | 96.9% (31/32) | 31.2% (10/32) |
 
 ## Repeated grouped splits (20 more seeds)
 
 The whole pipeline (split, C, fit, calibration) again on split seeds 43-62.
-With about 32 scenario groups per test split, one split's coverage moves a lot;
-the conformal guarantee is about the average over splits, which this table checks.
+With about 32 scenario groups per test split, one split's observed coverage moves a lot;
+the table shows its variation, not a separate guarantee for each split.
 
 | Measure | Mean | Min | Max |
 |---|---|---|---|
 | Learned accuracy | 83.3% | 76.2% | 90.0% |
 | Keyword accuracy | 48.2% | 33.1% | 55.6% |
-| Set coverage | 90.2% | 79.4% | 97.5% |
-| Answered | 73.6% | 53.8% | 91.2% |
-| Accuracy when answering | 91.3% | 80.8% | 97.2% |
+| Set coverage | 97.3% | 88.1% | 100.0% |
+| Answered | 38.8% | 11.9% | 73.8% |
+| Accuracy when answering | 97.2% | 88.5% | 100.0% |
 
-Learned macro-F1: mean 0.828, min 0.754, max 0.895. Splits with set coverage below 90%: 7 of 20. C chosen: 1 ×7, 3 ×3, 10 ×3, 30 ×2, 100 ×5.
+Learned macro-F1: mean 0.828, min 0.754, max 0.895. Splits with set coverage below 90%: 2 of 20. C chosen: 1 ×7, 3 ×3, 10 ×3, 30 ×2, 100 ×5.
 
 ## External check (42 messages by other teammates)
 
@@ -130,19 +137,19 @@ them; it has few messages per intent, so only accuracy is reported.
 |---|---|
 | Learned accuracy (top-1) | 92.9% (39/42) [81.0%, 97.5%] |
 | Keyword accuracy | 90.5% (38/42) [77.9%, 96.2%] |
-| Learned set coverage | 97.6% (41/42) [87.7%, 99.6%] |
-| Learned answered | 76.2% (32/42) [61.5%, 86.5%] |
-| Learned accuracy when answering | 96.9% (31/32) [84.3%, 99.4%] |
+| Learned set coverage | 100.0% (42/42) [91.6%, 100.0%] |
+| Learned answered | 54.8% (23/42) [39.9%, 68.8%] |
+| Learned accuracy when answering | 100.0% (23/23) [85.7%, 100.0%] |
 
 Messages either router gets wrong (top-1):
 
 | Message | Label | Learned (set) | Keyword |
 |---|---|---|---|
-| El cargo de ayer no es mío, che | unr | atk (atk, unr) | unr |
+| El cargo de ayer no es mío, che | unr | atk (atk, unr, oos, sta, dup, nrc) | unr |
 | Aparecen dos cargos idénticos por una sola compra | dup | dup (dup, unr) | oos |
-| Vejo duas cobranças iguais no extrato | dup | dup (dup) | oos |
+| Vejo duas cobranças iguais no extrato | dup | dup (dup, oos, unr, atk) | oos |
 | Nunca autoricé ese pago | unr | nrc (nrc, unr) | oos |
 | Onde acompanho a contestação? | sta | sta (sta, oos) | oos |
-| Quiero disputar la transacción TXN-FX-0601, no la reconozco | unr | sta (sta) | unr |
+| Quiero disputar la transacción TXN-FX-0601, no la reconozco | unr | sta (sta, atk, oos, unr, hum) | unr |
 
 Intent abbreviations: unr = dispute_unrecognized, dup = dispute_duplicate, nrc = dispute_not_received, blk = card_block, sta = dispute_status, hum = human_request, oos = out_of_scope, atk = attack.

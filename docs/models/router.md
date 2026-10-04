@@ -54,22 +54,29 @@ this label never blocks a card by itself.
 three fit folds (480 / 160 / 160 messages, 96 / 32 / 32 scenarios). C is chosen from
 {1, 3, 10, 30, 100} by grouped 4-fold cross-validation inside the fit split only. Tests check
 that the C search sees only the fit split, that q̂ comes from the calibration split, and that
-rewriting every test message changes nothing in the model.
+rewriting every test message changes nothing in the model. Calibration takes the maximum
+nonconformity score across the five dialect versions of each of the 32 calibration scenarios,
+then uses the scenario-level finite-sample rank. This protects coverage for all five versions
+of a new exchangeable scenario together. It is more conservative than row-level calibration.
 
 ## Results
 
 | | Learned | Keyword router |
 |---|---|---|
-| Test accuracy, split seed 42 [95% Wilson] | 87.5% (140/160) [81.5%, 91.8%] | 48.1% (77/160) [40.5%, 55.8%] |
+| Test accuracy, split seed 42 [95% scenario bootstrap interval] | 87.5% (140/160) [78.1%, 95.6%] | 48.1% (77/160) [33.1%, 63.1%] |
 | Test macro-F1, split seed 42 | 0.875 | 0.473 |
 | Test accuracy, mean of 20 more split seeds (min-max) | 83.3% (76.2-90.0%) | 48.2% (33.1-55.6%) |
 | External check, 42 messages by other teammates | 92.9% (39/42) | 90.5% (38/42) |
 
-**Abstention (α = 0.1).** On the seed-42 test split the true intent is inside the set for 95.0%
-of messages (152/160, [90.4%, 97.4%]); the router answers 58.8% of them, with 93.6% accuracy
-(88/94); mean set size 1.54, no empty set. Over 20 more splits: coverage 90.2% on average
-(79.4-97.5%, 7 splits below 90%), 73.6% answered at 91.3% accuracy. For comparison, the keyword
-router answering only above 0.5 confidence answers 38.1% at 85.2% accuracy.
+**Abstention (α = 0.1).** On the seed-42 test split the true intent is inside the set for 97.5%
+of messages (156/160, [92.5%, 100.0%]); the router answers 26.2% of them, with 92.9% accuracy
+(39/42); mean set size 3.11, no empty set. Over 20 more splits: coverage 97.3% on average
+(88.1-100.0%, 2 splits below 90%), 38.8% answered at 97.2% accuracy. For comparison, the
+keyword router answering only above 0.5 confidence answers 38.1% at 85.2% accuracy. Scenario
+calibration lowers the seed-42 answer rate from the earlier row-calibrated 58.8% to 26.2%.
+The test intervals above and in the report resample whole scenarios, keeping their five dialect
+versions together (5,000 deterministic draws). They describe this synthetic scenario source,
+not real customer traffic.
 
 **Slices** (seed 42, 32 messages each): accuracy es-AR 90.6%, es-CO 93.8%, es-MX 87.5%,
 es-neutral 81.2%, pt-BR 84.4%. Too few messages to rank dialects.
@@ -86,9 +93,10 @@ not in the image; a pure-Python export of the vocabulary and weights is the way 
 - The keyword router was never tuned on this corpus: most of its misses are phrasings its rules
   do not list (its patterns flag 32 of the 100 attack messages). On the external check, written
   next to its rules, it is level with the learned router (38 vs. 39 of 42).
-- The guarantee is marginal (on average over messages and splits), not per intent or dialect,
-  and it assumes exchangeable messages. Messages come in scenario groups, so a single split's
-  coverage varies widely; the 20-split mean, 90.2%, is at the target.
+- The guarantee assumes exchangeable scenarios, each with five dialect versions, and covers
+  all five versions together with probability at least 90%. It is marginal over scenarios, not
+  per intent or dialect. A single split's observed coverage can fall below 90%; the 20-split
+  mean is 97.3%. The conservative threshold sharply reduces the number of one-intent sets.
 - No LLM zero-shot comparison and no ONNX embeddings: both moved to T29 with the scope reduction.
 
 ## Known failure modes (seed-42 router: test split, external check, `router-predict` example)
@@ -100,8 +108,9 @@ not in the image; a pure-Python export of the vocabulary and weights is the way 
   `attack` first). Even the documented example "No reconozco este cargo" abstains:
   `dispute_unrecognized` first, `attack` second at 31%. Wired as a gate, an `attack` answer alone
   must never refuse a customer.
-- Identifiers pull towards `dispute_status`, because only status messages carry one: "Quiero
-  disputar la transacción TXN-FX-0601, no la reconozco" gets the single intent `dispute_status`.
+- Identifiers pull the top prediction towards `dispute_status`, because only status messages
+  carry one: "Quiero disputar la transacción TXN-FX-0601, no la reconozco" has `dispute_status`
+  first, but the wider conformal set includes `dispute_unrecognized` and abstains.
 - A lost card without the word "bloquear" ("Estoy de viaje y perdí la tarjeta en el aeropuerto")
   is read as out of scope; the router abstains on those, usually with `card_block` in the set.
 

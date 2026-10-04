@@ -19,7 +19,7 @@ from sklearn.pipeline import Pipeline
 from bankagent.contracts.decisions import RouterResult
 from bankagent.contracts.enums import Intent
 from bankagent.interpret.keywords import normalize
-from bankagent.router.conformal import conformal_threshold, prediction_set
+from bankagent.router.conformal import grouped_conformal_threshold, prediction_set
 
 MODEL_VERSION = "router-tfidf-logreg-v1"
 NGRAM_RANGE = (2, 5)
@@ -68,6 +68,7 @@ class LearnedRouter:
         cal_texts: Sequence[str],
         cal_labels: Sequence[Intent],
         *,
+        cal_groups: Sequence[str],
         c: float,
         alpha: float,
         seed: int,
@@ -81,7 +82,12 @@ class LearnedRouter:
             raise ValueError(f"calibration intents missing from the fit split: {unseen}")
         probs = np.asarray(pipeline.predict_proba(list(cal_texts)), dtype=np.float64)
         labels = np.array([index[label] for label in cal_labels], dtype=np.int64)
-        return cls(pipeline, classes, conformal_threshold(probs, labels, alpha), alpha)
+        return cls(
+            pipeline,
+            classes,
+            grouped_conformal_threshold(probs, labels, cal_groups, alpha),
+            alpha,
+        )
 
     def predict_proba(self, texts: Sequence[str]) -> NDArray[np.float64]:
         """One row per message, columns in the order of ``classes``."""

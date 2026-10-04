@@ -140,6 +140,7 @@ def train_router(
             [e.intent for e in fit],
             [e.text for e in calibration],
             [e.intent for e in calibration],
+            cal_groups=[e.group for e in calibration],
             c=c,
             alpha=alpha,
             seed=seed,
@@ -318,6 +319,7 @@ class Evaluation:
     keyword: Classification
     abstention: Abstention
     keyword_answers: KeywordAnswers
+    test_intervals: Mapping[str, tuple[float, float]]
     slices: tuple[Slice, ...]
     repeats: tuple[Repeat, ...]
     external: ExternalResult
@@ -325,6 +327,71 @@ class Evaluation:
 
 def _point(rate: Rate) -> float:
     return rate.point if rate.point is not None else float("nan")
+
+
+def scenario_bootstrap_interval(
+    examples: Sequence[Example],
+    successes: Sequence[bool],
+    eligible: Sequence[bool] | None = None,
+    *,
+    seed: int = SEED,
+    draws: int = 5000,
+) -> tuple[float, float]:
+    """Percentile interval for a rate, resampling entire scenarios rather than dialect rows."""
+    if len(examples) != len(successes) or (eligible is not None and len(eligible) != len(examples)):
+        raise ValueError("examples, successes and eligibility must have the same row count")
+    groups = sorted({e.group for e in examples})
+    if not groups:
+        raise ValueError("at least one scenario is needed")
+    positions = {group: i for i, group in enumerate(groups)}
+    numerator = np.zeros(len(groups), dtype=np.int64)
+    denominator = np.zeros(len(groups), dtype=np.int64)
+    for i, example in enumerate(examples):
+        if eligible is None or eligible[i]:
+            index = positions[example.group]
+            numerator[index] += int(successes[i])
+            denominator[index] += 1
+    rng = np.random.default_rng(seed)
+    samples = rng.integers(len(groups), size=(draws, len(groups)))
+    totals = denominator[samples].sum(axis=1)
+    rates = numerator[samples].sum(axis=1)[totals > 0] / totals[totals > 0]
+    if not len(rates):
+        return (float("nan"), float("nan"))
+    lower, upper = np.quantile(rates, [0.025, 0.975])
+    return float(lower), float(upper)
+
+
+def test_cluster_intervals(
+    examples: Sequence[Example], scored: Scored, *, seed: int
+) -> Mapping[str, tuple[float, float]]:
+    """Scenario bootstrap intervals for the test rates displayed in the report."""
+    answered = [len(members) == 1 for members in scored.sets]
+    keyword_answered = [confidence >= KEYWORD_ANSWER_CONFIDENCE for _, confidence in scored.keyword]
+    measures = {
+        "learned_accuracy": (
+            [t == p for t, p in zip(scored.truth, scored.learned, strict=True)],
+            None,
+        ),
+        "keyword_accuracy": (
+            [t == p for t, (p, _) in zip(scored.truth, scored.keyword, strict=True)],
+            None,
+        ),
+        "set_coverage": ([t in s for t, s in zip(scored.truth, scored.sets, strict=True)], None),
+        "answered": (answered, None),
+        "answered_accuracy": (
+            [bool(s) and t == s[0] for t, s in zip(scored.truth, scored.sets, strict=True)],
+            answered,
+        ),
+        "keyword_answered": (keyword_answered, None),
+        "keyword_answered_accuracy": (
+            [t == p for t, (p, _) in zip(scored.truth, scored.keyword, strict=True)],
+            keyword_answered,
+        ),
+    }
+    return {
+        name: scenario_bootstrap_interval(examples, successes, eligible, seed=seed)
+        for name, (successes, eligible) in measures.items()
+    }
 
 
 def repeat_seeds(seed: int, repeats: int) -> tuple[int, ...]:
@@ -401,6 +468,7 @@ def evaluate(
         keyword=classification(scored.truth, [k for k, _ in scored.keyword]),
         abstention=abstention(scored.truth, scored.sets),
         keyword_answers=keyword_answers(scored.truth, scored.keyword),
+        test_intervals=test_cluster_intervals(test, scored, seed=seed),
         slices=slices(test, scored),
         repeats=tuple(_repeat(examples, alpha=alpha, seed=s) for s in repeat_seeds(seed, repeats)),
         external=_external(trained.router, external),

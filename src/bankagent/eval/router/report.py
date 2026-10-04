@@ -42,13 +42,15 @@ def _share(rate: Rate) -> str:
     return f"{rate.point:.1%} ({rate.successes}/{rate.n})"
 
 
-def _interval(rate: Rate) -> str:
-    interval = rate.interval
+def _interval(rate: Rate, interval: tuple[float, float] | None = None) -> str:
+    if rate.point is None:
+        return "n/a"
+    interval = rate.interval if interval is None else interval
     return "n/a" if interval is None else f"[{interval[0]:.1%}, {interval[1]:.1%}]"
 
 
-def _with_interval(rate: Rate) -> str:
-    return f"{_share(rate)} {_interval(rate)}"
+def _with_interval(rate: Rate, interval: tuple[float, float] | None = None) -> str:
+    return f"{_share(rate)} {_interval(rate, interval)}"
 
 
 def _number(value: float) -> str:
@@ -111,7 +113,8 @@ def render_report(evaluation: Evaluation) -> str:
         f"- Model: `{router.version}`: TF-IDF character n-grams"
         f" {NGRAM_RANGE[0]}-{NGRAM_RANGE[1]} inside word",
         f"  boundaries (min_df {MIN_DF}) on the keyword normalization, then a class-balanced",
-        f"  logistic regression; split-conformal abstention with α = {_number(ev.alpha)}.",
+        f"  logistic regression; scenario-calibrated split-conformal abstention with"
+        f" α = {_number(ev.alpha)}.",
         f"- Corpus: {len(examples)} messages, {len(groups)} scenario groups, {len(INTENTS)}"
         f" intents, {len(dialects)} dialects.",
         f"- Corpus sha256: `{ev.corpus.sha256}`",
@@ -120,12 +123,17 @@ def render_report(evaluation: Evaluation) -> str:
         f"- Split seed {ev.seed}. C = {_number(ev.trained.c)}, chosen from"
         f" {{{', '.join(_number(c) for c in C_GRID)}}} by grouped",
         f"  {INNER_FOLDS}-fold cross-validation inside the fit split (mean macro-F1 per C:",
-        f"  {c_scores}). q̂ = {router.q_hat:.4f}.",
+        f"  {c_scores}). Calibration takes the worst score in each scenario;"
+        f" q̂ = {router.q_hat:.4f}.",
         "",
         "## Splits",
         "",
         "Stratified by intent and grouped by scenario: the five dialect versions of a scenario",
-        "are always in the same split.",
+        "are always in the same split. The 32 calibration scenarios, not their 160 messages,",
+        "are the units used to choose the conformal threshold. Under exchangeable scenarios",
+        "the prediction set covers all five dialect versions of a new scenario with probability",
+        f"at least {1 - ev.alpha:.0%}; this is marginal over scenarios, not each intent"
+        " or dialect.",
         "",
     ]
     split_rows = []
@@ -145,12 +153,24 @@ def render_report(evaluation: Evaluation) -> str:
         "",
         "## Test split: learned vs. keyword router",
         "",
+        "The 95% percentile intervals resample whole scenario groups (5 dialect versions",
+        "together, 5,000 draws). They describe uncertainty on this synthetic scenario source,",
+        "not on real customer traffic.",
+        "",
     ]
     lines += _table(
-        ["Router", "Accuracy [95% CI]", "Macro-F1"],
+        ["Router", "Accuracy [95% scenario bootstrap interval]", "Macro-F1"],
         [
-            ["Learned (top-1)", _with_interval(ev.learned.accuracy), f"{ev.learned.macro_f1:.3f}"],
-            ["Keyword router", _with_interval(ev.keyword.accuracy), f"{ev.keyword.macro_f1:.3f}"],
+            [
+                "Learned (top-1)",
+                _with_interval(ev.learned.accuracy, ev.test_intervals["learned_accuracy"]),
+                f"{ev.learned.macro_f1:.3f}",
+            ],
+            [
+                "Keyword router",
+                _with_interval(ev.keyword.accuracy, ev.test_intervals["keyword_accuracy"]),
+                f"{ev.keyword.macro_f1:.3f}",
+            ],
         ],
     )
 
@@ -168,19 +188,28 @@ def render_report(evaluation: Evaluation) -> str:
         [
             [
                 f"Set coverage: true intent inside the set (target ≥ {1 - ev.alpha:.0%})",
-                _with_interval(conformal.set_coverage),
+                _with_interval(conformal.set_coverage, ev.test_intervals["set_coverage"]),
             ],
-            ["Answered: a one-intent set", _with_interval(conformal.answered)],
-            ["Accuracy when answering", _with_interval(conformal.answered_accuracy)],
+            [
+                "Answered: a one-intent set",
+                _with_interval(conformal.answered, ev.test_intervals["answered"]),
+            ],
+            [
+                "Accuracy when answering",
+                _with_interval(conformal.answered_accuracy, ev.test_intervals["answered_accuracy"]),
+            ],
             ["Mean set size", f"{conformal.mean_set_size:.2f}"],
             ["Empty sets", str(conformal.empty_sets)],
             [
                 f"Keyword router answering at confidence ≥ {KEYWORD_ANSWER_CONFIDENCE}",
-                _with_interval(ev.keyword_answers.answered),
+                _with_interval(ev.keyword_answers.answered, ev.test_intervals["keyword_answered"]),
             ],
             [
                 "Keyword router accuracy when answering",
-                _with_interval(ev.keyword_answers.answered_accuracy),
+                _with_interval(
+                    ev.keyword_answers.answered_accuracy,
+                    ev.test_intervals["keyword_answered_accuracy"],
+                ),
             ],
         ],
     )
@@ -229,9 +258,9 @@ def render_report(evaluation: Evaluation) -> str:
             "",
             "The whole pipeline (split, C, fit, calibration) again on split seeds"
             f" {min(seeds)}-{max(seeds)}.",
-            f"With about {len(test_groups)} scenario groups per test split, one split's coverage"
-            " moves a lot;",
-            "the conformal guarantee is about the average over splits, which this table checks.",
+            f"With about {len(test_groups)} scenario groups per test split, one split's observed"
+            " coverage moves a lot;",
+            "the table shows its variation, not a separate guarantee for each split.",
             "",
         ]
         rows = [

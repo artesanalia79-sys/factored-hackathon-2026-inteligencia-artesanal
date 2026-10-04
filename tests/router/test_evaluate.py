@@ -24,9 +24,10 @@ from bankagent.eval.router.evaluate import (
     keyword_answers,
     macro_f1,
     repeat_seeds,
+    scenario_bootstrap_interval,
     train_router,
 )
-from bankagent.router.conformal import conformal_threshold
+from bankagent.router.conformal import grouped_conformal_threshold
 from bankagent.router.corpus import Example, load_corpus
 from bankagent.router.model import MODEL_VERSION
 
@@ -103,7 +104,19 @@ def test_q_hat_is_the_conformal_threshold_of_the_calibration_split(
     calibration = [examples[i] for i in trained.splits.calibration]
     probs = router.predict_proba([e.text for e in calibration])
     labels = np.array([router.classes.index(e.intent) for e in calibration], dtype=np.int64)
-    assert router.q_hat == pytest.approx(conformal_threshold(probs, labels, 0.1), abs=1e-12)
+    assert router.q_hat == pytest.approx(
+        grouped_conformal_threshold(probs, labels, [e.group for e in calibration], 0.1),
+        abs=1e-12,
+    )
+
+
+def test_bootstrap_resamples_scenarios_not_dialect_rows(examples: tuple[Example, ...]) -> None:
+    intent = Intent.CARD_BLOCK
+    clustered = [Example("one", intent, examples[0].dialect, "a") for _ in range(5)] + [
+        Example("two", intent, examples[0].dialect, "b") for _ in range(5)
+    ]
+    interval = scenario_bootstrap_interval(clustered, [True] * 5 + [False] * 5)
+    assert interval == (0.0, 1.0)
 
 
 def test_the_best_c_has_the_highest_score_and_a_tie_goes_to_the_smaller_c() -> None:
