@@ -22,6 +22,7 @@ from bankagent.contracts.tools import SearchTransactionsArgs
 from bankagent.interpret.compat_provider import from_env as compat_from_env
 from bankagent.interpret.openai_provider import OpenAIProvider
 from bankagent.interpret.stub import StubProvider
+from bankagent.obs import install_log_redaction
 from bankagent.orchestrator.agent import create_agent
 from bankagent.orchestrator.wiring import build_confirmation_issuer, build_policy_evaluator
 from bankagent.store.ops import OpsStore
@@ -76,6 +77,10 @@ def create_default_app() -> FastAPI:
     The web UI is served from ``WEB_DIST_DIR`` (default ``web/dist``) once it is built
     (``npm --prefix web run build``); without a build the app serves the API only.
     """
+    # First: every log record created from here on is redacted, whatever logger or handler
+    # writes it. uvicorn configures its loggers before it calls this factory and never replaces
+    # the record factory, so its access and error logs are covered too.
+    install_log_redaction()
     env = os.environ
     clock = utc_now
     store = OpsStore(_configured_path(env, "OPS_DB_PATH", DEFAULT_OPS_DB))
