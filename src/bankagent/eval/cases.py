@@ -2,7 +2,9 @@
 
 The sealed held-out set must never be read before the final evaluation (Task 27). ``load_cases``
 refuses any path under ``eval/heldout/`` or under ``HELDOUT_DIR`` unless the caller passes
-``allow_heldout=True``, which only the Task 27 command may do.
+``allow_heldout=True``, which only the Task 27 command may do. While the set is being written,
+``bankagent.eval.heldout`` validates and seals it with its own reader, which prints no case
+content.
 """
 
 from __future__ import annotations

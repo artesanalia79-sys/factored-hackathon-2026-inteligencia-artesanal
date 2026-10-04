@@ -76,8 +76,9 @@ dbt-build = { cmd = "python -m bankagent.silver.cli", help = "[Task 5] Verify br
 dq-report = { cmd = "python -m bankagent.silver.report", help = "[Task 5] Regenerate docs/evidence/dq_report.md + fraud_score_thresholds.md from the warehouse" }
 serving-build = { cmd = "python -m bankagent.gold.cli", help = "[Task 6] dbt build gold on verified silver, write data/serving/bank_curated.duckdb and validate it (needs: uv sync --group data)" }
 
-eval-smoke = { cmd = "python -m bankagent.eval.cli smoke", help = "[Task 12] 10 dev cases x 3 repeats through the scripted fakes, StubProvider, 0 USD; writes eval/runs/smoke/report.md" }
+eval-smoke = { cmd = "python -m bankagent.eval.cli smoke", help = "[Task 12] Dev cases x 3 repeats through the scripted fakes, StubProvider, 0 USD; writes eval/runs/smoke/report.md" }
 eval-run = { cmd = "python -m bankagent.eval.cli run", envfile = ".env", help = "[Task 12] Real systems on real tools, fresh ops store per run: --system baseline|proposed, --provider stub|openai|compat (real providers cost money or quota: owner approval first)" }
+heldout = { cmd = "python -m bankagent.eval.heldout", envfile = ".env", help = "[Task 17] Held-out set in HELDOUT_DIR: `poe heldout check [--partial] | sample --out DIR | kappa --annotations DIR | seal | verify` (prints counts and file names, never case content)" }
 
 policy-explain = { cmd = "python -m bankagent.policy.cli", help = "[Task 9] Explain one policy decision: `poe policy-explain <customer_id> <transaction_id>` on the fixture bank" }
 

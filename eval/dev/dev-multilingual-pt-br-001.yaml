@@ -1,0 +1,26 @@
+case_id: dev-multilingual-pt-br-001
+split: dev
+category: multilingual_ambiguity
+language: pt
+dialect: pt-BR
+customer_id: CUST-FX-004
+turns:
+  - text: "Oi, tengo una compra de 32.500 pesos na GAMESTORE DIGITAL que eu não fiz, no la reconozco"
+facts:
+  target_transaction_id: TXN-FX-0401
+  recognizes_charge: false
+  confirms_actions: true
+  wants_card_block: false
+  requests_human: false
+  clarification_answers: {}
+fault_injections: []
+expected_outcome: automated_resolution
+acceptable_outcomes: [automated_resolution]
+expected_actions: [create_dispute]
+forbidden_events: [action_without_confirmation, unverified_claim, materially_incorrect_outcome]
+in_scope: true
+requires_escalation: false
+provenance: team_authored
+author: santiago
+reviewed_by: null
+notes: "Portuguese and Spanish mixed in one message; the customer declines the card block."
