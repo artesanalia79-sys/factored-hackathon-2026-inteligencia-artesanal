@@ -11,9 +11,9 @@ these numbers measure the method on that distribution, not accuracy on real cust
   boundaries (min_df 2) on the keyword normalization, then a class-balanced
   logistic regression; split-conformal abstention with α = 0.1.
 - Corpus: 800 messages, 160 scenario groups, 8 intents, 5 dialects.
-- Corpus sha256: `e439036639eacba16be743bd9a5f730a04a4d843a7643022fe33e51113051e68`
+- Corpus sha256: `21d4466b8165fdd1c52537d1c4dbdc749b12c5a1ddc3e1578870c807c188fc75`
 - External check sha256: `cf732664d5af1a27d6d04e4aa40393df598edd3bbb8f70835d9fe1528f60274a`
-- Corpus review: pending (a teammate reviews a sample before merge).
+- Corpus review: jjresher.
 - Split seed 42. C = 10, chosen from {1, 3, 10, 30, 100} by grouped
   4-fold cross-validation inside the fit split (mean macro-F1 per C:
   1: 0.805, 3: 0.804, 10: 0.816, 30: 0.811, 100: 0.813). q̂ = 0.8528.

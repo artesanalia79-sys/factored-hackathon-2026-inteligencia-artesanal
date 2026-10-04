@@ -5,7 +5,7 @@
 intent: out_of_scope
 provenance: llm_generated_reviewed
 author: claude-code
-reviewed_by: null
+reviewed_by: jjresher
 groups:
   - id: oos-01 # branch opening hours
     utterances:

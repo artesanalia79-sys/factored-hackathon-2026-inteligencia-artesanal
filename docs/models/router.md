@@ -32,8 +32,10 @@ LLM interpreter. Wiring it in is listed in T29.
 | `eval/router/corpus/`, synthetic, written for this task by the AI assistant | 800: 8 intents × 20 scenarios × 5 dialects (es-MX, es-CO, es-AR voseo, es-neutral, pt-BR) | fit, calibration, test |
 | `eval/router/external_check.yaml`, written by teammates for other purposes (Task 10 script, keyword tests, dev cases) | 42 | external check only |
 
-Provenance `llm_generated_reviewed`: a teammate reviews a sample (five messages per intent)
-before merge and fills `reviewed_by`; the report says whether that happened. No organizer data,
+Provenance `llm_generated_reviewed`: Juan José reviewed a sample before merge (2026-10-04: five
+messages per intent, one per dialect, 40 in all) and kept every label; `reviewed_by` records it
+and the report repeats it. A sample is not the whole corpus: the other 760 messages were read by
+the assistant that wrote them and in the PR #65 audit, not by a teammate. No organizer data,
 no personal data (checked with the scorer's PII detector) and no held-out case: the sealed set
 was never read. The corpus holds hard negatives on purpose: "cargo" as a fee, "la tarjeta nueva
 nunca me llegó" (a block, not a missing purchase), attacks phrased as role play or as requests

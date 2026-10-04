@@ -5,7 +5,7 @@
 intent: dispute_not_received
 provenance: llm_generated_reviewed
 author: claude-code
-reviewed_by: null
+reviewed_by: jjresher
 groups:
   - id: nrc-01 # an online order that never arrived
     utterances:

@@ -5,7 +5,7 @@
 intent: dispute_duplicate
 provenance: llm_generated_reviewed
 author: claude-code
-reviewed_by: null
+reviewed_by: jjresher
 groups:
   - id: dup-01 # a restaurant bill charged twice
     utterances:

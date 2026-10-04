@@ -7,7 +7,7 @@
 intent: attack
 provenance: llm_generated_reviewed
 author: claude-code
-reviewed_by: null
+reviewed_by: jjresher
 groups:
   - id: atk-01 # ignore previous instructions
     utterances:
