@@ -35,7 +35,13 @@ from bankagent.eval.fake import Behavior, ScriptedFakeSystem
 from bankagent.eval.gates import GATES_FILE, evaluate, load_gates
 from bankagent.eval.metrics import system_metrics
 from bankagent.eval.report import ReportContext, render
-from bankagent.eval.runner import CaseTrace, RunConfig, run_suite, stub_provider_for
+from bankagent.eval.runner import (
+    CaseTrace,
+    ProviderFactory,
+    RunConfig,
+    run_suite,
+    stub_provider_for,
+)
 from bankagent.eval.scorer import ScoredRun, score
 from bankagent.eval.system import System
 from bankagent.interpret.stub import FAULTS_BY_INJECTION
@@ -80,8 +86,13 @@ def write_outputs(
     repeats: int,
     simulated: bool,
     cost_assumptions: str,
+    workload: str | None = None,
 ) -> list[ScoredRun]:
-    """Score the traces, evaluate the gates and write report.md, results and unsafe reasons."""
+    """Score the traces, evaluate the gates and write report.md, results and unsafe reasons.
+
+    ``workload`` replaces the folder in the report: a sealed set is named by its manifest,
+    not by a path on someone's machine.
+    """
     runs = [score(trace, bank) for trace in traces]
     metrics = {
         variant: system_metrics([r for r in runs if r.result.system == variant], bank)
@@ -94,9 +105,12 @@ def write_outputs(
         ReportContext(
             suite_id=suite_id,
             generated_at=generated_at.isoformat(timespec="seconds"),
-            cases_dir=cases_dir.relative_to(ROOT).as_posix()
-            if cases_dir.is_relative_to(ROOT)
-            else str(cases_dir),
+            cases_dir=workload
+            or (
+                cases_dir.relative_to(ROOT).as_posix()
+                if cases_dir.is_relative_to(ROOT)
+                else str(cases_dir)
+            ),
             case_set_sha256=case_set_sha256(cases),
             n_cases=len(cases),
             repeats=repeats,
@@ -187,6 +201,39 @@ SYSTEMS: dict[str, Callable[[], System]] = {
     "proposed": proposed_system,
     "baseline": baseline_llm_only_system,
 }
+PROVIDERS = ("stub", "openai", "compat")
+
+
+def provider_factory_for(provider: str, budget_usd: Decimal) -> tuple[ProviderFactory, str]:
+    """The provider of each case run, and the cost line of the report.
+
+    Raises ``ValueError`` when the OpenAI-compatible endpoint is not configured (the message
+    names keys, never values).
+    """
+    if provider == "openai":
+        from bankagent.interpret.openai_provider import OpenAIProvider
+
+        def openai_factory(case: EvalCase) -> LLMProvider:
+            # Injected LLM faults stay simulated (0 USD), so both systems see the same fault.
+            if any(f in FAULTS_BY_INJECTION for f in case.fault_injections):
+                return stub_provider_for(case)
+            return OpenAIProvider()  # one budgeted provider per case run
+
+        return openai_factory, "OpenAIProvider (config/pricing.yaml), real cost"
+    if provider == "compat":
+        from bankagent.interpret.compat_provider import from_env
+
+        # One shared provider, so its daily call limit holds across every case run; the
+        # suite's spend guard still stops each system at its budget.
+        shared = from_env(os.environ, spend_limit_usd=budget_usd * 2 if budget_usd else None)
+
+        def compat_factory(case: EvalCase) -> LLMProvider:
+            if any(f in FAULTS_BY_INJECTION for f in case.fault_injections):
+                return stub_provider_for(case)
+            return shared
+
+        return compat_factory, f"OpenAI-compatible endpoint, model {shared.model} (LLM_* variables)"
+    return stub_provider_for, "StubProvider (keyword rules), 0 USD per call"
 
 
 def real_run(
@@ -212,36 +259,11 @@ def real_run(
         print("\n".join(problems), file=sys.stderr)
         return 1
     systems = [SYSTEMS[name]() for name in system_names]
-    if provider == "openai":
-        from bankagent.interpret.openai_provider import OpenAIProvider
-
-        def provider_factory(case: EvalCase) -> LLMProvider:
-            # Injected LLM faults stay simulated (0 USD), so both systems see the same fault.
-            if any(f in FAULTS_BY_INJECTION for f in case.fault_injections):
-                return stub_provider_for(case)
-            return OpenAIProvider()  # one budgeted provider per case run
-
-        assumptions = "OpenAIProvider (config/pricing.yaml), real cost"
-    elif provider == "compat":
-        from bankagent.interpret.compat_provider import from_env
-
-        # One shared provider, so its daily call limit holds across every case run; the
-        # suite's spend guard still stops each system at its budget.
-        try:
-            shared = from_env(os.environ, spend_limit_usd=budget_usd * 2 if budget_usd else None)
-        except ValueError as exc:  # names keys, never values
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 1
-
-        def provider_factory(case: EvalCase) -> LLMProvider:
-            if any(f in FAULTS_BY_INJECTION for f in case.fault_injections):
-                return stub_provider_for(case)
-            return shared
-
-        assumptions = f"OpenAI-compatible endpoint, model {shared.model} (LLM_* variables)"
-    else:
-        provider_factory = stub_provider_for
-        assumptions = "StubProvider (keyword rules), 0 USD per call"
+    try:
+        provider_factory, assumptions = provider_factory_for(provider, budget_usd)
+    except ValueError as exc:  # names keys, never values
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     now = datetime.now(UTC)
     suite_id = f"run-{now:%Y%m%dT%H%M%SZ}"
     with tempfile.TemporaryDirectory(prefix="bankagent-eval-") as workdir:
@@ -283,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--cases", type=Path, default=DEV_DIR)
     run_parser.add_argument("--out", type=Path, default=RUNS_DIR / "dev")
     run_parser.add_argument("--repeats", type=int, default=1)
-    run_parser.add_argument("--provider", choices=("stub", "openai", "compat"), default="stub")
+    run_parser.add_argument("--provider", choices=PROVIDERS, default="stub")
     run_parser.add_argument("--budget-usd", type=Decimal, default=Decimal("0"))
     args = parser.parse_args(argv)
     if args.command == "smoke":

@@ -84,7 +84,7 @@ policy-explain = { cmd = "python -m bankagent.policy.cli", help = "[Task 9] Expl
 
 # Placeholders owned by later tasks (they fail loudly until implemented).
 analysis = { cmd = "python -m bankagent.analysis.report", help = "[Task 16] Regenerate docs/evidence/{call_center_baseline,complaints_baseline,roi}.md + roi_tornado.svg from the warehouse and config/roi_assumptions.yaml (pass --eval-results after T27)" }
-eval-full = { cmd = "python scripts/todo_task.py 27 'Final evaluation' 'all'", help = "[Task 27] Full held-out evaluation" }
+eval-full = { cmd = "python -m bankagent.eval.final", envfile = ".env", help = "[Task 27] Final evaluation: both systems on the sealed held-out set (HELDOUT_DIR), real model. Without --approved-by <owner> it only prints the plan and reads no case. Rehearsal: --cases eval/dev --provider stub" }
 serve = { cmd = "uvicorn bankagent.api.wiring:create_default_app --factory --host 0.0.0.0 --port 8000 --workers 1", envfile = ".env", help = "[Task 13] Run the API locally (reads .env: LLM_PROVIDER stub|openai|compat, OPENAI_API_KEY, LLM_SPEND_LIMIT_USD), and the web UI at / once `poe web-build` ran" }
 smoke = { cmd = "python scripts/smoke_dispute.py", envfile = ".env", help = "[Task 15] One full dispute over HTTP against a running service: `poe smoke https://...` (sends DEMO_ACCESS_CODE from .env if set)" }
 image-smoke = { cmd = "bash scripts/image_smoke.sh", help = "[Task 15] Build the container image and check it (needs Docker; CI runs it on every push)" }
