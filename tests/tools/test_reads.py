@@ -211,10 +211,34 @@ def test_search_matches_a_card_by_last4_only_within_the_session(desk: Desk) -> N
     assert _search(desk, ANDRES, merchant_query="rappi") == ["TXN-FX-0202", "TXN-FX-0201"]
 
 
+@pytest.mark.parametrize(
+    ("customer_id", "written", "expected"),
+    [
+        ("CUST-FX-003", "Mercado Libre", ["TXN-FX-0301"]),  # MERCADOLIBRE*TIENDA
+        ("CUST-FX-003", "mercado-libre tienda", ["TXN-FX-0301"]),
+        ("CUST-FX-005", "PAYPAL SPOTIFYMX", ["TXN-FX-0501"]),  # PAYPAL *SPOTIFYMX
+        ("CUST-FX-005", "Spotify MX", ["TXN-FX-0501"]),
+        (MARIANA, "Electro Mundo", ["TXN-FX-0101"]),  # ELECTROMUNDO ONLINE
+        (ANDRES, "Rappi restaurante", ["TXN-FX-0202", "TXN-FX-0201"]),  # RAPPI*RESTAURANTE
+        (MARIANA, "Mercado Libre", []),  # Lucía's merchant
+        (MARIANA, "Electro Mundo Tienda", []),  # more than the name says
+    ],
+)
+def test_search_finds_a_merchant_written_with_other_spaces_or_punctuation(
+    desk: Desk, customer_id: str, written: str, expected: list[str]
+) -> None:
+    # A real model returns the merchant as the customer wrote it. Compared as plain text it
+    # found nothing, and the agent asked for "un dato más" until it gave up.
+    assert _search(desk, customer_id, merchant_query=written) == expected
+
+
 def test_blank_merchant_query_is_no_filter_and_wildcards_are_plain_text(desk: Desk) -> None:
     assert _search(desk, merchant_query="   ") == _search(desk)
-    for wildcard in ("%", "_", "%%", "a%z", "*"):
+    # "a%z" and "a-z" leave two letters once the punctuation is dropped ("az", as in AMAZON):
+    # too little to be a merchant, so they match only as the plain text they are.
+    for wildcard in ("%", "_", "%%", "a%z", "a-z", "*"):
         assert _search(desk, merchant_query=wildcard) == []
+    assert _search(desk, merchant_query="a.m.a") == ["TXN-FX-0105", "TXN-FX-0104"]
 
 
 @pytest.mark.parametrize(
