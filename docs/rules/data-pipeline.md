@@ -24,6 +24,12 @@ Owners: Santiago (Tasks 4, 5), Juan José (Tasks 6, 16, 19). Skills: `dbt-modeli
   (`SERVING_CONTRACT_VERSION`). The build must call `validate_serving_db()` and fail on mismatch.
   Implementation: `uv run poe serving-build` (`src/bankagent/gold/`, models in
   `data_pipeline/dbt/models/gold/`); `uv run poe dbt-build` builds silver only.
+- **Runtime** (Task 19): `DATA_MODE` picks the serving DB (`synthetic`: the fixture bank;
+  `curated`: `data/serving/bank_curated.duckdb`, local only). The service refuses a file that
+  records another mode or fails `validate_serving_db()` (`src/bankagent/store/selection.py`).
+  After rebuilding the curated serving DB run `uv run poe curated-check` (also parses every
+  row into the views the runtime uses) and `uv run poe curated-e2e` (the agent end to end on
+  it), and commit the regenerated `docs/evidence/curated_e2e.md`.
 
 ## Hard rules
 

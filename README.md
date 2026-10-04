@@ -51,6 +51,8 @@ Details: [`docs/adr/0001-architecture.md`](docs/adr/0001-architecture.md).
 ## Data and privacy
 
 Organizer data is never committed. The public demo runs on team-authored **synthetic** personas.
+The same agent also runs end to end on the organizer data, locally only:
+[`docs/evidence/curated_e2e.md`](docs/evidence/curated_e2e.md).
 Known limitations: [`docs/limitations.md`](docs/limitations.md).
 
 ## Team

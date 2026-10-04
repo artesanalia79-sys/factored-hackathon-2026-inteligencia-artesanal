@@ -212,7 +212,8 @@ Local ONNX embeddings + logistic regression vs. keywords vs. LLM zero-shot; spli
 α = 0.1; MLflow; model card.
 
 **T19. Wire curated data** [P0] (Juan José + Victor)
-Serving DB built from organizer data (`DATA_MODE=curated`, local only), same contract.
+Serving DB built from organizer data (`DATA_MODE=curated`, local only), same contract;
+`poe curated-check` and `poe curated-e2e` (the agent end to end on it, sessions opened in code).
 
 **T20. Observability and reliability** [P0] (Santiago + Victor)
 Fallback matrix (LLM timeout/malformed/unavailable, tool unavailable), PII redaction in logs,
@@ -257,7 +258,7 @@ not forgotten. Each line keeps its original task number. Nothing here blocks the
 | T14 | A screen-reader, Safari and Firefox pass over the chat UI (only automated axe, keyboard and phone-width checks on Chromium so far); a native review of its Portuguese strings (`docs/limitations.md`, Web UI). |
 | T17 | Grow the held-out set toward the pre-registered n ≥ 200. |
 | T18 | ONNX embeddings and the LLM zero-shot comparator. Wiring the router into UNDERSTAND (it is offline after T18), served from a pure-Python export of its vocabulary and weights rather than scikit-learn in the image; per-intent (Mondrian) calibration; corpus messages by more than one author (`docs/models/router.md`). |
-| T19 | Agent on `DATA_MODE=curated` end to end, with evidence from a local run. |
+| T19 | Done on 2026-10-04: `uv run poe curated-e2e` runs the agent end to end on the curated serving DB, with the evidence in `docs/evidence/curated_e2e.md`. Left: the organizers' answer on organizer data in the demo (issue #19), a run with the real model, reading `TRX-…` references and `CLI-…` ids, and `accepted_values` tests on the gold enum columns (`docs/limitations.md`, "Curated mode"). |
 | T20 | Full fallback matrix (LLM timeout, malformed, unavailable), Langfuse export. One source for the redaction patterns (logs, prompts, `pii_leak`), redaction of the customer message before the model call, and the `bankagent.auth` login events in the service's output (`docs/limitations.md`). |
 | T21 | Agent console and evidence view per case. |
 | T22-T25 | Side-by-side UI, load test, promptfoo red team (plugins listed in T24), external pilot. |

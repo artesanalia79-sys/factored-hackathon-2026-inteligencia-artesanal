@@ -72,6 +72,10 @@ The organizers take the team from the repository's contributors, so the list mus
       for write correctness as the problem statement allows) or run part of the evaluation on
       the curated data locally (T19, now in T29). Write the choice and its reason on the
       evaluation slide and in `docs/limitations.md`.
+      One fact T19 now gives for that slide: the same agent ran end to end on the organizer
+      data locally, 110 of 110 scripted cases (`docs/evidence/curated_e2e.md`). It is a check
+      of the wiring with the keyword interpreter, not an evaluation: no baseline, no held-out
+      cases, and the cases were scripted by the people who built the agent.
 
 ## The deployed service (Task 15, Task 26)
 

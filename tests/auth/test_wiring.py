@@ -95,6 +95,27 @@ def test_exposed_mock_otp_is_refused_on_a_curated_serving_db(
     assert service.start_login(service.personas()[0].persona_id).mock_otp is None
 
 
+def test_the_otp_check_reads_the_serving_db_the_service_is_given(
+    fixture_bank: Path, tmp_path: Path, secret: str
+) -> None:
+    # The app passes the serving DB it opened and checked (T19). The environment here still
+    # names the fixture bank: the check must follow the file that will be read, not the name.
+    curated = tmp_path / "bank_curated.duckdb"
+    shutil.copy(fixture_bank, curated)
+    with duckdb.connect(str(curated)) as con:
+        con.execute(
+            "UPDATE _serving_metadata SET value = ? WHERE key = ?", ["curated", "data_mode"]
+        )
+        con.execute("UPDATE customer_profile_min SET first_name = 'Curada'")
+    env = _env(fixture_bank, tmp_path, secret)
+    with pytest.raises(AuthConfigError, match="only allowed with synthetic"):
+        create_auth_service(env, customers=ServingDB(curated))
+    service = create_auth_service(
+        {**env, "AUTH_EXPOSE_MOCK_OTP": "false"}, clock=lambda: NOW, customers=ServingDB(curated)
+    )
+    assert {persona.first_name for persona in service.personas()} == {"Curada"}
+
+
 @pytest.mark.parametrize(
     "statement",
     [

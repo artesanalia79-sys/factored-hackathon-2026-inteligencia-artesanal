@@ -1,6 +1,6 @@
 # data_pipeline
 
-Owners: Santiago (T4, T5), Juan José (T6). Rules: `docs/rules/data-pipeline.md`. Skill: `dbt-modeling`.
+Owners: Santiago (T4, T5), Juan José (T6, T19). Rules: `docs/rules/data-pipeline.md`. Skill: `dbt-modeling`.
 
 | Step | Task | Command | Output (gitignored) |
 |---|---|---|---|
@@ -8,6 +8,7 @@ Owners: Santiago (T4, T5), Juan José (T6). Rules: `docs/rules/data-pipeline.md`
 | dbt silver (contracts, dq flags, tests) | T5 | `uv run poe dbt-build` | `data/warehouse.duckdb` |
 | Silver evidence (aggregates only) | T5 | `uv run poe dq-report` | `docs/evidence/dq_report.md`, `docs/evidence/fraud_score_thresholds.md` (committed) |
 | dbt gold + curated serving DB (validated) | T6 | `uv run poe serving-build` | `data/warehouse.duckdb` (`gold_*`), `data/serving/bank_curated.duckdb` |
+| The agent end to end on the curated serving DB | T19 | `uv run poe curated-check`, `uv run poe curated-e2e` | `data/runtime/curated_e2e/` (conversations); `docs/evidence/curated_e2e.md` (counts only, committed) |
 
 The public demo uses the synthetic fixture bank instead (`uv run poe fixtures`,
 `data/fixtures/bank_fixture.duckdb`). Both serving DBs follow `src/bankagent/contracts/serving.py`.
@@ -53,8 +54,11 @@ It prints the silver vs gold row counts.
   `uv run poe serving-build --full-refresh` to reload rows older than the window.
 - `gold_cc_contact_baseline` and `gold_complaints_baseline` stay in the warehouse for T16; they are
   not served.
-- Runtime selection: `DATA_MODE=curated` and `SERVING_DB_PATH=data/serving/bank_curated.duckdb`
-  in `.env` (local only; the public demo stays on the fixture bank).
+- Runtime selection (T19): `DATA_MODE=curated` opens `data/serving/bank_curated.duckdb`; the
+  service refuses a file that records another mode or does not fit the contract (local only;
+  the public demo stays on the fixture bank). `uv run poe curated-check` checks the file,
+  including every row against the views the runtime parses it into, and
+  `uv run poe curated-e2e` runs the agent on it (`docs/evidence/curated_e2e.md`).
 - CI builds gold on the synthetic silver plus labelled `*-GD-*` rows (`tests/gold/`), including a
   synthetic late-arriving row; the real data has none.
 - Decisions and their evidence queries (`dbt/analyses/gold_*.sql`): `docs/decision_ledger.md`.

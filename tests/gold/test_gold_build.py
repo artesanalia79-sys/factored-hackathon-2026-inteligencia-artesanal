@@ -23,6 +23,9 @@ from bankagent.contracts.serving import (
     SERVING_TABLES,
     validate_serving_db,
 )
+from bankagent.curated.cases import Scenario, pick_cases
+from bankagent.curated.rows import check_rows
+from bankagent.curated.run import CaseResult, Reply, run_cases
 from bankagent.gold.build import (
     GOLD_MODELS,
     ServingBuildError,
@@ -32,8 +35,10 @@ from bankagent.gold.build import (
     read_silver_metadata,
     write_serving_db,
 )
+from bankagent.policy.schema import load_policy
 from bankagent.silver.build import BuildConfig, DbtBuildError, build_silver, write_build_metadata
 from bankagent.silver.synthetic import generate_synthetic_bronze
+from bankagent.store.serving import ServingDB
 
 # Needs the `data` group (dbt, pyarrow); tests/conftest.py skips this directory locally without it.
 
@@ -462,5 +467,46 @@ def test_a_late_row_inside_the_lookback_window_is_picked_up(tmp_path: Path) -> N
     assert served() == {"TXN-LATE-IN", "TXN-LATE-OUT"}
 
 
-# TODO(T19, Juan José): once the T8 tools exist, run their test suite unchanged against both the
-# synthetic fixture bank and a curated serving DB built by `uv run poe serving-build`.
+def test_the_agent_runs_end_to_end_on_the_serving_db_the_gold_build_wrote(
+    built: Built, tmp_path: Path
+) -> None:
+    # T19. Every other agent test reads a bank written by the fixture builder; this one reads
+    # what dbt gold wrote, through the production app, as `poe curated-e2e` does on the
+    # organizer data (the file is relabelled: synthetic bronze records `synthetic`).
+    served = tmp_path / "bank_curated.duckdb"
+    shutil.copy(built.result.serving_db, served)
+    with duckdb.connect(str(served)) as con:
+        con.execute("UPDATE _serving_metadata SET value = 'curated' WHERE key = 'data_mode'")
+    policy = load_policy()
+    as_of = ServingDB(served).as_of_date()
+
+    def run(scenario: Scenario, name: str) -> CaseResult:
+        (case,) = pick_cases(served, policy, as_of, per_scenario=1, seed="19", scenarios=[scenario])
+        (result,) = run_cases(served, tmp_path / name, policy, [case]).cases
+        return result
+
+    # The synthetic silver seeds a transaction with an invalid status. No gold test covers that
+    # column and the table contract cannot see it; the row check does, and the run shows what
+    # it costs: that customer's list of movements does not load.
+    seeded = "transactions_enriched: 1 rows do not fit TransactionView (transaction_status)"
+    assert check_rows(served).problems == (seeded,)
+    assert run(Scenario.RECOGNIZED, "seeded").failures == [
+        "the customer's transaction list did not answer"
+    ]
+
+    with duckdb.connect(str(served)) as con:
+        con.execute("DELETE FROM transactions_enriched WHERE transaction_status = 'Bogus'")
+    assert check_rows(served).problems == ()
+    expected = {
+        # 25.00 USD with a fraud score of 88, from a customer with an open Transactions claim.
+        Scenario.ESCALATE_FRAUD: [Reply.RECOGNIZE, Reply.ESCALATED],
+        # 40,000.01 COP, the same customer: only the claim in the history escalates.
+        Scenario.ESCALATE_REPEAT: [Reply.RECOGNIZE, Reply.ESCALATED],
+        # Three charges of 777.00: listed, one chosen by position, then escalated.
+        Scenario.CHOOSE_AMONG_MATCHES: [Reply.CHOOSE, Reply.RECOGNIZE, Reply.ESCALATED],
+        Scenario.RECOGNIZED: [Reply.RECOGNIZE, Reply.DEFLECTED],
+    }
+    for scenario, kinds in expected.items():
+        result = run(scenario, scenario.value)
+        assert result.failures == [], scenario
+        assert [turn.kind for turn in result.turns] == kinds

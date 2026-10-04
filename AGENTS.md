@@ -64,6 +64,7 @@ src/bankagent/            Python package
   fixtures/               deterministic fixture-bank builder (Task 3)
   interpret/              LLM interpreter + StubProvider/keyword baseline (Tasks 3, 10)
   eval/                   evaluation harness: simulator, runners, scorer, metrics, gates (Task 12)
+  curated/                the agent end to end on the curated serving DB, local only (Task 19)
   api/ auth/ orchestrator/ policy/ tools/ store/ render/ router/ obs/
 data_pipeline/            ingest (Task 4) + dbt project (Tasks 5-6)
 eval/                     harness, dev cases, pre-registration, gates (Tasks 12, 17, 27)
@@ -89,6 +90,7 @@ Python is managed by uv (Python 3.12). Tasks run through poethepoet: `uv run poe
 | `uv run poe router` / `router-predict "<msg>"` | learned intent router: evaluate it vs. keywords and write `docs/evidence/router_eval.md` / route one message (0 USD) |
 | `uv run poe sync-skills` / `skills-check` | mirror / verify skills copies |
 | `uv run poe secrets-scan` | run every pre-commit hook on the whole repo |
+| `uv run poe curated-check` / `curated-e2e` | organizer data, local only (needs `poe serving-build`): check the curated serving DB / run the agent end to end on it and write `docs/evidence/curated_e2e.md` |
 | `uv run poe serve` | run the API locally (reads `.env`) |
 | `uv run poe smoke <base URL>` | one full dispute over HTTP against a running service |
 | `uv run poe image-smoke` | build and check the container image (needs Docker; CI job `image` runs it) |

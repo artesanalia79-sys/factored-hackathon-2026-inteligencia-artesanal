@@ -30,14 +30,14 @@ Names only. No value of a secret is in the repository, in an image layer or in t
 | Variable | Set by | Meaning |
 |---|---|---|
 | `APP_SECRET_KEY` | Render generates it (`generateValue`) | Signs session tokens. At least 32 bytes and 12 distinct characters, or the service refuses to start. Nobody needs to read it. |
-| `DATA_MODE` | `render.yaml` and the image, `synthetic` | The service also checks what the serving DB itself records. |
+| `DATA_MODE` | `render.yaml` and the image, `synthetic` | `synthetic` or `curated`; anything else, and the service refuses to start. It picks the serving DB, and the file must record the same mode and fit the serving contract, or the service refuses to start (Task 19, `src/bankagent/store/selection.py`). The public service is always `synthetic`. |
 | `AUTH_EXPOSE_MOCK_OTP` | `render.yaml`, `true` | The demo login returns the one-time code, because there is no SMS channel. Refused unless the data is synthetic. |
 | `DEMO_ACCESS_CODE` | Render dashboard | Shared code every login must present (at least 8 ASCII characters). Empty means no gate. Set it before a paid model is on. |
 | `LLM_PROVIDER` | Render dashboard | `stub` (keyword rules, 0 USD), `openai` or `compat`. Empty means `stub`. |
 | `LLM_MODEL` | Render dashboard | Empty means `gpt-6-luna`. |
 | `LLM_SPEND_LIMIT_USD` | Render dashboard | Spend cap of one process. Empty means 0.10. When it is reached the agent keeps working on the keyword interpreter. |
 | `OPENAI_API_KEY` | Render dashboard | Only for `LLM_PROVIDER=openai`. |
-| `SERVING_DB_PATH`, `OPS_DB_PATH` | The image | Do not set them on Render. |
+| `SERVING_DB_PATH`, `OPS_DB_PATH` | The image | Do not set them on Render. `SERVING_DB_PATH` names another file for the same `DATA_MODE`; it never changes the mode. |
 | `PORT` | Render (10000) | The image defaults to 8000. |
 
 `LLM_PROVIDER=compat` needs `LLM_BASE_URL` and `LLM_API_KEY` (`.env.example`); they are not
@@ -122,6 +122,31 @@ already disputed: reset the demo and run it again. If the service has an access 
 same value in `DEMO_ACCESS_CODE` in your local `.env`; the script never prints it.
 
 The run leaves one dispute behind, so reset the demo afterwards.
+
+## Organizer data (local only)
+
+The public service never serves organizer data: the image holds the fixture bank only, and
+`DATA_MODE=synthetic` makes the service refuse a serving DB that records anything else. On a
+developer's machine, with the curated serving DB built (`uv run poe serving-build`):
+
+```
+uv run poe curated-check   # the file records curated data, fits the contract, every row parses
+uv run poe curated-e2e     # the agent end to end on it; writes docs/evidence/curated_e2e.md
+```
+
+`curated-e2e` builds the production app with `DATA_MODE=curated`, the keyword interpreter and
+an ops store of its own, and reads no `.env`. There is no login on organizer data, because
+`AUTH_EXPOSE_MOCK_OTP` is refused on it and there is no other channel for the code. The run
+opens each session in code instead, as the evaluation harness does: a stored session and a
+token signed with a key made for that run. It opens no port: the requests stay in the process.
+`poe serve` with `DATA_MODE=curated` starts (with `AUTH_EXPOSE_MOCK_OTP=false`) and answers
+`/ready`, but nobody can log in to it, and its persona list shows the first name and country
+of 50 customers to whoever can reach the port. There is no reason to run it.
+
+What it writes: the conversations and the run's ops store, which hold organizer data, in a new
+folder under `data/runtime/curated_e2e/` (git-ignored; delete it when it is no longer needed);
+the report under `docs/evidence/` holds counts and step names only and is refused if it holds a
+value of any row.
 
 ## Logs and personal data
 
