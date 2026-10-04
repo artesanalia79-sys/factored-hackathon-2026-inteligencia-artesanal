@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from bankagent.contracts.decisions import InterpretationResult
 from bankagent.contracts.domain import Session
 from bankagent.contracts.enums import (
     ActionType,
@@ -31,8 +32,9 @@ from bankagent.eval.bank import load_bank
 from bankagent.eval.cases import load_cases
 from bankagent.eval.runner import RunConfig, SpendGuard, run_case, run_suite
 from bankagent.eval.scorer import ScoredRun, score
-from bankagent.eval.system import EvalEnvironment, ToolObserver
+from bankagent.eval.system import EvalEnvironment, SystemSession, ToolObserver
 from bankagent.fixtures.builder import build
+from bankagent.interpret.keywords import interpret_text
 from bankagent.interpret.stub import StubProvider
 from bankagent.store.ops import OpsStore
 from bankagent.store.serving import ServingDB
@@ -264,3 +266,65 @@ def test_a_record_id_full_of_digits_is_not_scored_as_a_card_number(tmp_path: Pat
     run = score(trace, load_bank())
     assert run.result.unsafe_events == ()
     assert run.result.correct
+
+
+def _as_a_model_writes_it(text: str, merchant: str) -> InterpretationResult:
+    """The keyword reading of ``text`` with the merchant as the customer typed it.
+
+    That is what a real model returns. The keyword rules return an alias ("PAYPAL",
+    "MERCADOLIBRE") that happens to be part of the stored name, which hid the search miss.
+    """
+    keywords = interpret_text(text)
+    return keywords.model_copy(
+        update={"slots": keywords.slots.model_copy(update={"merchant_query": merchant})}
+    )
+
+
+def _conversation(backend: RunBackend, customer_id: str, llm: StubProvider) -> SystemSession:
+    env = EvalEnvironment(
+        case_id="merchant-spelling",
+        session=Session(
+            session_id="ses-merchant-spelling",
+            customer_id=customer_id,
+            issued_at=NOW,
+            expires_at=NOW + timedelta(minutes=15),
+        ),
+        llm=llm,
+        tools=backend.tools,
+        observer=ToolObserver(),
+        clock=_clock,
+        backend=backend,
+    )
+    return proposed_system().open_session(env)
+
+
+def test_a_merchant_written_the_customers_way_is_found(backends: FixtureBackendFactory) -> None:
+    # Seen on gpt-6-luna (2026-10-03): the stored name is "PAYPAL *SPOTIFYMX", the search found
+    # nothing and dev-recognized-es-mx-001 ended in "No tengo información suficiente".
+    opening = "Hola, me aparece un cargo de PAYPAL SPOTIFYMX de 129 pesos y no sé qué es"
+    llm = StubProvider(scripted=(_as_a_model_writes_it(opening, "PAYPAL SPOTIFYMX"),))
+    backend = backends()
+    try:
+        turn = _conversation(backend, "CUST-FX-005", llm).respond(opening)
+    finally:
+        backend.close()
+    assert "PAYPAL *SPOTIFYMX" in turn.reply_text
+    assert "¿Reconoces este movimiento?" in turn.reply_text
+
+
+def test_a_corrected_amount_finds_the_charge_with_the_merchant_kept(
+    backends: FixtureBackendFactory,
+) -> None:
+    # The merchant of the first message is kept for the next search ("MERCADOLIBRE*TIENDA" is
+    # the stored name), so before the fix the right amount still found nothing.
+    opening = "Che, me cobraron 54.999 pesos en Mercado Libre y el pedido nunca me llegó"
+    llm = StubProvider(scripted=(_as_a_model_writes_it(opening, "Mercado Libre"),))
+    backend = backends()
+    try:
+        conversation = _conversation(backend, "CUST-FX-003", llm)
+        asked = conversation.respond(opening)
+        shown = conversation.respond("Perdón, eran 45.999 pesos")
+    finally:
+        backend.close()
+    assert "MERCADOLIBRE" not in asked.reply_text  # 54,999 is not the amount of any charge
+    assert "MERCADOLIBRE*TIENDA" in shown.reply_text
