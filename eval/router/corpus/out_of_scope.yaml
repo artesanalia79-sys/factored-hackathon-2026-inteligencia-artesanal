@@ -1,0 +1,149 @@
+# Synthetic first messages for the learned intent router (Task 18), one file per intent.
+# Written for this task by an AI coding assistant; a teammate reviews a sample before merge and
+# fills `reviewed_by`. Labeling policy and use: docs/models/router.md. Each group is one scenario
+# in five dialects, so its paraphrases never cross a split. Never copy held-out cases here.
+intent: out_of_scope
+provenance: llm_generated_reviewed
+author: claude-code
+reviewed_by: null
+groups:
+  - id: oos-01 # branch opening hours
+    utterances:
+      - {dialect: es-MX, text: "¿A qué hora abren las sucursales el sábado?"}
+      - {dialect: es-CO, text: "¿Qué horario tienen las oficinas los sábados?"}
+      - {dialect: es-AR, text: "¿Hasta qué hora atienden las sucursales?"}
+      - {dialect: es-neutral, text: "¿Las sucursales abren los domingos?"}
+      - {dialect: pt-BR, text: "Qual o horário de funcionamento das agências?"}
+  - id: oos-02 # loan rates
+    utterances:
+      - {dialect: es-MX, text: "¿Qué tasa tienen para un préstamo personal?"}
+      - {dialect: es-CO, text: "¿Qué tasa de interés manejan para crédito de libre inversión?"}
+      - {dialect: es-AR, text: "Che, ¿cuánto me prestan si saco un préstamo?"}
+      - {dialect: es-neutral, text: "Quisiera información sobre préstamos personales"}
+      - {dialect: pt-BR, text: "Qual a taxa de juros do empréstimo pessoal?"}
+  - id: oos-03 # open an account
+    utterances:
+      - {dialect: es-MX, text: "Quiero abrir una cuenta de ahorro"}
+      - {dialect: es-CO, text: "¿Qué necesito para abrir una cuenta?"}
+      - {dialect: es-AR, text: "¿Cómo hago para abrir una caja de ahorro?"}
+      - {dialect: es-neutral, text: "¿Qué requisitos hay para abrir una cuenta?"}
+      - {dialect: pt-BR, text: "Quero abrir uma conta"}
+  - id: oos-04 # a forgotten app password
+    utterances:
+      - {dialect: es-MX, text: "Se me olvidó la contraseña de la app"}
+      - {dialect: es-CO, text: "No puedo entrar a la app, olvidé la clave"}
+      - {dialect: es-AR, text: "No puedo entrar al home banking, me olvidé la clave"}
+      - {dialect: es-neutral, text: "Olvidé mi contraseña de la banca en línea"}
+      - {dialect: pt-BR, text: "Esqueci a senha do aplicativo"}
+  - id: oos-05 # a greeting only
+    utterances:
+      - {dialect: es-MX, text: "Hola, buenas tardes"}
+      - {dialect: es-CO, text: "Buenas, ¿cómo está?"}
+      - {dialect: es-AR, text: "Hola, ¿qué tal?"}
+      - {dialect: es-neutral, text: "Buenos días"}
+      - {dialect: pt-BR, text: "Oi, tudo bem?"}
+  - id: oos-06 # thanks and goodbye
+    utterances:
+      - {dialect: es-MX, text: "Muchas gracias, eso era todo"}
+      - {dialect: es-CO, text: "Listo, muchas gracias por todo"}
+      - {dialect: es-AR, text: "Buenísimo, gracias, eso era todo"}
+      - {dialect: es-neutral, text: "Gracias, hasta luego"}
+      - {dialect: pt-BR, text: "Valeu, obrigado"}
+  - id: oos-07 # a credit limit increase
+    utterances:
+      - {dialect: es-MX, text: "¿Me pueden aumentar el límite de crédito?"}
+      - {dialect: es-CO, text: "Quiero que me suban el cupo de la tarjeta"}
+      - {dialect: es-AR, text: "¿Me pueden subir el límite de la tarjeta?"}
+      - {dialect: es-neutral, text: "Quisiera solicitar un aumento de límite"}
+      - {dialect: pt-BR, text: "Queria aumentar o limite do cartão"}
+  - id: oos-08 # the exchange rate
+    utterances:
+      - {dialect: es-MX, text: "¿A cómo está el dólar hoy?"}
+      - {dialect: es-CO, text: "¿Cuál es la TRM de hoy para comprar dólares?"}
+      - {dialect: es-AR, text: "¿A cuánto me venden dólares hoy?"}
+      - {dialect: es-neutral, text: "¿Cuál es el tipo de cambio de hoy?"}
+      - {dialect: pt-BR, text: "Qual a cotação do dólar hoje?"}
+  - id: oos-09 # small talk
+    utterances:
+      - {dialect: es-MX, text: "cuentame un chiste"}
+      - {dialect: es-CO, text: "¿Qué opina del partido de anoche?"}
+      - {dialect: es-AR, text: "¿Viste el partido de ayer?"}
+      - {dialect: es-neutral, text: "¿Qué tiempo hace hoy?"}
+      - {dialect: pt-BR, text: "Me conta uma piada"}
+  - id: oos-10 # a transfer to someone else
+    utterances:
+      - {dialect: es-MX, text: "¿Cómo hago una transferencia a otra cuenta?"}
+      - {dialect: es-CO, text: "Quiero transferir plata a otra cuenta"}
+      - {dialect: es-AR, text: "¿Cómo le paso plata a un amigo por CBU?"}
+      - {dialect: es-neutral, text: "Necesito hacer una transferencia"}
+      - {dialect: pt-BR, text: "Como faço um Pix?"}
+  - id: oos-11 # download a statement
+    utterances:
+      - {dialect: es-MX, text: "¿Dónde descargo mi estado de cuenta?"}
+      - {dialect: es-CO, text: "¿Cómo descargo el extracto del mes pasado?"}
+      - {dialect: es-AR, text: "¿Dónde bajo el resumen de la tarjeta?"}
+      - {dialect: es-neutral, text: "Necesito una copia de mi estado de cuenta de agosto"}
+      - {dialect: pt-BR, text: "Onde baixo a fatura do cartão?"}
+  - id: oos-12 # update contact details
+    utterances:
+      - {dialect: es-MX, text: "Quiero actualizar mi domicilio"}
+      - {dialect: es-CO, text: "Necesito actualizar mis datos de contacto"}
+      - {dialect: es-AR, text: "Quiero cambiar mi dirección"}
+      - {dialect: es-neutral, text: "¿Cómo actualizo mi número de teléfono?"}
+      - {dialect: pt-BR, text: "Quero atualizar meu endereço"}
+  - id: oos-13 # fixed-term investments
+    utterances:
+      - {dialect: es-MX, text: "¿Qué inversiones a plazo fijo tienen?"}
+      - {dialect: es-CO, text: "¿Cuánto rinde un CDT a un año?"}
+      - {dialect: es-AR, text: "¿Cuánto paga un plazo fijo?"}
+      - {dialect: es-neutral, text: "Quisiera información sobre inversiones"}
+      - {dialect: pt-BR, text: "Quanto rende o CDB de vocês?"}
+  - id: oos-14 # card insurance
+    utterances:
+      - {dialect: es-MX, text: "¿Qué cubre el seguro de la tarjeta?"}
+      - {dialect: es-CO, text: "¿La tarjeta tiene seguro de viaje?"}
+      - {dialect: es-AR, text: "¿Me sirve la tarjeta como seguro médico en el exterior?"}
+      - {dialect: es-neutral, text: "¿Qué seguros ofrecen?"}
+      - {dialect: pt-BR, text: "O cartão tem seguro viagem?"}
+  - id: oos-15 # how to pay the card bill
+    utterances:
+      - {dialect: es-MX, text: "¿Cómo pago mi tarjeta de crédito desde la app?"}
+      - {dialect: es-CO, text: "¿Dónde puedo pagar la tarjeta?"}
+      - {dialect: es-AR, text: "¿Cómo pago el resumen de la tarjeta?"}
+      - {dialect: es-neutral, text: "¿Cuáles son los medios de pago de la tarjeta?"}
+      - {dialect: pt-BR, text: "Como pago a fatura do cartão?"}
+  - id: oos-16 # reward points
+    utterances:
+      - {dialect: es-MX, text: "¿Cuántos puntos tengo acumulados?"}
+      - {dialect: es-CO, text: "¿Cómo canjeo los puntos de la tarjeta?"}
+      - {dialect: es-AR, text: "¿Cómo uso las millas de la tarjeta?"}
+      - {dialect: es-neutral, text: "Quiero cambiar mis puntos por un premio"}
+      - {dialect: pt-BR, text: "Como troco meus pontos do cartão?"}
+  - id: oos-17 # the nearest ATM
+    utterances:
+      - {dialect: es-MX, text: "¿Dónde hay un cajero cerca?"}
+      - {dialect: es-CO, text: "¿Dónde queda el cajero más cercano?"}
+      - {dialect: es-AR, text: "¿Hay algún cajero del banco por Palermo?"}
+      - {dialect: es-neutral, text: "¿Dónde encuentro un cajero automático?"}
+      - {dialect: pt-BR, text: "Onde tem um caixa eletrônico perto?"}
+  - id: oos-18 # ask for a new or additional card
+    utterances:
+      - {dialect: es-MX, text: "Quiero pedir una tarjeta adicional para mi esposa"}
+      - {dialect: es-CO, text: "¿Cómo solicito una tarjeta de crédito?"}
+      - {dialect: es-AR, text: "Quiero sacar una tarjeta de crédito"}
+      - {dialect: es-neutral, text: "Quisiera solicitar una tarjeta nueva"}
+      - {dialect: pt-BR, text: "Quero pedir um cartão adicional"}
+  - id: oos-19 # a travel notice
+    utterances:
+      - {dialect: es-MX, text: "Voy a viajar a Europa, ¿tengo que avisar para usar la tarjeta?"}
+      - {dialect: es-CO, text: "Me voy de viaje, ¿tengo que reportar el viaje para usar la tarjeta afuera?"}
+      - {dialect: es-AR, text: "Me voy de viaje al exterior, ¿tengo que habilitar la tarjeta?"}
+      - {dialect: es-neutral, text: "¿Debo avisar al banco si voy a usar la tarjeta en el extranjero?"}
+      - {dialect: pt-BR, text: "Vou viajar, preciso avisar para usar o cartão fora?"}
+  - id: oos-20 # card and ATM fees ("cargo" as a fee)
+    utterances:
+      - {dialect: es-MX, text: "¿Cuánto es el cargo por anualidad de la tarjeta?"}
+      - {dialect: es-CO, text: "¿Cuánto es la cuota de manejo de la tarjeta?"}
+      - {dialect: es-AR, text: "¿Cuánto es el costo de mantenimiento de la tarjeta?"}
+      - {dialect: es-neutral, text: "¿Qué cargo cobran por retirar en cajeros de otro banco?"}
+      - {dialect: pt-BR, text: "Quanto é a anuidade do cartão?"}

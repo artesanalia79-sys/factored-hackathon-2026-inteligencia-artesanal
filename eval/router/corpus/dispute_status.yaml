@@ -1,0 +1,149 @@
+# Synthetic first messages for the learned intent router (Task 18), one file per intent.
+# Written for this task by an AI coding assistant; a teammate reviews a sample before merge and
+# fills `reviewed_by`. Labeling policy and use: docs/models/router.md. Each group is one scenario
+# in five dialects, so its paraphrases never cross a split. Never copy held-out cases here.
+intent: dispute_status
+provenance: llm_generated_reviewed
+author: claude-code
+reviewed_by: null
+groups:
+  - id: sta-01 # how is my claim going
+    utterances:
+      - {dialect: es-MX, text: "¿Cómo va la aclaración que levanté la semana pasada?"}
+      - {dialect: es-CO, text: "Quisiera saber cómo va el reclamo que puse hace unos días"}
+      - {dialect: es-AR, text: "¿Me decís cómo viene el reclamo que hice?"}
+      - {dialect: es-neutral, text: "Quisiera saber el avance de mi reclamo"}
+      - {dialect: pt-BR, text: "Queria saber como está minha contestação"}
+  - id: sta-02 # a case number, any answer yet
+    utterances:
+      - {dialect: es-MX, text: "Tengo el folio 4471, ¿ya hay respuesta?"}
+      - {dialect: es-CO, text: "Tengo el número de caso 88231 y quiero saber si ya hay respuesta"}
+      - {dialect: es-AR, text: "Tengo el número de reclamo 5521, ¿hay novedades?"}
+      - {dialect: es-neutral, text: "Ya tengo número de caso, ¿me pueden decir en qué etapa está?"}
+      - {dialect: pt-BR, text: "Tenho o número de protocolo 77812, já tem resposta?"}
+  - id: sta-03 # a claim filed a week ago, no answer
+    utterances:
+      - {dialect: es-MX, text: "Puse una queja por un cargo hace una semana y nadie me ha contestado"}
+      - {dialect: es-CO, text: "Hace una semana reclamé un cobro y no me han dicho nada"}
+      - {dialect: es-AR, text: "Hace una semana hice un reclamo por un consumo y nadie me respondió"}
+      - {dialect: es-neutral, text: "Hace una semana presenté un reclamo y no he recibido respuesta"}
+      - {dialect: pt-BR, text: "Abri uma reclamação faz uma semana e ninguém me respondeu"}
+  - id: sta-04 # when is the claimed money coming back
+    utterances:
+      - {dialect: es-MX, text: "¿Cuándo me regresan el dinero del cargo que reclamé?"}
+      - {dialect: es-CO, text: "¿Para cuándo me devuelven la plata del reclamo?"}
+      - {dialect: es-AR, text: "¿Cuándo me devuelven la guita del reclamo que hice?"}
+      - {dialect: es-neutral, text: "¿Cuándo me reembolsan el dinero del reclamo que presenté?"}
+      - {dialect: pt-BR, text: "Quando vou receber o estorno da contestação que eu abri?"}
+  - id: sta-05 # was my claim received
+    utterances:
+      - {dialect: es-MX, text: "¿Sí les llegó mi aclaración? no me mandaron ningún correo"}
+      - {dialect: es-CO, text: "¿Sí quedó radicado mi reclamo? No me llegó confirmación"}
+      - {dialect: es-AR, text: "¿Les llegó el reclamo que mandé? No me llegó ninguna confirmación"}
+      - {dialect: es-neutral, text: "¿Recibieron mi reclamo? No me llegó confirmación"}
+      - {dialect: pt-BR, text: "Vocês receberam minha reclamação? Não chegou nenhuma confirmação"}
+  - id: sta-06 # follow up on a dispute
+    utterances:
+      - {dialect: es-MX, text: "Quiero dar seguimiento a mi disputa, ¿en qué estatus está?"}
+      - {dialect: es-CO, text: "Necesito hacerle seguimiento a mi disputa"}
+      - {dialect: es-AR, text: "Quiero hacer el seguimiento de mi disputa, ¿en qué quedó?"}
+      - {dialect: es-neutral, text: "¿Dónde puedo ver el progreso de mi disputa?"}
+      - {dialect: pt-BR, text: "Quero acompanhar o andamento da minha disputa"}
+  - id: sta-07 # was my claim approved
+    utterances:
+      - {dialect: es-MX, text: "¿Ya me aprobaron la aclaración del cargo de Amazon?"}
+      - {dialect: es-CO, text: "¿Ya aprobaron mi reclamo por el cobro de Rappi?"}
+      - {dialect: es-AR, text: "¿Ya me aprobaron el reclamo por el consumo de Mercado Libre?"}
+      - {dialect: es-neutral, text: "¿Ya aprobaron mi reclamo?"}
+      - {dialect: pt-BR, text: "Minha contestação já foi aprovada?"}
+  - id: sta-08 # where is my chargeback
+    utterances:
+      - {dialect: es-MX, text: "en que va mi contracargo?"}
+      - {dialect: es-CO, text: "Quiero saber en qué va el contracargo que pedí"}
+      - {dialect: es-AR, text: "¿Cómo sigue el contracargo que pedí?"}
+      - {dialect: es-neutral, text: "¿Cuál es el estado de mi contracargo?"}
+      - {dialect: pt-BR, text: "Como está o chargeback que eu pedi?"}
+  - id: sta-09 # a promised provisional credit that has not appeared
+    utterances:
+      - {dialect: es-MX, text: "Me dijeron que me iban a abonar el dinero provisionalmente por mi aclaración, ¿cuándo?"}
+      - {dialect: es-CO, text: "Me dijeron que me harían un abono provisional por el reclamo y no lo veo"}
+      - {dialect: es-AR, text: "Me dijeron que me iban a acreditar la plata provisoria del reclamo y no la veo"}
+      - {dialect: es-neutral, text: "Me prometieron un crédito provisional por mi reclamo y no aparece"}
+      - {dialect: pt-BR, text: "Disseram que iam fazer um crédito provisório da contestação e não apareceu"}
+  - id: sta-10 # a claim opened at a branch
+    utterances:
+      - {dialect: es-MX, text: "Levanté una aclaración en sucursal y quiero saber si ya la resolvieron"}
+      - {dialect: es-CO, text: "Puse un reclamo en la oficina y quiero saber en qué va"}
+      - {dialect: es-AR, text: "Hice un reclamo en la sucursal y quiero saber si ya lo resolvieron"}
+      - {dialect: es-neutral, text: "Presenté un reclamo en una sucursal y quiero saber si ya se resolvió"}
+      - {dialect: pt-BR, text: "Abri uma contestação na agência e quero saber se já resolveram"}
+  - id: sta-11 # is my case resolved
+    utterances:
+      - {dialect: es-MX, text: "¿Ya quedó resuelta mi aclaración o todavía no?"}
+      - {dialect: es-CO, text: "¿Ya resolvieron mi caso o todavía está pendiente?"}
+      - {dialect: es-AR, text: "¿Ya resolvieron mi reclamo o sigue pendiente?"}
+      - {dialect: es-neutral, text: "¿Mi caso ya fue resuelto?"}
+      - {dialect: pt-BR, text: "Meu caso já foi resolvido ou ainda está pendente?"}
+  - id: sta-12 # a claim pending for a month
+    utterances:
+      - {dialect: es-MX, text: "Ya pasaron 30 días de mi aclaración y sigue en proceso"}
+      - {dialect: es-CO, text: "Mi reclamo lleva un mes en trámite, ¿qué pasa?"}
+      - {dialect: es-AR, text: "Hace un mes que el reclamo está en trámite, ¿qué onda?"}
+      - {dialect: es-neutral, text: "Mi reclamo lleva un mes en proceso sin respuesta"}
+      - {dialect: pt-BR, text: "Minha contestação está em análise faz um mês"}
+  - id: sta-13 # the promised deadline has passed
+    utterances:
+      - {dialect: es-MX, text: "Me dijeron que mi aclaración se resolvía en 10 días y ya van 15"}
+      - {dialect: es-CO, text: "Me dijeron que el reclamo salía en diez días hábiles y ya van quince"}
+      - {dialect: es-AR, text: "Me dijeron que en diez días me respondían el reclamo y ya pasaron quince"}
+      - {dialect: es-neutral, text: "Me indicaron que mi reclamo se resolvería en diez días y ya pasaron quince"}
+      - {dialect: pt-BR, text: "Falaram que a contestação saía em dez dias e já se passaram quinze"}
+  - id: sta-14 # does my claim need more documents
+    utterances:
+      - {dialect: es-MX, text: "¿Necesitan algún documento más para mi aclaración?"}
+      - {dialect: es-CO, text: "¿Les falta algún documento para mi reclamo?"}
+      - {dialect: es-AR, text: "¿Les falta algún papel para avanzar con mi reclamo?"}
+      - {dialect: es-neutral, text: "¿Hace falta algún documento adicional para mi reclamo?"}
+      - {dialect: pt-BR, text: "Falta algum documento para a minha contestação andar?"}
+  - id: sta-15 # look up a claim by its id
+    utterances:
+      - {dialect: es-MX, text: "Quiero consultar el reclamo DSP-3f9a1c2b que abrí con ustedes"}
+      - {dialect: es-CO, text: "Quiero consultar el estado del reclamo DSP-8e21d4a0"}
+      - {dialect: es-AR, text: "Quiero consultar el reclamo DSP-b7c0e915, ¿cómo viene?"}
+      - {dialect: es-neutral, text: "Quisiera consultar el reclamo DSP-41ad9f63"}
+      - {dialect: pt-BR, text: "Quero consultar a disputa DSP-c5e2a7b8"}
+  - id: sta-16 # is my case closed
+    utterances:
+      - {dialect: es-MX, text: "¿Mi aclaración ya está cerrada? me llegó un mensaje raro"}
+      - {dialect: es-CO, text: "¿Mi caso ya está cerrado? Me llegó un correo y no entendí"}
+      - {dialect: es-AR, text: "¿Mi reclamo ya está cerrado? Me llegó un mail y no entendí nada"}
+      - {dialect: es-neutral, text: "¿Mi caso ya está cerrado?"}
+      - {dialect: pt-BR, text: "Minha reclamação já foi encerrada? Recebi um e-mail e não entendi"}
+  - id: sta-17 # where is the request I made about a charge
+    utterances:
+      - {dialect: es-MX, text: "Quiero saber en qué va la solicitud que hice por el cargo de la gasolinera"}
+      - {dialect: es-CO, text: "¿En qué va la solicitud que radiqué por el cobro del hotel?"}
+      - {dialect: es-AR, text: "¿En qué anda la solicitud que hice por el débito del gimnasio?"}
+      - {dialect: es-neutral, text: "¿En qué va la solicitud que hice por un cargo?"}
+      - {dialect: pt-BR, text: "Em que pé está a solicitação que eu fiz pela cobrança do posto?"}
+  - id: sta-18 # has the claim refund been paid
+    utterances:
+      - {dialect: es-MX, text: "¿Ya me hicieron el reembolso de la aclaración? no lo veo en mi cuenta"}
+      - {dialect: es-CO, text: "¿Ya me devolvieron lo del reclamo? No lo veo en la cuenta"}
+      - {dialect: es-AR, text: "¿Ya está el reintegro del reclamo? En la cuenta no figura nada"}
+      - {dialect: es-neutral, text: "¿Ya se hizo el reembolso de mi reclamo?"}
+      - {dialect: pt-BR, text: "Já fizeram o estorno da minha contestação? Não vejo na conta"}
+  - id: sta-19 # what is the next step in my dispute
+    utterances:
+      - {dialect: es-MX, text: "Me llamaron por lo de mi disputa, ¿qué sigue ahora?"}
+      - {dialect: es-CO, text: "Me escribieron por lo de mi disputa, ¿cuál es el siguiente paso?"}
+      - {dialect: es-AR, text: "Me mandaron un mensaje por la disputa, ¿qué tengo que hacer ahora?"}
+      - {dialect: es-neutral, text: "¿Cuál es el siguiente paso en mi disputa?"}
+      - {dialect: pt-BR, text: "Me ligaram sobre minha disputa, qual é o próximo passo?"}
+  - id: sta-20 # confirm that yesterday's claim went through
+    utterances:
+      - {dialect: es-MX, text: "Ya abrí un reclamo ayer, nomás quiero saber si va bien"}
+      - {dialect: es-CO, text: "Ya hice el reclamo ayer, solo quiero saber si quedó bien"}
+      - {dialect: es-AR, text: "Ayer cargué un reclamo, ¿me confirmás que entró bien?"}
+      - {dialect: es-neutral, text: "Ya presenté un reclamo ayer, solo quiero confirmar que esté en proceso"}
+      - {dialect: pt-BR, text: "Já abri uma reclamação ontem, só quero saber se está tudo certo"}

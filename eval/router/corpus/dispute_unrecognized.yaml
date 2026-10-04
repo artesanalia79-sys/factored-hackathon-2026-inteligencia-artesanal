@@ -1,0 +1,149 @@
+# Synthetic first messages for the learned intent router (Task 18), one file per intent.
+# Written for this task by an AI coding assistant; a teammate reviews a sample before merge and
+# fills `reviewed_by`. Labeling policy and use: docs/models/router.md. Each group is one scenario
+# in five dialects, so its paraphrases never cross a split. Never copy held-out cases here.
+intent: dispute_unrecognized
+provenance: llm_generated_reviewed
+author: claude-code
+reviewed_by: null
+groups:
+  - id: unr-01 # a merchant the customer does not know
+    utterances:
+      - {dialect: es-MX, text: "Oiga, me aparece un cargo de 1,890 pesos en una tienda que se llama COMERCIAL DEL BAJIO y yo nunca he comprado ahí"}
+      - {dialect: es-CO, text: "Buenas tardes, en el extracto me sale un cobro de 230.000 pesos de un comercio que no conozco, yo no hice esa compra"}
+      - {dialect: es-AR, text: "Che, me figura un consumo de 45.000 en un local que ni sé dónde queda, yo no fui"}
+      - {dialect: es-neutral, text: "Tengo un cargo de un comercio que no conozco y yo no realicé esa compra"}
+      - {dialect: pt-BR, text: "Apareceu uma compra no meu cartão de uma loja que eu nunca ouvi falar, não fui eu que comprei"}
+  - id: unr-02 # an online game purchase
+    utterances:
+      - {dialect: es-MX, text: "alguien compro en una tienda de videojuegos con mi tarjeta, yo ni juego eso, son como 3 mil pesos"}
+      - {dialect: es-CO, text: "Me aparecen unas compras en Steam y yo ni tengo cuenta en Steam"}
+      - {dialect: es-AR, text: "Me debitaron una compra de juegos online que no hice, ni siquiera tengo consola"}
+      - {dialect: es-neutral, text: "Hay una compra en una plataforma de videojuegos que yo no autoricé"}
+      - {dialect: pt-BR, text: "Fizeram uma compra de jogos com meu cartão, eu nem jogo videogame"}
+  - id: unr-03 # a cloned card
+    utterances:
+      - {dialect: es-MX, text: "Creo que me clonaron la tarjeta, tengo cargos en Monterrey y yo vivo en Puebla"}
+      - {dialect: es-CO, text: "Parce, me clonaron la tarjeta, salen compras en Medellín que yo no hice"}
+      - {dialect: es-AR, text: "Me parece que me clonaron la tarjeta porque tengo gastos que no reconozco"}
+      - {dialect: es-neutral, text: "Sospecho que clonaron mi tarjeta, hay compras que yo no hice"}
+      - {dialect: pt-BR, text: "Acho que clonaram meu cartão, tem compras que eu não reconheço"}
+  - id: unr-04 # a purchase abroad while the customer was at home
+    utterances:
+      - {dialect: es-MX, text: "Tengo un cargo en dólares de una tienda en Miami y yo no he salido de México"}
+      - {dialect: es-CO, text: "Me sale un cobro en euros de un hotel en Madrid y nunca he ido a España"}
+      - {dialect: es-AR, text: "Me aparece una compra en Santiago de Chile y yo estuve en Córdoba todo el mes"}
+      - {dialect: es-neutral, text: "Hay una compra internacional en mi tarjeta y no he salido del país"}
+      - {dialect: pt-BR, text: "Tem uma compra em dólar de uma loja nos Estados Unidos e eu não saí do país"}
+  - id: unr-05 # a subscription the customer never took out
+    utterances:
+      - {dialect: es-MX, text: "Me están cobrando una suscripción de 299 pesos cada mes y yo nunca me suscribí a nada"}
+      - {dialect: es-CO, text: "Qué pena molestar, me llega un cobro mensual de una plataforma que nunca contraté"}
+      - {dialect: es-AR, text: "Todos los meses me cobran una suscripción que jamás di de alta, ¿me ayudás?"}
+      - {dialect: es-neutral, text: "Me cobran cada mes una suscripción que no contraté"}
+      - {dialect: pt-BR, text: "Todo mês aparece uma assinatura no cartão que eu nunca fiz"}
+  - id: unr-06 # many small charges in a row (card testing)
+    utterances:
+      - {dialect: es-MX, text: "Me salieron como 6 cargos chiquitos de 10 y 20 pesos que no hice, se me hace muy raro"}
+      - {dialect: es-CO, text: "Tengo varios cobros pequeñitos seguidos que no son míos, como de 5.000 pesos cada uno"}
+      - {dialect: es-AR, text: "Me aparecieron un montón de consumos chiquitos en la misma hora y ninguno es mío"}
+      - {dialect: es-neutral, text: "Aparecieron varios cargos pequeños seguidos en mi tarjeta que yo no realicé"}
+      - {dialect: pt-BR, text: "Apareceram várias comprinhas seguidas no cartão, nenhuma fui eu"}
+  - id: unr-07 # an ATM withdrawal the customer did not make
+    utterances:
+      - {dialect: es-MX, text: "Hicieron un retiro de 4,000 pesos en un cajero y ese día yo no saqué dinero"}
+      - {dialect: es-CO, text: "Me aparece un retiro en cajero de 600.000 que yo no hice, la tarjeta la tengo yo"}
+      - {dialect: es-AR, text: "Figura una extracción en un cajero que no hice, tengo la tarjeta conmigo"}
+      - {dialect: es-neutral, text: "Hay un retiro de efectivo en un cajero automático que no hice"}
+      - {dialect: pt-BR, text: "Fizeram um saque no caixa eletrônico que não fui eu, o cartão está comigo"}
+  - id: unr-08 # rides the customer never took
+    utterances:
+      - {dialect: es-MX, text: "Tengo cobros de DiDi por viajes que nunca tomé, ni tengo la app"}
+      - {dialect: es-CO, text: "Me cobraron unos viajes de Uber que yo no pedí, ese día ni salí de la casa"}
+      - {dialect: es-AR, text: "Tengo cargos de Cabify por viajes que no hice, ¿cómo puede ser?"}
+      - {dialect: es-neutral, text: "Aparecen cobros de una aplicación de transporte que nunca usé"}
+      - {dialect: pt-BR, text: "Cobraram corridas da 99 que eu não fiz, nem tenho o aplicativo"}
+  - id: unr-09 # a hotel booking the customer never made
+    utterances:
+      - {dialect: es-MX, text: "Me cargaron 5,600 pesos de un hotel en Cancún y yo no reservé nada"}
+      - {dialect: es-CO, text: "Hay un cobro de Booking por una reserva que yo nunca hice"}
+      - {dialect: es-AR, text: "Me cobraron una reserva de hotel en Bariloche que no hice, ni viajé"}
+      - {dialect: es-neutral, text: "Tengo un cargo de una reserva de hotel que yo no hice"}
+      - {dialect: pt-BR, text: "Veio uma cobrança de hotel no meu cartão de uma reserva que eu não fiz"}
+  - id: unr-10 # a purchase alert the customer did not expect
+    utterances:
+      - {dialect: es-MX, text: "Me acaba de llegar un mensaje de una compra de 2,300 en Liverpool que yo no hice"}
+      - {dialect: es-CO, text: "Acabo de recibir la notificación de una compra en Falabella y no fui yo"}
+      - {dialect: es-AR, text: "Recién me llegó un aviso de una compra que no hice, ¿qué es esto?"}
+      - {dialect: es-neutral, text: "Recibí una notificación de una compra con mi tarjeta que yo no hice"}
+      - {dialect: pt-BR, text: "Recebi agora uma notificação de compra e não fui eu que comprei"}
+  - id: unr-11 # a store account taken over
+    utterances:
+      - {dialect: es-MX, text: "Me hackearon la cuenta de Mercado Libre y compraron cosas con mi tarjeta"}
+      - {dialect: es-CO, text: "Se metieron a mi cuenta de Amazon e hicieron compras con la tarjeta que tenía guardada"}
+      - {dialect: es-AR, text: "Me hackearon el usuario y compraron con mi tarjeta, no autoricé nada"}
+      - {dialect: es-neutral, text: "Accedieron a mi cuenta de una tienda en línea y compraron con mi tarjeta sin permiso"}
+      - {dialect: pt-BR, text: "Invadiram minha conta da Shopee e fizeram compras com meu cartão salvo"}
+  - id: unr-12 # a charge with a strange descriptor
+    utterances:
+      - {dialect: es-MX, text: "¿Qué es un cargo que dice SQ *LA ESQUINA? no sé qué es, yo no compré ahí"}
+      - {dialect: es-CO, text: "Me sale un cobro que dice PAYU*COL y la verdad no sé de qué es"}
+      - {dialect: es-AR, text: "Tengo un débito que dice MERPAGO*TIENDAX y no tengo idea de qué es"}
+      - {dialect: es-neutral, text: "Hay un cargo con un nombre raro en mi estado de cuenta y no sé qué es"}
+      - {dialect: pt-BR, text: "Tem uma cobrança com um nome estranho na fatura e não sei o que é"}
+  - id: unr-13 # a relative used the card without permission
+    utterances:
+      - {dialect: es-MX, text: "Mi sobrino usó mi tarjeta sin permiso para comprar en línea, yo no autoricé esos cargos"}
+      - {dialect: es-CO, text: "Un familiar usó mi tarjeta sin que yo supiera y quiero reclamar esas compras"}
+      - {dialect: es-AR, text: "Mi ex usó mi tarjeta sin permiso y no reconozco esos consumos"}
+      - {dialect: es-neutral, text: "Alguien de mi casa usó mi tarjeta sin autorización para hacer compras"}
+      - {dialect: pt-BR, text: "Alguém da família usou meu cartão sem eu saber, não autorizei essas compras"}
+  - id: unr-14 # a purchase in a city the customer never visited
+    utterances:
+      - {dialect: es-MX, text: "hay una compra en un super de Tijuana y yo nunca he ido a Tijuana"}
+      - {dialect: es-CO, text: "Me aparece una compra en un almacén de Cali, yo vivo en Bogotá y no he viajado"}
+      - {dialect: es-AR, text: "Tengo una compra en un súper de Rosario y estoy en Mendoza hace meses"}
+      - {dialect: es-neutral, text: "Aparece una compra en una ciudad donde nunca he estado"}
+      - {dialect: pt-BR, text: "Tem uma compra numa loja de outra cidade onde eu nunca estive"}
+  - id: unr-15 # an unknown charge in dollars
+    utterances:
+      - {dialect: es-MX, text: "No reconozco un cargo de 49.99 dólares que me salió anoche"}
+      - {dialect: es-CO, text: "Tengo un cobro de 120 dólares que no reconozco para nada"}
+      - {dialect: es-AR, text: "No reconozco un consumo de 80 dólares que apareció en el resumen"}
+      - {dialect: es-neutral, text: "No reconozco un cargo en dólares que aparece en mi tarjeta"}
+      - {dialect: pt-BR, text: "Não reconheço uma cobrança de 60 dólares no meu cartão"}
+  - id: unr-16 # a movement the customer did not make, no details
+    utterances:
+      - {dialect: es-MX, text: "Buen día, tengo un movimiento que yo no hice, ¿me pueden ayudar?"}
+      - {dialect: es-CO, text: "Buenos días, necesito ayuda con un movimiento que no reconozco"}
+      - {dialect: es-AR, text: "Hola, ¿me ayudás con un movimiento que no hice?"}
+      - {dialect: es-neutral, text: "Necesito reportar un movimiento que no realicé"}
+      - {dialect: pt-BR, text: "Bom dia, preciso de ajuda com uma transação que eu não fiz"}
+  - id: unr-17 # a contactless payment the customer did not make
+    utterances:
+      - {dialect: es-MX, text: "Me cobraron un pago sin contacto en una gasolinera y yo no cargué gasolina"}
+      - {dialect: es-CO, text: "Hay un pago por acercamiento en una tienda que yo no hice"}
+      - {dialect: es-AR, text: "Figura un pago contactless en una estación de servicio y yo no estuve ahí"}
+      - {dialect: es-neutral, text: "Tengo un pago sin contacto registrado que no hice"}
+      - {dialect: pt-BR, text: "Tem um pagamento por aproximação que eu não fiz"}
+  - id: unr-18 # a purchase made while the customer was asleep or in hospital
+    utterances:
+      - {dialect: es-MX, text: "Tengo un cargo de las 3 de la mañana y yo estaba dormido, no fui yo"}
+      - {dialect: es-CO, text: "Me aparece una compra de un día que estuve hospitalizado, imposible que sea mía"}
+      - {dialect: es-AR, text: "Hay una compra a las 4 de la mañana y yo estaba durmiendo"}
+      - {dialect: es-neutral, text: "Hay una compra hecha de madrugada que no realicé"}
+      - {dialect: pt-BR, text: "Tem uma compra de madrugada e eu estava dormindo, não fui eu"}
+  - id: unr-19 # a streaming service the customer does not have
+    utterances:
+      - {dialect: es-MX, text: "me sale un cargo de Netflix pero yo no tengo Netflix, nunca lo autorice"}
+      - {dialect: es-CO, text: "Me cobran Spotify y yo no uso Spotify, no autoricé ese cobro"}
+      - {dialect: es-AR, text: "Me cobraron Disney+ y no tengo esa cuenta, no lo autoricé"}
+      - {dialect: es-neutral, text: "Me cobraron un servicio de streaming que no tengo ni autoricé"}
+      - {dialect: pt-BR, text: "Estão me cobrando Netflix e eu não assino Netflix, não autorizei"}
+  - id: unr-20 # the customer reports fraud
+    utterances:
+      - {dialect: es-MX, text: "Fui víctima de fraude, hay compras en mi tarjeta que no hice"}
+      - {dialect: es-CO, text: "Creo que fui víctima de un fraude, tengo compras que no son mías"}
+      - {dialect: es-AR, text: "Me parece que me estafaron, hay gastos en la tarjeta que no hice"}
+      - {dialect: es-neutral, text: "Quiero reportar un fraude, hay compras que no reconozco"}
+      - {dialect: pt-BR, text: "Acho que caí num golpe, tem compras no cartão que eu não fiz"}

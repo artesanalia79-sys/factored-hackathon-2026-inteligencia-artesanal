@@ -1,0 +1,149 @@
+# Synthetic first messages for the learned intent router (Task 18), one file per intent.
+# Written for this task by an AI coding assistant; a teammate reviews a sample before merge and
+# fills `reviewed_by`. Labeling policy and use: docs/models/router.md. Each group is one scenario
+# in five dialects, so its paraphrases never cross a split. Never copy held-out cases here.
+intent: dispute_not_received
+provenance: llm_generated_reviewed
+author: claude-code
+reviewed_by: null
+groups:
+  - id: nrc-01 # an online order that never arrived
+    utterances:
+      - {dialect: es-MX, text: "Hice un pedido en Amazon hace tres semanas y nunca me llegó, pero ya me lo cobraron"}
+      - {dialect: es-CO, text: "Compré unos tenis por internet y el paquete nunca llegó"}
+      - {dialect: es-AR, text: "Compré unas zapatillas online y nunca me llegaron, ya me las cobraron"}
+      - {dialect: es-neutral, text: "Compré algo en una tienda en línea y todavía no recibo el pedido"}
+      - {dialect: pt-BR, text: "Comprei um tênis pela internet e nunca chegou"}
+  - id: nrc-02 # tracking says delivered, nothing arrived
+    utterances:
+      - {dialect: es-MX, text: "Dice que el paquete ya fue entregado pero a mi casa nunca llegó nada"}
+      - {dialect: es-CO, text: "La guía dice entregado pero yo no he recibido nada"}
+      - {dialect: es-AR, text: "El seguimiento dice entregado y a mí no me llegó nada"}
+      - {dialect: es-neutral, text: "El rastreo indica que fue entregado pero no recibí el paquete"}
+      - {dialect: pt-BR, text: "O rastreio diz que foi entregue mas eu não recebi nada"}
+  - id: nrc-03 # the seller took the money and vanished
+    utterances:
+      - {dialect: es-MX, text: "Le pagué a un vendedor con mi tarjeta y desapareció, nunca me mandó el producto"}
+      - {dialect: es-CO, text: "Pagué una compra a un vendedor y nunca me envió nada, ya no contesta"}
+      - {dialect: es-AR, text: "Le compré a un vendedor que nunca despachó el producto y ya no responde"}
+      - {dialect: es-neutral, text: "El vendedor cobró y nunca envió el producto"}
+      - {dialect: pt-BR, text: "Paguei um vendedor e ele sumiu, nunca mandou o produto"}
+  - id: nrc-04 # a cancelled event, service never provided
+    utterances:
+      - {dialect: es-MX, text: "Pagué un evento que se canceló y no me dieron el servicio ni me regresaron el dinero"}
+      - {dialect: es-CO, text: "El concierto se canceló y no me han devuelto la plata de las boletas"}
+      - {dialect: es-AR, text: "Se suspendió el show y no me devolvieron la plata de la entrada"}
+      - {dialect: es-neutral, text: "Pagué por un evento que nunca se realizó"}
+      - {dialect: pt-BR, text: "O show foi cancelado e não devolveram o dinheiro do ingresso"}
+  - id: nrc-05 # furniture paid and never delivered
+    utterances:
+      - {dialect: es-MX, text: "Compré un comedor en una mueblería, lo pagué completo y nunca me lo entregaron"}
+      - {dialect: es-CO, text: "Pagué un sofá hace un mes y todavía no me lo han entregado"}
+      - {dialect: es-AR, text: "Pagué un sillón hace un mes y nunca me lo trajeron"}
+      - {dialect: es-neutral, text: "Pagué unos muebles que nunca me entregaron"}
+      - {dialect: pt-BR, text: "Paguei um sofá faz um mês e até agora não entregaram"}
+  - id: nrc-06 # a paid course or service with no access
+    utterances:
+      - {dialect: es-MX, text: "Pagué un curso en línea y nunca me dieron acceso a la plataforma"}
+      - {dialect: es-CO, text: "Pagué una suscripción y nunca me activaron la cuenta"}
+      - {dialect: es-AR, text: "Pagué un curso y nunca me habilitaron el acceso"}
+      - {dialect: es-neutral, text: "Pagué un servicio digital y nunca me dieron acceso"}
+      - {dialect: pt-BR, text: "Paguei um curso online e nunca liberaram o acesso"}
+  - id: nrc-07 # a food delivery that never came
+    utterances:
+      - {dialect: es-MX, text: "Pedí comida por DiDi Food, me la cobraron y el repartidor nunca llegó"}
+      - {dialect: es-CO, text: "El domicilio nunca llegó y sí me lo cobraron"}
+      - {dialect: es-AR, text: "El pedido de PedidosYa nunca llegó y me lo cobraron igual"}
+      - {dialect: es-neutral, text: "Pedí comida a domicilio, me cobraron y nunca llegó"}
+      - {dialect: pt-BR, text: "Pedi comida no iFood, cobraram e o pedido nunca chegou"}
+  - id: nrc-08 # a digital code or gift card never received
+    utterances:
+      - {dialect: es-MX, text: "Compré una tarjeta de regalo digital y nunca me llegó el código"}
+      - {dialect: es-CO, text: "Compré un código de Xbox y nunca me lo enviaron al correo"}
+      - {dialect: es-AR, text: "Compré una gift card y el código nunca me llegó al mail"}
+      - {dialect: es-neutral, text: "Compré un código digital y nunca lo recibí"}
+      - {dialect: pt-BR, text: "Comprei um vale-presente digital e o código nunca chegou"}
+  - id: nrc-09 # tickets paid, never sent
+    utterances:
+      - {dialect: es-MX, text: "Pagué boletos de autobús en línea y nunca me mandaron los boletos"}
+      - {dialect: es-CO, text: "Compré unos tiquetes y nunca me llegó la confirmación ni los pasajes"}
+      - {dialect: es-AR, text: "Pagué los pasajes de micro y nunca me mandaron los boletos"}
+      - {dialect: es-neutral, text: "Pagué unos boletos que nunca me enviaron"}
+      - {dialect: pt-BR, text: "Paguei as passagens de ônibus e nunca mandaram os bilhetes"}
+  - id: nrc-10 # a phone bought online never shipped
+    utterances:
+      - {dialect: es-MX, text: "Compré un celular en una tienda en línea y nunca lo enviaron"}
+      - {dialect: es-CO, text: "Compré un celular por internet y lleva semanas sin llegar"}
+      - {dialect: es-AR, text: "Compré un celu online y nunca lo despacharon"}
+      - {dialect: es-neutral, text: "Compré un teléfono por internet y nunca me lo enviaron"}
+      - {dialect: pt-BR, text: "Comprei um celular pela internet e nunca enviaram"}
+  - id: nrc-11 # a prepaid hotel with no reservation on arrival
+    utterances:
+      - {dialect: es-MX, text: "Llegué al hotel que ya había pagado y me dijeron que no tenían mi reservación"}
+      - {dialect: es-CO, text: "Pagué un hotel y cuando llegué no había reserva a mi nombre"}
+      - {dialect: es-AR, text: "Pagué el hotel por adelantado y al llegar no tenían mi reserva"}
+      - {dialect: es-neutral, text: "Pagué una reserva de hotel y al llegar no existía"}
+      - {dialect: pt-BR, text: "Paguei o hotel adiantado e quando cheguei não tinha reserva"}
+  - id: nrc-12 # an order stuck in transit for weeks
+    utterances:
+      - {dialect: es-MX, text: "Mi pedido lleva un mes en tránsito, ya me lo cobraron y sigo esperando"}
+      - {dialect: es-CO, text: "el paquete lleva semanas en camino y no llega"}
+      - {dialect: es-AR, text: "El envío está hace semanas en camino y nunca llega"}
+      - {dialect: es-neutral, text: "Mi pedido sigue en tránsito desde hace semanas"}
+      - {dialect: pt-BR, text: "Meu pedido está em trânsito faz semanas e não chega"}
+  - id: nrc-13 # a paid repair never done
+    utterances:
+      - {dialect: es-MX, text: "Le pagué a un taller para arreglar mi coche y nunca hicieron el trabajo"}
+      - {dialect: es-CO, text: "Pagué una reparación y nunca la hicieron"}
+      - {dialect: es-AR, text: "Le pagué a un técnico por adelantado y nunca vino a hacer el arreglo"}
+      - {dialect: es-neutral, text: "Pagué por un servicio que nunca me prestaron"}
+      - {dialect: pt-BR, text: "Paguei um serviço que nunca foi feito"}
+  - id: nrc-14 # a pre-order never fulfilled
+    utterances:
+      - {dialect: es-MX, text: "Hice la preventa de un videojuego, ya salió y nunca me lo mandaron"}
+      - {dialect: es-CO, text: "Pagué una preventa y nunca me llegó el producto"}
+      - {dialect: es-AR, text: "Señé un producto en preventa y nunca me lo entregaron"}
+      - {dialect: es-neutral, text: "Pagué una preventa que nunca me entregaron"}
+      - {dialect: pt-BR, text: "Paguei uma pré-venda e o produto nunca chegou"}
+  - id: nrc-15 # clothes from a foreign store never arrived
+    utterances:
+      - {dialect: es-MX, text: "compre ropa en shein hace dos meses y nunca llego"}
+      - {dialect: es-CO, text: "Compré ropa en una tienda de afuera y el pedido nunca llegó a Colombia"}
+      - {dialect: es-AR, text: "Compré ropa en una página del exterior y nunca me llegó"}
+      - {dialect: es-neutral, text: "Compré ropa en una tienda internacional y nunca llegó"}
+      - {dialect: pt-BR, text: "Comprei roupa numa loja de fora e nunca chegou"}
+  - id: nrc-16 # an in-game purchase never credited
+    utterances:
+      - {dialect: es-MX, text: "Compré monedas en un juego y nunca me aparecieron en la cuenta"}
+      - {dialect: es-CO, text: "Pagué unas gemas en un juego y no me las acreditaron"}
+      - {dialect: es-AR, text: "Compré créditos en un juego y nunca me los acreditaron"}
+      - {dialect: es-neutral, text: "Pagué una compra dentro de un juego y nunca recibí lo que compré"}
+      - {dialect: pt-BR, text: "Comprei moedas num jogo e nunca caíram na conta"}
+  - id: nrc-17 # a paid car rental not handed over
+    utterances:
+      - {dialect: es-MX, text: "Pagué la renta de un coche y cuando llegué no me lo dieron"}
+      - {dialect: es-CO, text: "Pagué el alquiler de un carro y nunca me lo entregaron"}
+      - {dialect: es-AR, text: "Pagué el alquiler de un auto y al llegar no había ningún auto"}
+      - {dialect: es-neutral, text: "Pagué el alquiler de un vehículo que nunca me entregaron"}
+      - {dialect: pt-BR, text: "Paguei o aluguel de um carro e não me entregaram"}
+  - id: nrc-18 # an appliance never delivered
+    utterances:
+      - {dialect: es-MX, text: "Compré un refrigerador en Elektra, me dieron fecha de entrega y nunca llegaron"}
+      - {dialect: es-CO, text: "Compré una nevera y nunca la trajeron"}
+      - {dialect: es-AR, text: "Compré una heladera en cuotas y nunca me la entregaron"}
+      - {dialect: es-neutral, text: "Compré un electrodoméstico que nunca me entregaron"}
+      - {dialect: pt-BR, text: "Comprei uma geladeira e nunca entregaram"}
+  - id: nrc-19 # charged for an out-of-stock item never sent
+    utterances:
+      - {dialect: es-MX, text: "La tienda me dijo que no tenía el producto, pero el cargo sigue y nunca recibí nada"}
+      - {dialect: es-CO, text: "Me cobraron un producto que después dijeron que no había, y nunca lo recibí"}
+      - {dialect: es-AR, text: "Me cobraron algo que después no tenían en stock y nunca me lo mandaron"}
+      - {dialect: es-neutral, text: "Me cobraron un producto agotado que nunca me enviaron"}
+      - {dialect: pt-BR, text: "Cobraram um produto que estava esgotado e nunca enviaram"}
+  - id: nrc-20 # a gift delivery never made
+    utterances:
+      - {dialect: es-MX, text: "Mandé flores por una página para el cumpleaños de mi mamá y nunca las entregaron"}
+      - {dialect: es-CO, text: "Pagué un arreglo floral para enviar y nunca lo entregaron"}
+      - {dialect: es-AR, text: "Pagué un envío de flores y nunca llegaron a destino"}
+      - {dialect: es-neutral, text: "Pagué el envío de un regalo que nunca fue entregado"}
+      - {dialect: pt-BR, text: "Paguei uma entrega de flores e nunca entregaram"}
