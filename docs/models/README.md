@@ -4,4 +4,4 @@ One card per learned component (see the `ml-component` skill for the required se
 
 | Component | Card | Task | Owner |
 |---|---|---|---|
-| Intent router (embeddings + logistic regression, conformal abstention) | `router.md` (pending) | T18 | Juan José + Santiago |
+| Intent router (TF-IDF character n-grams + logistic regression, split-conformal abstention; offline, not in the request path) | `router.md` | T18 | Juan José + Santiago |

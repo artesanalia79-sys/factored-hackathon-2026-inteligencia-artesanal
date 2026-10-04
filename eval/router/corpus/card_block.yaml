@@ -1,0 +1,149 @@
+# Synthetic first messages for the learned intent router (Task 18), one file per intent.
+# Written for this task by an AI coding assistant; a teammate reviews a sample before merge and
+# fills `reviewed_by`. Labeling policy and use: docs/models/router.md. Each group is one scenario
+# in five dialects, so its paraphrases never cross a split. Never copy held-out cases here.
+intent: card_block
+provenance: llm_generated_reviewed
+author: claude-code
+reviewed_by: jjresher
+groups:
+  - id: blk-01 # a lost card
+    utterances:
+      - {dialect: es-MX, text: "Perdí mi tarjeta, la quiero bloquear"}
+      - {dialect: es-CO, text: "Se me perdió la tarjeta, necesito bloquearla ya"}
+      - {dialect: es-AR, text: "Perdí la tarjeta, ¿me la bloqueás?"}
+      - {dialect: es-neutral, text: "Perdí mi tarjeta y quiero bloquearla"}
+      - {dialect: pt-BR, text: "Perdi meu cartão, quero bloquear"}
+  - id: blk-02 # a stolen wallet with the card inside
+    utterances:
+      - {dialect: es-MX, text: "Me robaron la cartera con mis tarjetas adentro"}
+      - {dialect: es-CO, text: "Me robaron la billetera con la tarjeta, ¿qué hago?"}
+      - {dialect: es-AR, text: "Me afanaron la billetera con la tarjeta adentro"}
+      - {dialect: es-neutral, text: "Me robaron la billetera y ahí estaba mi tarjeta"}
+      - {dialect: pt-BR, text: "Roubaram minha carteira com o cartão dentro"}
+  - id: blk-03 # a card left in an ATM
+    utterances:
+      - {dialect: es-MX, text: "Se me quedó la tarjeta en el cajero y cuando regresé ya no estaba"}
+      - {dialect: es-CO, text: "Dejé la tarjeta en el cajero y cuando volví ya no estaba"}
+      - {dialect: es-AR, text: "Me olvidé la tarjeta en el cajero, ¿me la pueden anular?"}
+      - {dialect: es-neutral, text: "Olvidé mi tarjeta en un cajero automático"}
+      - {dialect: pt-BR, text: "Esqueci o cartão no caixa eletrônico e quando voltei não estava mais"}
+  - id: blk-04 # freeze the card while looking for it
+    utterances:
+      - {dialect: es-MX, text: "No encuentro mi tarjeta, ¿la pueden congelar mientras la busco?"}
+      - {dialect: es-CO, text: "No encuentro la tarjeta, quiero congelarla mientras aparece"}
+      - {dialect: es-AR, text: "No encuentro la tarjeta, ¿se puede pausar mientras la busco?"}
+      - {dialect: es-neutral, text: "No encuentro mi tarjeta, quisiera congelarla temporalmente"}
+      - {dialect: pt-BR, text: "Não estou achando meu cartão, dá pra congelar enquanto procuro?"}
+  - id: blk-05 # a stolen phone with the card in its case
+    utterances:
+      - {dialect: es-MX, text: "Me robaron el celular y traía la tarjeta en la funda"}
+      - {dialect: es-CO, text: "Me robaron el celular y ahí tenía la tarjeta"}
+      - {dialect: es-AR, text: "Me robaron el celu con la tarjeta en la funda"}
+      - {dialect: es-neutral, text: "Me robaron el teléfono y la tarjeta estaba en la funda"}
+      - {dialect: pt-BR, text: "Roubaram meu celular e o cartão estava na capinha"}
+  - id: blk-06 # card details given to a scammer
+    utterances:
+      - {dialect: es-MX, text: "Me llamaron haciéndose pasar por el banco y les di los datos de mi tarjeta, bloquéenla por favor"}
+      - {dialect: es-CO, text: "Le di los datos de la tarjeta a alguien que dijo ser del banco, quiero bloquearla"}
+      - {dialect: es-AR, text: "Me llamó uno haciéndose pasar por el banco y le pasé los datos de la tarjeta, bloqueala"}
+      - {dialect: es-neutral, text: "Di los datos de mi tarjeta en un enlace falso y necesito bloquearla"}
+      - {dialect: pt-BR, text: "Passei os dados do cartão num link falso, preciso bloquear"}
+  - id: blk-07 # cancel the card for good
+    utterances:
+      - {dialect: es-MX, text: "Quiero cancelar mi tarjeta de forma definitiva"}
+      - {dialect: es-CO, text: "Necesito cancelar la tarjeta, no la quiero seguir usando"}
+      - {dialect: es-AR, text: "Quiero dar de baja la tarjeta definitivamente"}
+      - {dialect: es-neutral, text: "Quiero cancelar mi tarjeta permanentemente"}
+      - {dialect: pt-BR, text: "Quero cancelar meu cartão definitivamente"}
+  - id: blk-08 # an urgent block request
+    utterances:
+      - {dialect: es-MX, text: "bloqueen mi tarjeta ya x favor es urgente"}
+      - {dialect: es-CO, text: "Por favor bloquéenme la tarjeta de inmediato"}
+      - {dialect: es-AR, text: "Necesito que me bloqueen la tarjeta ya mismo"}
+      - {dialect: es-neutral, text: "Necesito bloquear mi tarjeta de inmediato"}
+      - {dialect: pt-BR, text: "Bloqueiem meu cartão agora, por favor, é urgente"}
+  - id: blk-09 # block only the debit card
+    utterances:
+      - {dialect: es-MX, text: "Quiero bloquear solo mi tarjeta de débito, la de crédito sí la tengo"}
+      - {dialect: es-CO, text: "Bloquee solo la débito, la de crédito la tengo conmigo"}
+      - {dialect: es-AR, text: "Bloqueame solo la de débito, la de crédito la tengo"}
+      - {dialect: es-neutral, text: "Quiero bloquear únicamente la tarjeta de débito"}
+      - {dialect: pt-BR, text: "Quero bloquear só o cartão de débito"}
+  - id: blk-10 # a card lost at an airport
+    utterances:
+      - {dialect: es-MX, text: "Estoy de viaje y perdí la tarjeta en el aeropuerto"}
+      - {dialect: es-CO, text: "Estoy viajando y se me perdió la tarjeta en el aeropuerto"}
+      - {dialect: es-AR, text: "Estoy de viaje, perdí la tarjeta en Ezeiza, ¿qué hago?"}
+      - {dialect: es-neutral, text: "Perdí mi tarjeta en el aeropuerto durante un viaje"}
+      - {dialect: pt-BR, text: "Tô viajando e perdi o cartão no aeroporto"}
+  - id: blk-11 # a card left at a restaurant or bar
+    utterances:
+      - {dialect: es-MX, text: "Creo que dejé mi tarjeta en un restaurante anoche, mejor bloquéenla"}
+      - {dialect: es-CO, text: "Dejé la tarjeta en un bar anoche y no sé si alguien la tiene"}
+      - {dialect: es-AR, text: "Me dejé la tarjeta en un bar anoche, mejor bloqueala"}
+      - {dialect: es-neutral, text: "Dejé mi tarjeta en un restaurante y prefiero bloquearla"}
+      - {dialect: pt-BR, text: "Deixei o cartão num bar ontem à noite, melhor bloquear"}
+  - id: blk-12 # someone saw the PIN
+    utterances:
+      - {dialect: es-MX, text: "Alguien vio mi NIP en el cajero y me da miedo que use la tarjeta"}
+      - {dialect: es-CO, text: "Creo que alguien vio mi clave en el cajero, quiero bloquear la tarjeta"}
+      - {dialect: es-AR, text: "Alguien me vio el PIN en el cajero, quiero bloquear la tarjeta por las dudas"}
+      - {dialect: es-neutral, text: "Alguien vio mi PIN y quiero bloquear la tarjeta por seguridad"}
+      - {dialect: pt-BR, text: "Alguém viu minha senha no caixa, quero bloquear o cartão por segurança"}
+  - id: blk-13 # the new card never arrived by mail
+    utterances:
+      - {dialect: es-MX, text: "Me iban a mandar la tarjeta nueva por paquetería y nunca llegó, quiero que la bloqueen"}
+      - {dialect: es-CO, text: "La tarjeta nueva nunca me llegó, creo que se la robaron, bloquéenla"}
+      - {dialect: es-AR, text: "La tarjeta nueva nunca me llegó, capaz que se la robaron en el correo"}
+      - {dialect: es-neutral, text: "Mi tarjeta nueva nunca llegó y quiero que la bloqueen"}
+      - {dialect: pt-BR, text: "Meu cartão novo nunca chegou, quero bloquear"}
+  - id: blk-14 # pickpocketed on public transport
+    utterances:
+      - {dialect: es-MX, text: "Me bolsearon en el metro y se llevaron mi tarjeta"}
+      - {dialect: es-CO, text: "Me robaron en el Transmilenio y se llevaron la tarjeta"}
+      - {dialect: es-AR, text: "Me robaron en el subte y se llevaron la tarjeta"}
+      - {dialect: es-neutral, text: "Me robaron en el transporte público y se llevaron mi tarjeta"}
+      - {dialect: pt-BR, text: "Me furtaram no ônibus e levaram meu cartão"}
+  - id: blk-15 # a card taken from a gym locker
+    utterances:
+      - {dialect: es-MX, text: "Se metieron a mi casillero del gimnasio y se llevaron mi tarjeta"}
+      - {dialect: es-CO, text: "Me abrieron el locker del gimnasio y la tarjeta ya no está"}
+      - {dialect: es-AR, text: "En el gimnasio me sacaron la tarjeta del locker, quiero bloquearla"}
+      - {dialect: es-neutral, text: "Me robaron la tarjeta del casillero del gimnasio"}
+      - {dialect: pt-BR, text: "Roubaram meu cartão do armário da academia"}
+  - id: blk-16 # block online purchases only
+    utterances:
+      - {dialect: es-MX, text: "Quiero bloquear las compras por internet de mi tarjeta"}
+      - {dialect: es-CO, text: "Quiero bloquear la tarjeta para compras en línea"}
+      - {dialect: es-AR, text: "¿Me podés bloquear la tarjeta para compras online?"}
+      - {dialect: es-neutral, text: "Deseo bloquear la tarjeta para compras por internet"}
+      - {dialect: pt-BR, text: "Quero bloquear o cartão para compras online"}
+  - id: blk-17 # switch the card off for a while
+    utterances:
+      - {dialect: es-MX, text: "¿Se puede apagar la tarjeta un rato? no sé dónde la dejé"}
+      - {dialect: es-CO, text: "¿Me pueden desactivar la tarjeta mientras la encuentro?"}
+      - {dialect: es-AR, text: "Desactivame la tarjeta un rato que no sé dónde la metí"}
+      - {dialect: es-neutral, text: "Quiero desactivar mi tarjeta temporalmente"}
+      - {dialect: pt-BR, text: "Dá pra desativar o cartão por um tempo? Não sei onde deixei"}
+  - id: blk-18 # a stolen bag with ID and cards
+    utterances:
+      - {dialect: es-MX, text: "Me robaron la bolsa con mi INE y mis tarjetas"}
+      - {dialect: es-CO, text: "Me robaron el bolso con la cédula y las tarjetas"}
+      - {dialect: es-AR, text: "Me robaron la mochila con el DNI y la tarjeta"}
+      - {dialect: es-neutral, text: "Me robaron el bolso con mis documentos y la tarjeta"}
+      - {dialect: pt-BR, text: "Roubaram minha bolsa com documentos e cartões"}
+  - id: blk-19 # a family member lost an additional card
+    utterances:
+      - {dialect: es-MX, text: "Mi hija perdió la tarjeta adicional que le di, hay que bloquearla"}
+      - {dialect: es-CO, text: "Mi hijo perdió la tarjeta adicional, necesito bloquearla"}
+      - {dialect: es-AR, text: "Mi hijo perdió la extensión de la tarjeta, hay que darla de baja"}
+      - {dialect: es-neutral, text: "Quiero bloquear la tarjeta adicional que tenía mi hijo, la extravió"}
+      - {dialect: pt-BR, text: "Meu filho perdeu o cartão adicional, preciso bloquear"}
+  - id: blk-20 # someone may have the card details, no charge mentioned
+    utterances:
+      - {dialect: es-MX, text: "Siento que alguien tiene los datos de mi tarjeta, prefiero bloquearla"}
+      - {dialect: es-CO, text: "Me da desconfianza, creo que tienen los datos de mi tarjeta, bloquéela por favor"}
+      - {dialect: es-AR, text: "Me parece que alguien tiene los datos de mi tarjeta, prefiero darla de baja"}
+      - {dialect: es-neutral, text: "Creo que alguien obtuvo los datos de mi tarjeta y quiero bloquearla"}
+      - {dialect: pt-BR, text: "Acho que alguém pegou os dados do meu cartão, quero bloquear"}

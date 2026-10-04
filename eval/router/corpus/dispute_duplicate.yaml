@@ -1,0 +1,149 @@
+# Synthetic first messages for the learned intent router (Task 18), one file per intent.
+# Written for this task by an AI coding assistant; a teammate reviews a sample before merge and
+# fills `reviewed_by`. Labeling policy and use: docs/models/router.md. Each group is one scenario
+# in five dialects, so its paraphrases never cross a split. Never copy held-out cases here.
+intent: dispute_duplicate
+provenance: llm_generated_reviewed
+author: claude-code
+reviewed_by: jjresher
+groups:
+  - id: dup-01 # a restaurant bill charged twice
+    utterances:
+      - {dialect: es-MX, text: "Me cobraron dos veces la cuenta del restaurante, 850 pesos cada una"}
+      - {dialect: es-CO, text: "En el restaurante me pasaron la tarjeta dos veces y me salen los dos cobros"}
+      - {dialect: es-AR, text: "En el restó me cobraron la misma cuenta dos veces, fijate porfa"}
+      - {dialect: es-neutral, text: "En un restaurante me cobraron la misma cuenta dos veces"}
+      - {dialect: pt-BR, text: "No restaurante me cobraram a mesma conta duas vezes"}
+  - id: dup-02 # one refuel, two charges
+    utterances:
+      - {dialect: es-MX, text: "Cargué gasolina una sola vez pero me salen dos cargos iguales de la gasolinera"}
+      - {dialect: es-CO, text: "Tanqueé una vez en Terpel y me cobraron doble"}
+      - {dialect: es-AR, text: "Cargué nafta en YPF una sola vez y me debitaron dos veces"}
+      - {dialect: es-neutral, text: "Pagué una sola vez en la gasolinera y aparecen dos cobros"}
+      - {dialect: pt-BR, text: "Abasteci uma vez só no posto e cobraram duas vezes"}
+  - id: dup-03 # the same supermarket amount a minute apart
+    utterances:
+      - {dialect: es-MX, text: "En Walmart me salen dos cargos de 1,245.50 con un minuto de diferencia, solo compré una vez"}
+      - {dialect: es-CO, text: "En el Éxito me aparecen dos cobros idénticos casi a la misma hora"}
+      - {dialect: es-AR, text: "En el súper me figuran dos débitos iguales con un minuto de diferencia"}
+      - {dialect: es-neutral, text: "Tengo dos cargos idénticos del supermercado con un minuto de diferencia"}
+      - {dialect: pt-BR, text: "No mercado aparecem duas cobranças iguais com um minuto de diferença"}
+  - id: dup-04 # a subscription billed twice in one month
+    utterances:
+      - {dialect: es-MX, text: "Este mes me cobraron Spotify dos veces, nomás debería ser una"}
+      - {dialect: es-CO, text: "Me llegó doble el cobro de la suscripción este mes"}
+      - {dialect: es-AR, text: "Este mes Netflix me cobró la suscripción dos veces"}
+      - {dialect: es-neutral, text: "Este mes me cobraron la misma suscripción dos veces"}
+      - {dialect: pt-BR, text: "Esse mês a assinatura veio cobrada em dobro"}
+  - id: dup-05 # a retried payment went through both times
+    utterances:
+      - {dialect: es-MX, text: "La página me marcó error, volví a pagar y ahora tengo los dos cargos"}
+      - {dialect: es-CO, text: "Me salió error al pagar, intenté otra vez y quedaron los dos cobros"}
+      - {dialect: es-AR, text: "Me tiró error el pago, lo hice de nuevo y me cobraron las dos veces"}
+      - {dialect: es-neutral, text: "El pago dio error, lo repetí y ahora me cobraron ambos"}
+      - {dialect: pt-BR, text: "Deu erro no pagamento, tentei de novo e cobraram as duas vezes"}
+  - id: dup-06 # one online order charged twice
+    utterances:
+      - {dialect: es-MX, text: "Hice un solo pedido en Amazon y me lo cobraron dos veces"}
+      - {dialect: es-CO, text: "Hice una compra en Mercado Libre y me aparece cobrada dos veces"}
+      - {dialect: es-AR, text: "Compré una sola cosa en Mercado Libre y me la cobraron por duplicado"}
+      - {dialect: es-neutral, text: "Hice un único pedido en línea y me lo cobraron por duplicado"}
+      - {dialect: pt-BR, text: "Fiz um pedido só na Amazon e cobraram duas vezes"}
+  - id: dup-07 # one ride charged twice
+    utterances:
+      - {dialect: es-MX, text: "el viaje de uber me lo cobraron doble y fue un solo viaje"}
+      - {dialect: es-CO, text: "Un solo servicio de taxi y me hicieron dos cobros"}
+      - {dialect: es-AR, text: "El viaje en Cabify aparece dos veces en el resumen"}
+      - {dialect: es-neutral, text: "Un viaje en taxi aparece cobrado dos veces"}
+      - {dialect: pt-BR, text: "A corrida do Uber foi cobrada duas vezes"}
+  - id: dup-08 # the terminal failed, the customer paid again, both charged
+    utterances:
+      - {dialect: es-MX, text: "La terminal no pasó, el cajero volvió a pasar la tarjeta y me salieron los dos cargos"}
+      - {dialect: es-CO, text: "El datáfono dijo que no pasó, pagué otra vez y me descontaron dos veces"}
+      - {dialect: es-AR, text: "El posnet dijo rechazado, pagué de nuevo y me cobraron dos veces"}
+      - {dialect: es-neutral, text: "La terminal indicó que el pago no pasó, pagué de nuevo y se cobraron los dos"}
+      - {dialect: pt-BR, text: "A maquininha disse que não passou, paguei de novo e cobrou as duas"}
+  - id: dup-09 # a hotel stay charged twice
+    utterances:
+      - {dialect: es-MX, text: "El hotel me cobró la estancia dos veces, ya la había pagado al hacer check out"}
+      - {dialect: es-CO, text: "El hotel me cobró dos veces la misma noche"}
+      - {dialect: es-AR, text: "El hotel me cobró la estadía dos veces"}
+      - {dialect: es-neutral, text: "El hotel me cobró la misma estancia dos veces"}
+      - {dialect: pt-BR, text: "O hotel cobrou a hospedagem duas vezes"}
+  - id: dup-10 # the same charge repeated on the statement
+    utterances:
+      - {dialect: es-MX, text: "En mi estado de cuenta viene el mismo cargo repetido y compré una sola vez"}
+      - {dialect: es-CO, text: "En el extracto me sale el mismo cobro repetido y yo pagué una sola vez"}
+      - {dialect: es-AR, text: "En el resumen me aparece el mismo gasto repetido y pagué una vez"}
+      - {dialect: es-neutral, text: "El mismo cargo aparece repetido en mi estado de cuenta"}
+      - {dialect: pt-BR, text: "A mesma compra aparece repetida na minha fatura"}
+  - id: dup-11 # concert tickets charged twice
+    utterances:
+      - {dialect: es-MX, text: "Compré boletos para un concierto en Ticketmaster y me cobraron dos veces"}
+      - {dialect: es-CO, text: "Las boletas del concierto me las cobraron doble"}
+      - {dialect: es-AR, text: "Saqué entradas para un recital y me las cobraron dos veces"}
+      - {dialect: es-neutral, text: "Me cobraron dos veces las entradas de un concierto"}
+      - {dialect: pt-BR, text: "Comprei ingressos para um show e cobraram em dobro"}
+  - id: dup-12 # a pharmacy purchase charged twice
+    utterances:
+      - {dialect: es-MX, text: "En Farmacias del Ahorro me cobraron dos veces la misma receta"}
+      - {dialect: es-CO, text: "En la droguería me pasaron la compra dos veces"}
+      - {dialect: es-AR, text: "En Farmacity me cobraron la misma compra dos veces"}
+      - {dialect: es-neutral, text: "En la farmacia el mismo cobro aparece dos veces"}
+      - {dialect: pt-BR, text: "Na farmácia passaram minha compra duas vezes"}
+  - id: dup-13 # one purchase charged three times
+    utterances:
+      - {dialect: es-MX, text: "Me cobraron tres veces lo mismo en una tienda de ropa, ¿cómo es posible?"}
+      - {dialect: es-CO, text: "Me hicieron tres cobros por una sola compra"}
+      - {dialect: es-AR, text: "Me cobraron tres veces el mismo gasto, re mal"}
+      - {dialect: es-neutral, text: "La misma compra me la cobraron tres veces"}
+      - {dialect: pt-BR, text: "Cobraram três vezes a mesma compra"}
+  - id: dup-14 # one plane ticket charged twice
+    utterances:
+      - {dialect: es-MX, text: "Compré un vuelo con Volaris y me salen dos cargos por el mismo boleto"}
+      - {dialect: es-CO, text: "Avianca me cobró dos veces el mismo tiquete"}
+      - {dialect: es-AR, text: "Aerolíneas me cobró el pasaje por duplicado"}
+      - {dialect: es-neutral, text: "La aerolínea me cobró dos veces el mismo boleto"}
+      - {dialect: pt-BR, text: "A companhia aérea cobrou a passagem duas vezes"}
+  - id: dup-15 # a gym fee debited twice
+    utterances:
+      - {dialect: es-MX, text: "El gimnasio me hizo el cargo de la mensualidad otra vez y ya la había pagado"}
+      - {dialect: es-CO, text: "El gimnasio me debitó la mensualidad doble este mes"}
+      - {dialect: es-AR, text: "El gimnasio me debitó la cuota dos veces este mes"}
+      - {dialect: es-neutral, text: "El gimnasio me cobró la mensualidad por duplicado"}
+      - {dialect: pt-BR, text: "A academia cobrou a mensalidade duas vezes esse mês"}
+  - id: dup-16 # a second charge for a purchase already paid
+    utterances:
+      - {dialect: es-MX, text: "Hay un segundo cargo por la misma compra que no debería estar"}
+      - {dialect: es-CO, text: "Me llegó un segundo cobro por la misma compra"}
+      - {dialect: es-AR, text: "Me apareció un segundo débito por la misma compra, ya estaba pagada"}
+      - {dialect: es-neutral, text: "Hay un segundo cobro de una compra que ya había pagado"}
+      - {dialect: pt-BR, text: "Veio uma segunda cobrança da mesma compra que eu já tinha pago"}
+  - id: dup-17 # one food delivery order charged twice
+    utterances:
+      - {dialect: es-MX, text: "Pedí comida por Rappi una vez y me salen dos cargos del mismo pedido"}
+      - {dialect: es-CO, text: "El domicilio me lo cobraron dos veces"}
+      - {dialect: es-AR, text: "El pedido de PedidosYa me lo cobraron doble"}
+      - {dialect: es-neutral, text: "Me cobraron dos veces un pedido de comida a domicilio"}
+      - {dialect: pt-BR, text: "O pedido do iFood veio cobrado duas vezes"}
+  - id: dup-18 # a utility bill paid by card, charged twice
+    utterances:
+      - {dialect: es-MX, text: "Pagué el recibo de la luz con tarjeta y se cobró dos veces"}
+      - {dialect: es-CO, text: "Pagué el servicio de gas con la tarjeta y quedó cobrado doble"}
+      - {dialect: es-AR, text: "Pagué la factura de luz con la tarjeta y se debitó dos veces"}
+      - {dialect: es-neutral, text: "Pagué un servicio con tarjeta y el cobro salió duplicado"}
+      - {dialect: pt-BR, text: "Paguei a conta de luz no cartão e foi cobrado duas vezes"}
+  - id: dup-19 # an online course fee charged twice
+    utterances:
+      - {dialect: es-MX, text: "Me inscribí a un curso en línea y me hicieron el cargo doble"}
+      - {dialect: es-CO, text: "El curso virtual me lo cobraron dos veces"}
+      - {dialect: es-AR, text: "Me anoté en un curso online y me lo cobraron dos veces"}
+      - {dialect: es-neutral, text: "Me cobraron dos veces la inscripción a un curso"}
+      - {dialect: pt-BR, text: "Me cobraram duas vezes a inscrição de um curso online"}
+  - id: dup-20 # a store cashier charged the purchase twice by mistake
+    utterances:
+      - {dialect: es-MX, text: "En Coppel me pasaron la compra dos veces por error del cajero"}
+      - {dialect: es-CO, text: "En Falabella me cobraron por error la misma compra dos veces"}
+      - {dialect: es-AR, text: "En Frávega me cobraron la compra dos veces por error"}
+      - {dialect: es-neutral, text: "Por un error de la tienda me cobraron la misma compra dos veces"}
+      - {dialect: pt-BR, text: "Na Casas Bahia passaram minha compra duas vezes por engano"}
