@@ -10,6 +10,9 @@ Applies to `eval/**`, `src/bankagent/eval/**` and `src/bankagent/router/**`. Own
   must never read it before the final evaluation (Task 27). Only `eval/heldout_manifest.sha256`
   is versioned.
 - Held-out cases are cross-authored: nobody writes held-out cases for the component they built.
+- While the set is being written it is checked, sampled for the second annotator and sealed with
+  `uv run poe heldout` (`eval/README.md`), which prints counts, file names and field names only.
+  Do not open a held-out file to debug a problem it reports: tell its author.
 - `eval/preregistration.md` and `eval/gates.yaml` are frozen before unsealing. Any later change is
   listed as a deviation in the final report.
 

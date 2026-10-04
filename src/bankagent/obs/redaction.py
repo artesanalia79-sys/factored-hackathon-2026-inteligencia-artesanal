@@ -135,8 +135,9 @@ def _redact_message(record: logging.LogRecord) -> None:
     try:
         message = record.getMessage()
     except (TypeError, ValueError, KeyError):
-        # A format string that does not match its arguments: logging reports it with both.
-        record.msg = _apply(str(record.msg))
+        # Formatting failed. Redacting the format string can consume a placeholder and
+        # allow logging to substitute an unredacted argument into a different one.
+        record.msg, record.args = _FAILED, None
         return
     cleaned = redact(message)
     if cleaned != message:

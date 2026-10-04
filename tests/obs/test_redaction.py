@@ -287,3 +287,15 @@ def test_a_record_that_cannot_be_redacted_is_withheld(caplog: pytest.LogCaptureF
         logging.getLogger("bankagent.obs.test").info(Broken())
     (record,) = caplog.records
     assert record.getMessage() == "log record withheld: redaction failed"
+
+
+def test_a_malformed_format_cannot_reinsert_a_short_secret(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    install_log_redaction()
+    with caplog.at_level(logging.INFO):
+        logging.getLogger("bankagent.obs.test").info("otp=%s %s", "482913")
+    (record,) = caplog.records
+    assert record.getMessage() == "log record withheld: redaction failed"
+    assert record.args is None
+    assert "482913" not in caplog.text

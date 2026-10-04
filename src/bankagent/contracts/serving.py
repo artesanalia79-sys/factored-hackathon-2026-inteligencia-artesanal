@@ -191,19 +191,25 @@ def ddl() -> str:
 def validate_serving_db(con: _Connection) -> list[str]:
     """Return every contract violation found in the database (empty list means valid).
 
-    Checks table and column names, column types, forbidden columns in any table, NOT NULL and
-    primary-key uniqueness on the data itself, and the required metadata keys.
+    Checks table and column names, column types, forbidden columns in any table of any schema,
+    tables or views outside the contract, NOT NULL and primary-key uniqueness on the data itself,
+    and the required metadata keys.
     """
     problems: list[str] = []
     rows = con.execute(
-        "SELECT table_name, column_name, data_type FROM information_schema.columns "
-        "WHERE table_schema = 'main' ORDER BY table_name, ordinal_position"
+        "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns "
+        "WHERE table_catalog = current_database() "
+        "ORDER BY table_schema, table_name, ordinal_position"
     ).fetchall()
     actual: dict[str, list[tuple[str, str]]] = {}
-    for table_name, column_name, data_type in rows:
-        actual.setdefault(table_name, []).append((column_name, data_type))
+    for schema, table_name, column_name, data_type in rows:
+        # Contract tables live in `main`; any other schema is named, so it can never pass as one.
+        name = table_name if schema == "main" else f"{schema}.{table_name}"
+        actual.setdefault(name, []).append((column_name, data_type))
         if column_name.lower() in FORBIDDEN_COLUMNS:
-            problems.append(f"{table_name}.{column_name}: forbidden column")
+            problems.append(f"{name}.{column_name}: forbidden column")
+    for name in sorted(actual.keys() - TABLES_BY_NAME.keys()):
+        problems.append(f"{name}: table not in the serving contract")
 
     for table in SERVING_TABLES:
         columns = actual.get(table.name)

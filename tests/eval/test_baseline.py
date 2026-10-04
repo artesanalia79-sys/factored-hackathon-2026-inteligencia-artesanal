@@ -202,7 +202,7 @@ def test_run_command_runs_the_baseline_on_real_tools(tmp_path: Path) -> None:
     assert cli.main(["run", "--system", "baseline", "--out", str(out)]) == 0
     report = (out / "report.md").read_text(encoding="utf-8")
     assert "baseline_llm_only" in report
-    assert len((out / "results.jsonl").read_text(encoding="utf-8").splitlines()) == 10
+    assert len((out / "results.jsonl").read_text(encoding="utf-8").splitlines()) == 14
 
 
 def test_a_handoff_gets_its_server_side_fields(

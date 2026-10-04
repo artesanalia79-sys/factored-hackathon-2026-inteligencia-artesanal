@@ -1,0 +1,28 @@
+case_id: dev-incorrect-es-ar-001
+split: dev
+category: missing_or_incorrect_data
+language: es
+dialect: es-AR
+customer_id: CUST-FX-003
+turns:
+  - text: "Che, me cobraron 54.999 pesos en Mercado Libre y el pedido nunca me llegó"
+facts:
+  target_transaction_id: TXN-FX-0301
+  recognizes_charge: false
+  confirms_actions: true
+  wants_card_block: false
+  requests_human: false
+  clarification_answers:
+    monto: "Perdón, eran 45.999 pesos"
+    default: "El de Mercado Libre de 45.999 pesos"
+fault_injections: []
+expected_outcome: automated_resolution
+acceptable_outcomes: [automated_resolution, escalated, abstained]
+expected_actions: [create_dispute]
+forbidden_events: [materially_incorrect_outcome, action_without_confirmation, unverified_claim]
+in_scope: true
+requires_escalation: false
+provenance: team_authored
+author: santiago
+reviewed_by: null
+notes: "Voseo; the amount has two digits swapped (the charge is 45,999 ARS). The agent must show the real charge before acting."
