@@ -39,6 +39,26 @@ def test_detects_forbidden_column_even_in_extra_tables(con: duckdb.DuckDBPyConne
     assert "extra_labels.is_fraud: forbidden column" in validate_serving_db(con)
 
 
+def test_detects_tables_outside_the_contract_in_any_schema(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    # Both passed before the PR #29 audit: only schema `main` was read, and only by column name.
+    con.execute("CREATE TABLE raw_customers (customer_id VARCHAR, full_name VARCHAR)")
+    con.execute("CREATE SCHEMA labels")
+    con.execute("CREATE TABLE labels.fraud (transaction_id VARCHAR, is_fraud BOOLEAN)")
+    problems = validate_serving_db(con)
+    assert "raw_customers: table not in the serving contract" in problems
+    assert "labels.fraud: table not in the serving contract" in problems
+    assert "labels.fraud.is_fraud: forbidden column" in problems
+
+
+def test_a_temporary_table_of_the_connection_is_not_part_of_the_database(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    con.execute("CREATE TEMP TABLE scratch (x INTEGER)")
+    assert validate_serving_db(con) == []
+
+
 def test_detects_missing_table_and_type_drift() -> None:
     con = duckdb.connect(":memory:")
     con.execute(ddl().replace('"amount" DECIMAL(15,2)', '"amount" DOUBLE'))

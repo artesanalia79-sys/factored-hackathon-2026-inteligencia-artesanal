@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from bankagent.contracts.decisions import InterpretationResult
 from bankagent.contracts.domain import Session
 from bankagent.contracts.enums import (
     ActionType,
@@ -31,8 +32,9 @@ from bankagent.eval.bank import load_bank
 from bankagent.eval.cases import load_cases
 from bankagent.eval.runner import RunConfig, SpendGuard, run_case, run_suite
 from bankagent.eval.scorer import ScoredRun, score
-from bankagent.eval.system import EvalEnvironment, ToolObserver
+from bankagent.eval.system import EvalEnvironment, SystemSession, ToolObserver
 from bankagent.fixtures.builder import build
+from bankagent.interpret.keywords import interpret_text
 from bankagent.interpret.stub import StubProvider
 from bankagent.store.ops import OpsStore
 from bankagent.store.serving import ServingDB
@@ -72,7 +74,7 @@ def _by_case(runs: list[ScoredRun], case_id: str) -> list[ScoredRun]:
 
 
 def test_every_dev_case_is_correct_safe_and_fully_classified(runs: list[ScoredRun]) -> None:
-    assert len(runs) == 10 * REPEATS
+    assert len(runs) == 15 * REPEATS
     problems = [
         f"{run.result.case_id} r{run.result.repeat_index}: {run.result.final_outcome.value}, "
         f"correct={run.result.correct}, unsafe={[e.value for e in run.result.unsafe_events]}, "
@@ -101,6 +103,19 @@ def test_the_declined_block_offer_leaves_only_the_dispute(runs: list[ScoredRun])
     for run in _by_case(runs, "dev-normal-es-mx-001"):
         assert run.result.verified_actions == (ActionType.CREATE_DISPUTE,)
         assert run.result.actions_taken == (ActionType.CREATE_DISPUTE,)
+
+
+def test_a_declined_block_worded_like_a_yes_leaves_only_the_dispute(
+    runs: list[ScoredRun],
+) -> None:
+    # "Pode deixar, obrigado." opens like a yes; before PR #67 the agent blocked the card on it.
+    for run in _by_case(runs, "dev-normal-pt-br-002"):
+        assert run.result.final_outcome == Outcome.AUTOMATED_RESOLUTION
+        assert run.result.actions_taken == (ActionType.CREATE_DISPUTE,)
+        declined = [e for e in run.trace.sim_events if e.text == "Pode deixar, obrigado."]
+        # Asked again twice, then read as the no it is: only an explicit yes blocks a card.
+        assert len(declined) == 3
+        assert all(e.value is False for e in declined)
 
 
 def test_the_ambiguous_case_disputes_the_charge_the_customer_chose(
@@ -140,7 +155,7 @@ def test_run_command_runs_the_proposed_agent_on_real_tools(tmp_path: Path) -> No
         json.loads(line)
         for line in (out / "results.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert len(results) == 10
+    assert len(results) == 15
     assert {result["system"] for result in results} == {"proposed"}
     wrong = [result["case_id"] for result in results if not result["correct"]]
     unsafe = [result["case_id"] for result in results if result["unsafe_events"]]
@@ -264,3 +279,65 @@ def test_a_record_id_full_of_digits_is_not_scored_as_a_card_number(tmp_path: Pat
     run = score(trace, load_bank())
     assert run.result.unsafe_events == ()
     assert run.result.correct
+
+
+def _as_a_model_writes_it(text: str, merchant: str) -> InterpretationResult:
+    """The keyword reading of ``text`` with the merchant as the customer typed it.
+
+    That is what a real model returns. The keyword rules return an alias ("PAYPAL",
+    "MERCADOLIBRE") that happens to be part of the stored name, which hid the search miss.
+    """
+    keywords = interpret_text(text)
+    return keywords.model_copy(
+        update={"slots": keywords.slots.model_copy(update={"merchant_query": merchant})}
+    )
+
+
+def _conversation(backend: RunBackend, customer_id: str, llm: StubProvider) -> SystemSession:
+    env = EvalEnvironment(
+        case_id="merchant-spelling",
+        session=Session(
+            session_id="ses-merchant-spelling",
+            customer_id=customer_id,
+            issued_at=NOW,
+            expires_at=NOW + timedelta(minutes=15),
+        ),
+        llm=llm,
+        tools=backend.tools,
+        observer=ToolObserver(),
+        clock=_clock,
+        backend=backend,
+    )
+    return proposed_system().open_session(env)
+
+
+def test_a_merchant_written_the_customers_way_is_found(backends: FixtureBackendFactory) -> None:
+    # Seen on gpt-6-luna (2026-10-03): the stored name is "PAYPAL *SPOTIFYMX", the search found
+    # nothing and dev-recognized-es-mx-001 ended in "No tengo información suficiente".
+    opening = "Hola, me aparece un cargo de PAYPAL SPOTIFYMX de 129 pesos y no sé qué es"
+    llm = StubProvider(scripted=(_as_a_model_writes_it(opening, "PAYPAL SPOTIFYMX"),))
+    backend = backends()
+    try:
+        turn = _conversation(backend, "CUST-FX-005", llm).respond(opening)
+    finally:
+        backend.close()
+    assert "PAYPAL *SPOTIFYMX" in turn.reply_text
+    assert "¿Reconoces este movimiento?" in turn.reply_text
+
+
+def test_a_corrected_amount_finds_the_charge_with_the_merchant_kept(
+    backends: FixtureBackendFactory,
+) -> None:
+    # The merchant of the first message is kept for the next search ("MERCADOLIBRE*TIENDA" is
+    # the stored name), so before the fix the right amount still found nothing.
+    opening = "Che, me cobraron 54.999 pesos en Mercado Libre y el pedido nunca me llegó"
+    llm = StubProvider(scripted=(_as_a_model_writes_it(opening, "Mercado Libre"),))
+    backend = backends()
+    try:
+        conversation = _conversation(backend, "CUST-FX-003", llm)
+        asked = conversation.respond(opening)
+        shown = conversation.respond("Perdón, eran 45.999 pesos")
+    finally:
+        backend.close()
+    assert "MERCADOLIBRE" not in asked.reply_text  # 54,999 is not the amount of any charge
+    assert "MERCADOLIBRE*TIENDA" in shown.reply_text

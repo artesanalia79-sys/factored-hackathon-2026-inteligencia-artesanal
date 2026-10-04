@@ -41,6 +41,10 @@ ORDER BY product_id
 
 # One statement for the lookup by id and for the search: every filter is optional and bound.
 # The card join repeats the customer, so a card of someone else can never label a transaction.
+# The merchant matches as plain text (no case, no accents) or, when the query has at least three
+# letters or digits, with spaces and punctuation removed from both sides: a customer writes
+# "Mercado Libre" and "PAYPAL SPOTIFYMX" for MERCADOLIBRE*TIENDA and PAYPAL *SPOTIFYMX. Shorter
+# than three, a query made of punctuation would match on one or two leftover letters.
 _TRANSACTIONS_SQL = """
 SELECT t.transaction_id, t.product_id, c.card_last4, t.transaction_ts, t.transaction_type,
        t.transaction_category, t.amount, t.currency, t.amount_usd, t.channel, t.merchant_name,
@@ -55,7 +59,12 @@ WHERE t.customer_id = $customer_id
   AND ($amount_max::DECIMAL(15,2) IS NULL OR t.amount <= $amount_max::DECIMAL(15,2))
   AND ($currency::VARCHAR IS NULL OR t.currency = $currency::VARCHAR)
   AND ($merchant::VARCHAR IS NULL
-       OR contains(strip_accents(lower(t.merchant_name)), strip_accents(lower($merchant::VARCHAR))))
+       OR contains(strip_accents(lower(t.merchant_name)), strip_accents(lower($merchant::VARCHAR)))
+       OR (length(regexp_replace(
+                    strip_accents(lower($merchant::VARCHAR)), '[^a-z0-9]', '', 'g')) >= 3
+           AND contains(
+                 regexp_replace(strip_accents(lower(t.merchant_name)), '[^a-z0-9]', '', 'g'),
+                 regexp_replace(strip_accents(lower($merchant::VARCHAR)), '[^a-z0-9]', '', 'g'))))
   AND ($date_from::DATE IS NULL OR CAST(t.transaction_ts AS DATE) >= $date_from::DATE)
   AND ($date_to::DATE IS NULL OR CAST(t.transaction_ts AS DATE) <= $date_to::DATE)
   AND ($card_last4::VARCHAR IS NULL OR c.card_last4 = $card_last4::VARCHAR)

@@ -67,7 +67,7 @@ NOW = datetime(2026, 6, 17, 12, tzinfo=UTC)
 def test_dev_cases_load_and_reference_the_fixture_bank() -> None:
     bank = load_bank()
     cases = load_cases()
-    assert len(cases) == 10
+    assert len(cases) == 15
     assert [p for case in cases for p in reference_problems(case, bank)] == []
     assert all(case.split.value == "dev" for case in cases)
 
@@ -75,13 +75,9 @@ def test_dev_cases_load_and_reference_the_fixture_bank() -> None:
 def test_dev_cases_cover_the_approved_mix() -> None:
     cases = load_cases()
     dialects = Counter(case.dialect for case in cases)
-    assert dialects == {Dialect.ES_MX: 4, Dialect.ES_CO: 2, Dialect.ES_AR: 2, Dialect.PT_BR: 2}
-    categories = {case.category for case in cases}
-    assert categories == set(EvalCategory) - {
-        EvalCategory.UNSUPPORTED,
-        EvalCategory.MISSING_OR_INCORRECT_DATA,
-        EvalCategory.MULTILINGUAL_AMBIGUITY,
-    }
+    assert dialects == {Dialect.ES_MX: 5, Dialect.ES_CO: 3, Dialect.ES_AR: 3, Dialect.PT_BR: 4}
+    # Task 17 added unsupported, missing_or_incorrect_data and multilingual_ambiguity.
+    assert {case.category for case in cases} == set(EvalCategory)
 
 
 def test_heldout_paths_are_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -119,7 +115,7 @@ def test_ideal_fake_is_correct_and_safe_on_every_dev_case() -> None:
         systems[:1], cases, suite_id="t", repeats=2, budget_usd_per_system=Decimal("0")
     )
     results = [score(t, bank).result for t in traces]
-    assert len(results) == 20
+    assert len(results) == 30
     assert all(r.correct and not r.unsafe_events for r in results)
     assert {r.repeat_index for r in results} == {0, 1}
 
@@ -151,7 +147,7 @@ def test_smoke_command_writes_the_report_with_slice_tables(tmp_path: Path) -> No
     assert re.search(r"\d+/\d+ = \d+\.\d% \[\d+\.\d, \d+\.\d\]", report)
     assert "SIMULATED" in report
     lines = (tmp_path / "results.jsonl").read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 20
+    assert len(lines) == 30
 
 
 def test_self_check_reports_a_broken_detector(monkeypatch: pytest.MonkeyPatch) -> None:

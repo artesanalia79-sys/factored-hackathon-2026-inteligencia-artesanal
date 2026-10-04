@@ -52,6 +52,7 @@ from bankagent.contracts.tools import (
 )
 from bankagent.interpret.keywords import (
     interpret_text,
+    is_explicit_yes,
     language_evidence,
     normalize,
     parse_amount,
@@ -175,6 +176,20 @@ def _has_clues(slots: DisputeSlots) -> bool:
         value is not None
         for value in (slots.transaction_ref, slots.amount, slots.card_last4, slots.merchant_query)
     )
+
+
+def _answer_to_a_write(interpreted: InterpretationResult, text: str) -> InterpretationResult:
+    """The reading of an answer to the question that confirms a write.
+
+    A write needs an explicit yes (AGENTS.md rule 5), whichever interpreter read the reply: a
+    model's yes counts only when every word of the reply confirms (`is_explicit_yes`), so the
+    safety of a write does not depend on the model. Any other yes is unclear, and the question
+    is asked again. The keyword rules give no other yes, so the stub and the fallback are as
+    before.
+    """
+    if interpreted.dialogue_act == DialogueAct.AFFIRM and not is_explicit_yes(normalize(text)):
+        return interpreted.model_copy(update={"dialogue_act": DialogueAct.OTHER})
+    return interpreted
 
 
 @dataclass(frozen=True, slots=True)
@@ -957,7 +972,7 @@ class Agent:
             return self._escalate(session, priority=Priority.MEDIUM)
         if self._pending_block is not None:
             # Before the intent check below: "Sí, bloquéala" is a card_block intent, not a dispute.
-            return self._confirm_block(session, interpreted)
+            return self._confirm_block(session, _answer_to_a_write(interpreted, text))
         if self._choices:
             answered = self._pick(session, interpreted, text)
             if answered is not None:
@@ -965,7 +980,7 @@ class Agent:
         if self._state in {ConversationState.RECOGNIZE, ConversationState.CONFIRM}:
             if not self._points_elsewhere(interpreted.slots):
                 if self._state == ConversationState.CONFIRM:
-                    return self._confirm(session, interpreted)
+                    return self._confirm(session, _answer_to_a_write(interpreted, text))
                 return self._recognize(session, interpreted)
             # "No, ese no es, es el de 1,249": answering for the charge on screen would dispute
             # the wrong one, so this turn searches again below with the new clues.
