@@ -3,7 +3,8 @@
 ``redact(text)`` replaces what the project treats as personal data or as a secret with a marker
 that names the kind (``[REDACTED:card]``). ``install_log_redaction()`` wraps the process-wide log
 record factory, so the message, its arguments, the exception text and the stack of every record
-are redacted when the record is created: before any filter, handler or formatter, for every
+are redacted when the record is created. A ``Logger.makeRecord`` wrapper covers ``extra`` fields,
+which logging attaches after the factory runs. Both run before any filter or handler, for every
 logger (ours, uvicorn's, the OpenAI client's) and for handlers added later (pytest's ``caplog``).
 
 What is left alone, because operations need it: record and trace ids (``DSP-…``, ``HND-…``,
@@ -18,6 +19,7 @@ recognize (a name, a street, a bare national id number). See ``docs/limitations.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 import traceback
@@ -67,6 +69,8 @@ CARD = re.compile(r"(?<![\w-])(?:\d[ -]?){12,18}\d(?![\w-])")
 PHONE = re.compile(
     r"(?<![\w.,-])\+?\d{1,3}[ -]?\(?\d{2,3}\)?[ -]?\d{3,4}[ -]?\d{4}(?![\w,]|[.,]\d)"
 )
+IPV4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])")
+IPV6 = re.compile(r"(?<![\w:.])[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]+(?:%[\w.-]+)?(?![\w:.])")
 
 _STEPS: tuple[tuple[re.Pattern[str], str], ...] = (
     (SECRET_PAIR, r"\1[REDACTED:secret]"),
@@ -89,7 +93,17 @@ _MARK = "_bankagent_redacting"
 def _apply(text: str) -> str:
     for pattern, replacement in _STEPS:
         text = pattern.sub(replacement, text)
+    for pattern in (IPV4, IPV6):
+        text = pattern.sub(_redact_ip, text)
     return text
+
+
+def _redact_ip(match: re.Match[str]) -> str:
+    try:
+        ipaddress.ip_address(match.group())
+    except ValueError:
+        return match.group()
+    return CLIENT_ADDRESS
 
 
 def redact(text: str) -> str:
@@ -100,12 +114,19 @@ def redact(text: str) -> str:
     returned.
     """
     cleaned = _apply(text)
-    if "%" in cleaned or "+" in cleaned:
-        decoded = unquote_plus(cleaned)
-        if decoded != cleaned:
-            redacted = _apply(decoded)
-            if redacted != decoded:
-                return redacted
+    decoded = cleaned
+    # Decode at most three layers: request targets can contain escaped percent signs, but
+    # an unbounded loop would let a crafted path consume arbitrary work per log record.
+    for _ in range(3):
+        if "%" not in decoded and "+" not in decoded:
+            break
+        next_decoded = unquote_plus(decoded)
+        if next_decoded == decoded:
+            break
+        redacted = _apply(next_decoded)
+        if redacted != next_decoded:
+            return redacted
+        decoded = next_decoded
     return cleaned
 
 
@@ -160,16 +181,52 @@ def redact_record(record: logging.LogRecord) -> None:
         record.exc_info, record.exc_text, record.stack_info = None, None, None
 
 
+def _redact_extra(value: object, depth: int = 0) -> object:
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, (bool, int, float, type(None))):
+        return value
+    if depth >= 4:
+        return _FAILED
+    if isinstance(value, Mapping):
+        return {
+            _redact_extra(key, depth + 1): _redact_extra(item, depth + 1)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_redact_extra(item, depth + 1) for item in value]
+    return redact(str(value))
+
+
 def install_log_redaction() -> None:
-    """Redact every log record created in this process from now on. Safe to call twice."""
+    """Redact records and their ``extra`` fields before any handler sees them."""
     current: Callable[..., logging.LogRecord] = logging.getLogRecordFactory()
-    if getattr(current, _MARK, False):
-        return
+    if not getattr(current, _MARK, False):
 
-    def redacting_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
-        record = current(*args, **kwargs)
-        redact_record(record)
-        return record
+        def redacting_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+            record = current(*args, **kwargs)
+            redact_record(record)
+            return record
 
-    setattr(redacting_factory, _MARK, True)
-    logging.setLogRecordFactory(redacting_factory)
+        setattr(redacting_factory, _MARK, True)
+        logging.setLogRecordFactory(redacting_factory)
+
+    current_make_record = logging.Logger.makeRecord
+    if not getattr(current_make_record, _MARK, False):
+
+        def redacting_make_record(
+            self: logging.Logger, *args: Any, **kwargs: Any
+        ) -> logging.LogRecord:
+            record = current_make_record(self, *args, **kwargs)
+            extra = kwargs.get("extra") if "extra" in kwargs else args[8] if len(args) > 8 else None
+            if isinstance(extra, Mapping):
+                for key in extra:
+                    if key in record.__dict__:
+                        try:
+                            record.__dict__[key] = _redact_extra(record.__dict__[key])
+                        except Exception:
+                            record.__dict__[key] = _FAILED
+            return record
+
+        setattr(redacting_make_record, _MARK, True)
+        logging.Logger.makeRecord = redacting_make_record

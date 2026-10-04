@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -162,6 +163,9 @@ def test_dialogue_acts(text: str, act: DialogueAct) -> None:
         ("Sim, mas sem um bloqueio do cartão", DialogueAct.OTHER),
         ("Sí, pero sin suspender la tarjeta", DialogueAct.OTHER),
         ("Sim, mas sem suspender o cartão", DialogueAct.OTHER),
+        # Reassurance neither confirms nor refuses.
+        ("Ok, no te preocupes", DialogueAct.OTHER),
+        ("Sim, não se preocupe", DialogueAct.OTHER),
         # Yeses that contain a negation stay yeses.
         ("Claro, ¿por qué no?", DialogueAct.AFFIRM),
         ("Sí, cómo no", DialogueAct.AFFIRM),
@@ -169,12 +173,164 @@ def test_dialogue_acts(text: str, act: DialogueAct) -> None:
         ("Dale, no pasa nada", DialogueAct.AFFIRM),
         ("Sim, não tem problema", DialogueAct.AFFIRM),
         ("Sí, sin problema", DialogueAct.AFFIRM),
+        ("Claro, sin duda", DialogueAct.AFFIRM),
         ("Sim, sem problemas", DialogueAct.AFFIRM),
+        ("Sim, sem dúvida", DialogueAct.AFFIRM),
         ("Sí, bloquéala", DialogueAct.AFFIRM),
+        # "¿Por qué no?" is a yes only as a clause of its own.
+        ("Sí, cómo no, bloquéala", DialogueAct.AFFIRM),
+        ("Sí, cómo no. Bloquéala", DialogueAct.AFFIRM),
+        ("Dale, cómo no; bloquéala", DialogueAct.AFFIRM),
+        ("Sí, ¡cómo no!", DialogueAct.AFFIRM),
+        ("Claro, ¿por qué no? Bloquéala.", DialogueAct.AFFIRM),
+        ("Ok, porque no quiero bloquearla", DialogueAct.OTHER),
+        ("Sí, cómo no voy a querer", DialogueAct.OTHER),
+        ("Ok, ¿por qué no me explicas?", DialogueAct.OTHER),
+        # A yes idiom in a reply that is not a yes is still not a refusal.
+        ("Ok, no hay problema con bloquearla", DialogueAct.NEW_REQUEST),
     ],
 )
 def test_a_reply_that_also_says_no_is_not_a_yes(text: str, act: DialogueAct) -> None:
     assert interpret_text(text).dialogue_act == act
+
+
+# What the project's own customers answer with: the scripted user, the web buttons, the tests.
+EXPLICIT_YESES = (
+    "Sí",
+    "si",
+    "Sim",
+    "Ok",
+    "Dale",
+    "De una",
+    "Claro que sí",
+    "Sí, confirmo.",
+    "Sim, confirmo.",
+    "Dale, confirmo",
+    "Sí, por favor",
+    "Sí, por favor bloquéala.",
+    "Sí, bloquea la tarjeta ahora mismo, gracias",
+    "Sí, quiero bloquearla ya",
+    "Sim, pode bloquear esse cartão agora mesmo",
+    "Sim, pode bloquear o cartão.",
+    "Pode sim, obrigada",
+    "Sí, claro; confirmo: ¡por favor!",
+)
+# One of each way to take a yes back: exclude, negate, undo, postpone, limit, hedge, ask,
+# report a block instead of asking for one, name another card, keep the card, or answer with a
+# symbol.
+NOT_A_YES = (
+    "quiero mi tarjeta",
+    "la tarjeta",
+    "ya está bien",
+    "bloqueé la tarjeta",
+    "bloquearon la tarjeta",
+    "bloqueada",
+    "bloqueei o cartão",
+    "ya la bloquearon",
+    "bloquea otra tarjeta",
+    "la otra tarjeta",
+    "la tarjeta terminada en 9999",
+    "👎",
+    "sin bloquear la tarjeta",
+    "sem bloquear o cartão",
+    "sin el bloqueo",
+    "salvo el bloqueo",
+    "excepto bloquear la tarjeta",
+    "exceto o bloqueio",
+    "todo menos bloquear la tarjeta",
+    "pero ni se te ocurra bloquearla",
+    "nada de bloqueos",
+    "mas jamais bloqueie o cartão",
+    "mas nenhum bloqueio",
+    "déjala activa",
+    "déjalo así",
+    "olvídalo",
+    "deixa como está",
+    "pero…",
+    "mas…",
+    "pero después",
+    "mas depois",
+    "espera",
+    "pero solo el reclamo",
+    "mas só a contestação",
+    "creo",
+    "tal vez",
+    "¿y cuánto tarda?",
+    "¿puedo seguir pagando?",
+    "desbloquéala",
+)
+
+
+@pytest.mark.parametrize("text", EXPLICIT_YESES)
+def test_an_explicit_yes_is_a_yes(text: str) -> None:
+    assert interpret_text(text).dialogue_act == DialogueAct.AFFIRM
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        *("Sí", "Si", "Sim", "Claro", "Dale", "De una", "Correcto", "Confirmo", "Isso", "Pode"),
+        *("Ok", "Okay", "Vale", "Está bien", "Hágale", "Por favor", "Perfecto", "Exacto"),
+        *("Afirmativo", "Va", "Sale", "Bora", "Certo"),
+    ],
+)
+def test_every_word_that_opens_a_yes_is_a_yes_on_its_own(text: str) -> None:
+    # The stricter rule keeps each bare yes the rules already had.
+    assert interpret_text(text).dialogue_act == DialogueAct.AFFIRM
+
+
+@pytest.mark.parametrize("text", ["Bloquéala", "Gracias", "Quiero", "La tarjeta, por favor"])
+def test_words_that_confirm_are_not_a_yes_without_one(text: str) -> None:
+    assert interpret_text(text).dialogue_act != DialogueAct.AFFIRM
+
+
+@pytest.mark.parametrize("qualifier", NOT_A_YES)
+def test_a_yes_that_says_anything_else_is_not_a_yes(qualifier: str) -> None:
+    # PR #66 review: "Sí, pero sin bloquear la tarjeta" blocked the card. A write needs a reply
+    # in which every word confirms, so no yes survives any of these, whatever word opens it.
+    for yes in EXPLICIT_YESES:
+        text = f"{yes.rstrip('.')}, {qualifier}"
+        assert interpret_text(text).dialogue_act != DialogueAct.AFFIRM, text
+
+
+REPLIES_NOT_A_YES = [
+    line
+    for line in Path(__file__).with_name("replies_not_a_yes.txt").read_text("utf-8").splitlines()
+    if line and not line.startswith("#")
+]
+
+
+@pytest.mark.parametrize("text", REPLIES_NOT_A_YES)
+def test_no_reply_of_the_review_corpus_is_a_yes(text: str) -> None:
+    # Replies that open like a yes and are not one; after PR #66, 103 of them were still a yes.
+    assert interpret_text(text).dialogue_act != DialogueAct.AFFIRM
+
+
+def test_the_review_corpus_was_read_whole() -> None:
+    # An empty or cut file would make the test above pass with nothing to check.
+    assert len(set(REPLIES_NOT_A_YES)) == len(REPLIES_NOT_A_YES) >= 150
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sí, pero sin bloquear la tarjeta",
+        "Ok, sin bloquear mi tarjeta",
+        "Sim, mas sem bloquear o cartão",
+        "Si la bloqueo, ¿puedo seguir pagando?",
+        "Por favor, explícame qué significa",
+        "Pode me explicar?",
+        "Isso é um erro",
+        "Está bien así, gracias",
+        "Sí?",
+        "Sí, ¿bloquear la tarjeta?",
+        "Sí, crea el reclamo",
+    ],
+)
+def test_a_reply_that_opens_like_a_yes_and_is_not_one_is_asked_again(text: str) -> None:
+    # Neither a yes nor a no: both confirmation steps ask their question again for these acts.
+    act = interpret_text(text).dialogue_act
+    assert act not in (DialogueAct.AFFIRM, DialogueAct.DENY)
 
 
 @pytest.mark.parametrize(

@@ -65,7 +65,9 @@ def _first_missing(modules: tuple[str, ...]) -> str | None:
 
 @pytest.fixture(autouse=True)
 def _restore_log_record_factory() -> Iterator[None]:
-    """``create_default_app`` installs the process-wide log redaction (T20); no test keeps it."""
+    """``create_default_app`` installs process-wide log redaction; no test keeps it."""
     factory = logging.getLogRecordFactory()
+    make_record = logging.Logger.makeRecord
     yield
     logging.setLogRecordFactory(factory)
+    logging.Logger.makeRecord = make_record

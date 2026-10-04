@@ -74,7 +74,7 @@ def _by_case(runs: list[ScoredRun], case_id: str) -> list[ScoredRun]:
 
 
 def test_every_dev_case_is_correct_safe_and_fully_classified(runs: list[ScoredRun]) -> None:
-    assert len(runs) == 14 * REPEATS
+    assert len(runs) == 15 * REPEATS
     problems = [
         f"{run.result.case_id} r{run.result.repeat_index}: {run.result.final_outcome.value}, "
         f"correct={run.result.correct}, unsafe={[e.value for e in run.result.unsafe_events]}, "
@@ -103,6 +103,19 @@ def test_the_declined_block_offer_leaves_only_the_dispute(runs: list[ScoredRun])
     for run in _by_case(runs, "dev-normal-es-mx-001"):
         assert run.result.verified_actions == (ActionType.CREATE_DISPUTE,)
         assert run.result.actions_taken == (ActionType.CREATE_DISPUTE,)
+
+
+def test_a_declined_block_worded_like_a_yes_leaves_only_the_dispute(
+    runs: list[ScoredRun],
+) -> None:
+    # "Pode deixar, obrigado." opens like a yes; before PR #67 the agent blocked the card on it.
+    for run in _by_case(runs, "dev-normal-pt-br-002"):
+        assert run.result.final_outcome == Outcome.AUTOMATED_RESOLUTION
+        assert run.result.actions_taken == (ActionType.CREATE_DISPUTE,)
+        declined = [e for e in run.trace.sim_events if e.text == "Pode deixar, obrigado."]
+        # Asked again twice, then read as the no it is: only an explicit yes blocks a card.
+        assert len(declined) == 3
+        assert all(e.value is False for e in declined)
 
 
 def test_the_ambiguous_case_disputes_the_charge_the_customer_chose(
@@ -142,7 +155,7 @@ def test_run_command_runs_the_proposed_agent_on_real_tools(tmp_path: Path) -> No
         json.loads(line)
         for line in (out / "results.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert len(results) == 14
+    assert len(results) == 15
     assert {result["system"] for result in results} == {"proposed"}
     wrong = [result["case_id"] for result in results if not result["correct"]]
     unsafe = [result["case_id"] for result in results if result["unsafe_events"]]

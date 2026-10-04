@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import logging
 import os
 import random
@@ -88,7 +89,6 @@ def test_personal_data_and_secrets_are_replaced_by_a_marker(text: str, expected:
         "2026-10-03 17:06:10,123 started",
         "2026-10-03T17:06:55+00:00",
         "Started server process [12345]",
-        "Uvicorn running on http://0.0.0.0:10000 (Press CTRL+C to quit)",
         'POST /api/chat/turn HTTP/1.1" 200',
         "latency_ms=1234.5 turn_index=12",
         "model=gpt-6-luna prompt_version=interpret-v2",
@@ -120,6 +120,35 @@ def test_a_percent_encoded_text_is_read_decoded(text: str, markers: list[str]) -
     assert "4111" not in cleaned
     assert "example.com" not in cleaned
     assert "482913" not in cleaned
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("client=203.0.113.7", "client=[REDACTED:ip]"),
+        ("client=[2001:db8::1]", "client=[[REDACTED:ip]]"),
+        ("/health?client_ip=203.0.113.7", "/health?client_ip=[REDACTED:ip]"),
+        (
+            "Uvicorn running on http://0.0.0.0:10000",
+            "Uvicorn running on http://[REDACTED:ip]:10000",
+        ),
+        ("2026-10-03 17:06:10,123 started", "2026-10-03 17:06:10,123 started"),
+    ],
+)
+def test_ip_literals_are_redacted_without_changing_timestamps(text: str, expected: str) -> None:
+    assert redact(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "marker"),
+    [
+        ("/health?mail=ana.perez%2540example.com", "[REDACTED:email]"),
+        ("/x?otp%253D482913", "[REDACTED:secret]"),
+        ("/x?ip=203%252E0%252E113%252E7", "[REDACTED:ip]"),
+    ],
+)
+def test_double_encoded_query_values_are_redacted(text: str, marker: str) -> None:
+    assert marker in redact(text)
 
 
 def _random_ids(rng: random.Random) -> list[str]:
@@ -273,8 +302,35 @@ def test_an_access_record_keeps_uvicorns_five_arguments_and_loses_the_client_add
 def test_installing_twice_wraps_once() -> None:
     install_log_redaction()
     factory = logging.getLogRecordFactory()
+    make_record = logging.Logger.makeRecord
     install_log_redaction()
     assert logging.getLogRecordFactory() is factory
+    assert logging.Logger.makeRecord is make_record
+
+
+def test_extra_fields_are_redacted_before_a_structured_handler_sees_them() -> None:
+    install_log_redaction()
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(logging.Formatter("%(email)s %(payload)s"))
+    logger = logging.getLogger("bankagent.obs.extra_test")
+    logger.addHandler(handler)
+    old_level = logger.level
+    logger.setLevel(logging.INFO)
+    try:
+        logger.info(
+            "event",
+            extra={"email": EMAIL, "payload": {"otp": "otp=482913", "card": CARD}},
+        )
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(old_level)
+    output = stream.getvalue()
+    assert EMAIL not in output
+    assert CARD not in output
+    assert "482913" not in output
+    assert "[REDACTED:email]" in output
+    assert "[REDACTED:secret]" in output
 
 
 def test_a_record_that_cannot_be_redacted_is_withheld(caplog: pytest.LogCaptureFixture) -> None:

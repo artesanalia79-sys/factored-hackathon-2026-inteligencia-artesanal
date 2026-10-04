@@ -128,7 +128,8 @@ The run leaves one dispute behind, so reset the demo afterwards.
 The service writes to stdout and stderr only (Render's **Logs** page, `render logs`). Every
 log record of the process is redacted when it is created (`src/bankagent/obs/redaction.py`,
 installed by the first line of `create_default_app`): the message, its arguments, the
-exception text and the stack, for every logger and every handler, uvicorn's included.
+exception text and the stack. A `Logger.makeRecord` wrapper redacts `extra` fields that Python
+attaches after creating the record. Both cover every logger and handler, uvicorn's included.
 
 What writes a log line:
 
@@ -150,11 +151,11 @@ Redacted, replaced by a marker that names the kind:
 | `[REDACTED:document]` | `FX-DOC-…` (the fixture bank), a CPF or CURP as written, `document_number=…` |
 | `[REDACTED:identity]` | `CUST-…`, `customer_id`, `is_fraud`, `fraud_score` and their values |
 | `[REDACTED:secret]` | the value after `otp`, `otp_code`, `mock_otp`, `access_code`, `token`, `api_key`, `password`, `secret` and their variants (`key=value`, `key: value`, JSON, query string); `Bearer …`; session tokens (JWT); `sk-…` and `AKIA…` keys |
-| `[REDACTED:ip]` | the client address of every `uvicorn.access` line |
+| `[REDACTED:ip]` | IP literals in messages and query strings, and the client address of every `uvicorn.access` line |
 
-A URL-encoded query string is read decoded, so `%40` and `%20` do not hide an email or a
-card number. A record that cannot be redacted is replaced by `log record withheld: redaction
-failed`.
+A URL-encoded query string is decoded through at most three layers, so `%40`, `%20` and
+double-encoded values do not hide an email or a card number. A record that cannot be redacted is
+replaced by `log record withheld: redaction failed`.
 
 Left as they are, because they are what a failure is debugged with: record and trace ids
 (`DSP-…`, `HND-…`, `trace-…`, `rec-…`, `chl-…`, `ses-…`), rule ids, error codes
