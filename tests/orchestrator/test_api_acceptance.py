@@ -589,6 +589,82 @@ def test_a_polite_or_mixed_answer_to_the_block_offer_blocks_nothing(
 
 
 @pytest.mark.parametrize(
+    "reply",
+    [
+        "Sí, pero sin bloquear la tarjeta",
+        "Sí, pero sin el bloqueo de la tarjeta",
+        "Sí, pero sin suspender la tarjeta",
+        "Ok, sin bloquear mi tarjeta",
+        "Sim, mas sem bloquear o cartão",
+    ],
+)
+def test_an_answer_excluding_the_block_never_blocks_the_card(
+    system: tuple[TestClient, OpsStore], reply: str
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    _turn(client, headers, "Hola, tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    _turn(client, headers, "No fui yo")
+    created = _turn(client, headers, "Sí, confirmo")
+    assert created["reply_text"].endswith("¿Confirmas bloquear la tarjeta terminada en 4821?")
+    mixed = _turn(client, headers, reply)
+    assert mixed["claimed_actions"] == []
+    assert "4821" in mixed["reply_text"]
+    assert mixed["reply_text"].endswith("?")
+    assert store.count("card_blocks") == 0
+    declined = _turn(client, headers, "No")
+    assert declined["ended"]
+    assert declined["claimed_actions"] == []
+    assert store.count("card_blocks") == 0
+    assert store.count("disputes") == 1
+
+
+def test_an_answer_excluding_the_block_never_blocks_on_llm_fallback(
+    fixture_bank: Path, tmp_path: Path
+) -> None:
+    with OpsStore(tmp_path / "block-llm-down.sqlite") as store:
+        serving = ServingDB(fixture_bank)
+        agent = create_agent(
+            llm=StubProvider(always_fault=StubFault.UNAVAILABLE),
+            tools=build_tools(serving, store),
+            clock=lambda: NOW,
+            policy=build_policy_evaluator(serving, store, clock=lambda: NOW),
+            issue_confirmation=build_confirmation_issuer(store),
+        )
+        session = Session(
+            session_id="block-llm-down-session",
+            customer_id="CUST-FX-001",
+            issued_at=NOW - timedelta(minutes=1),
+            expires_at=NOW + timedelta(minutes=10),
+        )
+        agent.handle_turn(
+            session, "Hola, tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco"
+        )
+        agent.handle_turn(session, "No fui yo")
+        created = agent.handle_turn(session, "Sí, confirmo")
+        assert "¿Confirmas bloquear la tarjeta" in created.reply_text
+        mixed = agent.handle_turn(session, "Sí, pero sin bloquear la tarjeta")
+        assert any(record.outcome == StepOutcome.FALLBACK for record in mixed.records)
+        assert mixed.claimed_actions == ()
+        assert "¿Confirmas bloquear la tarjeta" in mixed.reply_text
+        assert store.count("card_blocks") == 0
+
+
+def test_an_unqualified_yes_after_clarification_still_blocks(
+    system: tuple[TestClient, OpsStore],
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    _turn(client, headers, "Hola, tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco")
+    _turn(client, headers, "No fui yo")
+    _turn(client, headers, "Sí, confirmo")
+    _turn(client, headers, "Sí, pero sin bloquear la tarjeta")
+    confirmed = _turn(client, headers, "Sí")
+    assert confirmed["claimed_actions"] == ["block_card"]
+    assert store.count("card_blocks") == 1
+
+
+@pytest.mark.parametrize(
     "text", ["Me cobraron $9999999999999999 en Amazon", "No reconozco la TXN-" + "A" * 70]
 )
 def test_an_oversized_amount_or_reference_gets_a_reply_not_a_500(

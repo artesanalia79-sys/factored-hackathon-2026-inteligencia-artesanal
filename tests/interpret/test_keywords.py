@@ -154,12 +154,22 @@ def test_dialogue_acts(text: str, act: DialogueAct) -> None:
         # A yes and a no in one reply is not an explicit yes: the question is asked again.
         ("Sí, pero no bloquees la tarjeta", DialogueAct.OTHER),
         ("Sim, mas não bloqueie o cartão", DialogueAct.OTHER),
+        ("Sí, pero sin bloquear la tarjeta", DialogueAct.OTHER),
+        ("Ok, sin bloquear mi tarjeta", DialogueAct.OTHER),
+        ("Sim, mas sem bloquear o cartão", DialogueAct.OTHER),
+        ("Sí, sin que bloqueen la tarjeta", DialogueAct.OTHER),
+        ("Sí, pero sin el bloqueo de la tarjeta", DialogueAct.OTHER),
+        ("Sim, mas sem um bloqueio do cartão", DialogueAct.OTHER),
+        ("Sí, pero sin suspender la tarjeta", DialogueAct.OTHER),
+        ("Sim, mas sem suspender o cartão", DialogueAct.OTHER),
         # Yeses that contain a negation stay yeses.
         ("Claro, ¿por qué no?", DialogueAct.AFFIRM),
         ("Sí, cómo no", DialogueAct.AFFIRM),
         ("Ok, no hay problema", DialogueAct.AFFIRM),
         ("Dale, no pasa nada", DialogueAct.AFFIRM),
         ("Sim, não tem problema", DialogueAct.AFFIRM),
+        ("Sí, sin problema", DialogueAct.AFFIRM),
+        ("Sim, sem problemas", DialogueAct.AFFIRM),
         ("Sí, bloquéala", DialogueAct.AFFIRM),
     ],
 )

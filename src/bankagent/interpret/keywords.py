@@ -196,10 +196,10 @@ _CARD_BLOCK = _rx(
 # Removed before `_CARD_BLOCK` is read.
 _REFUSED_BLOCK = re.compile(
     r"\b(?:no|nao|nunca|sin|sem)\s+"
-    r"(?:(?:me|te|se|la|lo|le|les|a|o|que|quiero|quero|quisiera|queria|necesito|preciso|precisa"
+    r"(?:(?:me|te|se|la|lo|le|les|el|un|una|um|uma|a|o|que|quiero|quero|quisiera|queria|necesito|preciso|precisa"
     r"|hace falta|hay que|tem que|tiene que|vayan a|van a|vai|deben|debe|pueden|puede"
     r"|es necesario|e necessario|voy a|vou)\s+){0,3}"
-    r"(?:bloque|cancel|congel)\w*"
+    r"(?:bloque|cancel|congel|suspend)\w*"
 )
 _GENERIC_DISPUTE = _rx(
     r"\bcargo\b", r"\bcobro\b", r"\bcobraron\b", r"\bcobranca\b", r"\bcobraram\b"
@@ -402,6 +402,10 @@ def detect_dialogue_act(norm: str, intent: Intent, slots: DisputeSlots) -> Dialo
     if _AFFIRM.search(norm):
         # A write needs an explicit yes (AGENTS.md rule 5): a reply that also says no is not one.
         if not _NEGATION.search(_YES_IDIOMS.sub(" ", norm)):
+            # "Yes, but without blocking" does not confirm a block. Keep the exclusion scoped to
+            # the action: "yes, no problem" is still an affirmative answer.
+            if _REFUSED_BLOCK.search(norm):
+                return DialogueAct.OTHER
             return DialogueAct.AFFIRM
         if _REFUSAL_AFTER_YES.search(norm):
             return DialogueAct.DENY
