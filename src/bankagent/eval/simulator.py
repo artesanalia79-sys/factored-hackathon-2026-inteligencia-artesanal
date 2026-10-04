@@ -48,12 +48,32 @@ _CONFIRM = re.compile(
 )
 # The action a confirmation question names: a dispute (reclamo, disputa, contestação, aclaración,
 # contracargo) or a card block.
-_ACTION = re.compile(r"\breclam|\bdisput|\bcontest|\baclaracion|\bcontracargo|\bbloque")
+_DISPUTE = re.compile(r"\breclam|\bdisput|\bcontest|\baclaracion|\bcontracargo")
+_ACTION = re.compile(_DISPUTE.pattern + r"|\bbloque")
+# An offer to act: "¿Quieres que presente una disputa…?", "Você quer que eu abra…?".
+_OFFER = re.compile(r"\b(?:quieres|queres|quiere|deseas|desea|gustaria|quer|deseja|gostaria)\b")
+# "Which one?" asks for a choice, whatever else the question mentions.
+_WHICH = re.compile(r"\bcual(?:es)?\b|\bqual\b|\bquais\b")
+# After an article, "cual" and "qual" are relative pronouns, not a question: "el cargo, el cual
+# aparece…", "lo cual", "a compra, a qual…". Accents are gone, so "cuál" cannot tell them apart.
+# Each language with its own articles: "¿el de 899 o cuál?" still asks which one.
+_RELATIVE = re.compile(
+    r"\b(?:el|la|lo|los|las|del|al) cual(?:es)?\b"
+    r"|\b(?:o|os|as|do|da|dos|das|no|na|nos|nas|pelo|pela|pelos|pelas) (?:qual|quais)\b"
+    r"|, a (?:qual|quais)\b"
+)
+# Two charges offered side by side: "¿Quieres disputar el de 1,249 o el de 899?".
+_ALTERNATIVES = re.compile(
+    r"\b(?:o|ou) (?:(?:por|a|para) )?(?:el|la|al|o|a|ao|do|da) (?:de|del|do|da)\b|\b(?:o|ou) \d"
+)
+# The reason of a dispute, not a question about recognizing: "como cargo no reconocido".
+_REASON = re.compile(r"\b(?:no|nao) (?:reconocid[oa]s?|reconhecid[oa]s?)\b")
 _CARD_BLOCK = re.compile(r"\bbloque")
 _HUMAN_OFFER = re.compile(r"\basesor|\bagente\b|\bpersona\b|\batendente\b|\bhumano\b|\bejecutivo\b")
 _CLARIFY = re.compile(
     r"\bcual\b|\bqual\b|\bcuales\b|\bquais\b|\bindica|\binform|\bpodrias\b|\bpoderia\b"
     r"|\bmonto\b|\bvalor\b|\bfecha\b|\bdata\b|\bcomercio\b|\bloja\b|\bestabelecimento\b"
+    r"|\brefier|\brefere"
 )
 
 _ANSWERS: dict[Language, dict[str, str]] = {
@@ -92,11 +112,28 @@ def classify_question(agent_text: str, clarification_keys: tuple[str, ...] = ())
     # reason: "¿Confirmas crear un reclamo por movimiento no reconocido?" is not asking whether
     # the customer recognizes the charge. "¿Puedes confirmar si reconoces este cargo?" names no
     # action and stays a recognition question.
-    if _CONFIRM.search(norm) and _ACTION.search(norm):
+    confirms = bool(_CONFIRM.search(norm))
+    if confirms and _ACTION.search(norm):
         return QuestionKind.CONFIRM
-    if _RECOGNIZE.search(norm):
+    # The four rules below were added after the freeze, on the questions the LLM-only baseline
+    # asks on the dev cases (eval/preregistration.md, section 11).
+    offers = bool(_OFFER.search(norm))
+    plain = _RELATIVE.sub(" ", norm)
+    which = bool(_WHICH.search(plain))
+    # After a confirm or an offer, "no reconocido" is the reason of the dispute.
+    recognition = _REASON.sub(" ", norm) if confirms or offers else norm
+    # "¿Cuál de los dos no reconoces?" asks for a choice: a clarification, below.
+    if _RECOGNIZE.search(recognition) and not which:
         return QuestionKind.RECOGNIZE
-    if _CONFIRM.search(norm):
+    # An offer to file a dispute is a confirmation: "¿Quieres que presente una disputa…?". One
+    # that names two charges asks which ("¿Quieres disputar el de 1,249 o el de 899?"), and an
+    # offer of a person is a human offer, below.
+    if offers and _DISPUTE.search(norm) and not _HUMAN_OFFER.search(norm):
+        if which or _ALTERNATIVES.search(norm):
+            return QuestionKind.CLARIFY
+        return QuestionKind.CONFIRM
+    # "¿Podrías confirmar la moneda y la fecha?" asks for data, not for a yes.
+    if confirms and not which and not _CLARIFY.search(plain):
         return QuestionKind.CONFIRM
     if _CARD_BLOCK.search(norm):
         return QuestionKind.CARD_BLOCK
