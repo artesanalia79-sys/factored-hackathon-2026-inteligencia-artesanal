@@ -39,13 +39,21 @@ dev = [
 llm = [
     "openai==3.19.2",
 ]
+# Learned intent router (T18): training, evaluation and the MLflow run. Installed by default so
+# `poe check` type-checks and tests it everywhere; the image skips it (`--no-default-groups`).
+ml = [
+    "mlflow-skinny==3.16.1",
+    "numpy==2.5.3",
+    "scikit-learn==1.9.1",
+    "threadpoolctl==3.7.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13"]
 build-backend = "uv_build"
 
 [tool.uv]
-default-groups = ["api", "dev", "llm"]
+default-groups = ["api", "dev", "llm", "ml"]
 
 # ---------------------------------------------------------------------------
 # Task runner (cross-platform; no make on Windows). Run `uv run poe` to list.
@@ -81,6 +89,8 @@ eval-run = { cmd = "python -m bankagent.eval.cli run", envfile = ".env", help = 
 heldout = { cmd = "python -m bankagent.eval.heldout", envfile = ".env", help = "[Task 17] Held-out set in HELDOUT_DIR: `poe heldout check [--partial] | sample --out DIR | kappa --annotations DIR | seal | verify` (prints counts and file names, never case content)" }
 
 policy-explain = { cmd = "python -m bankagent.policy.cli", help = "[Task 9] Explain one policy decision: `poe policy-explain <customer_id> <transaction_id>` on the fixture bank" }
+router = { cmd = "python -m bankagent.eval.router.cli train", help = "[Task 18] Learned intent router: train and evaluate it against the keyword router on eval/router/ (split-conformal α = 0.1, 0 USD), write docs/evidence/router_eval.md and log an MLflow run to mlruns/" }
+router-predict = { cmd = "python -m bankagent.eval.router.cli predict", help = "[Task 18] Route one message with the router `poe router` evaluates: `poe router-predict \"No reconozco este cargo\"` prints its RouterResult and the keyword router's intent" }
 
 # Placeholders owned by later tasks (they fail loudly until implemented).
 analysis = { cmd = "python -m bankagent.analysis.report", help = "[Task 16] Regenerate docs/evidence/{call_center_baseline,complaints_baseline,roi}.md + roi_tornado.svg from the warehouse and config/roi_assumptions.yaml (pass --eval-results after T27)" }

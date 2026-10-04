@@ -6,6 +6,7 @@ Owner: Santiago. Rules: `docs/rules/eval.md`. Skill: `eval-case-authoring`. Code
 | Path | Purpose | Task |
 |---|---|---|
 | `dev/` | development cases (`EvalCase` YAML), free to read and tune on | T12, T17 |
+| `router/` | synthetic corpus and external check of the learned router (`uv run poe router`; model card `docs/models/router.md`) | T18 |
 | `preregistration.md` | hypotheses, systems, workload, metric and unsafe-event definitions, statistics | T12 |
 | `gates.yaml` | pass/fail thresholds and the held-out plan, evaluated by `bankagent.eval.gates` | T12 |
 | `heldout_manifest.sha256` | hashes of the sealed held-out files (the files live in `HELDOUT_DIR`) | T17 |

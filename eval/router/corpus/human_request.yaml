@@ -1,0 +1,149 @@
+# Synthetic first messages for the learned intent router (Task 18), one file per intent.
+# Written for this task by an AI coding assistant; a teammate reviews a sample before merge and
+# fills `reviewed_by`. Labeling policy and use: docs/models/router.md. Each group is one scenario
+# in five dialects, so its paraphrases never cross a split. Never copy held-out cases here.
+intent: human_request
+provenance: llm_generated_reviewed
+author: claude-code
+reviewed_by: jjresher
+groups:
+  - id: hum-01 # be served by a person
+    utterances:
+      - {dialect: es-MX, text: "¿Me comunica con una persona de carne y hueso?"}
+      - {dialect: es-CO, text: "Regáleme la atención de una persona, por favor"}
+      - {dialect: es-AR, text: "¿Me atiende alguien de verdad?"}
+      - {dialect: es-neutral, text: "Prefiero que me atienda una persona"}
+      - {dialect: pt-BR, text: "Prefiro ser atendido por uma pessoa"}
+  - id: hum-02 # an agent or representative
+    utterances:
+      - {dialect: es-MX, text: "Necesito un ejecutivo que me ayude"}
+      - {dialect: es-CO, text: "Páseme con un asesor de servicio al cliente"}
+      - {dialect: es-AR, text: "Necesito que me atienda un representante"}
+      - {dialect: es-neutral, text: "Necesito que me atienda un agente"}
+      - {dialect: pt-BR, text: "Preciso de um atendente humano"}
+  - id: hum-03 # a phone call instead of the chat
+    utterances:
+      - {dialect: es-MX, text: "¿Me pueden marcar? prefiero que me expliquen por teléfono"}
+      - {dialect: es-CO, text: "¿Me pueden llamar? Prefiero hablarlo por teléfono"}
+      - {dialect: es-AR, text: "¿Me llaman por teléfono? Prefiero hablarlo con alguien"}
+      - {dialect: es-neutral, text: "¿Pueden llamarme? Prefiero hablar por teléfono con alguien"}
+      - {dialect: pt-BR, text: "Vocês podem me ligar? Prefiro falar com alguém por telefone"}
+  - id: hum-04 # not a bot
+    utterances:
+      - {dialect: es-MX, text: "No quiero hablar con un robot"}
+      - {dialect: es-CO, text: "No quiero hablar con una máquina, quiero alguien real"}
+      - {dialect: es-AR, text: "No quiero hablar con un bot, quiero alguien de carne y hueso"}
+      - {dialect: es-neutral, text: "No deseo hablar con un asistente automático"}
+      - {dialect: pt-BR, text: "Não quero falar com robô"}
+  - id: hum-05 # transfer to customer service
+    utterances:
+      - {dialect: es-MX, text: "Transfiéreme a servicio al cliente"}
+      - {dialect: es-CO, text: "Me puede transferir con servicio al cliente"}
+      - {dialect: es-AR, text: "Transferime con atención al cliente"}
+      - {dialect: es-neutral, text: "Por favor transfiérame con atención al cliente"}
+      - {dialect: pt-BR, text: "Me transfere para o atendimento"}
+  - id: hum-06 # is there a human there
+    utterances:
+      - {dialect: es-MX, text: "¿Hay alguien ahí que sea humano?"}
+      - {dialect: es-CO, text: "¿Hay algún humano que me pueda atender?"}
+      - {dialect: es-AR, text: "¿Hay algún humano del otro lado?"}
+      - {dialect: es-neutral, text: "¿Hay una persona disponible para atenderme?"}
+      - {dialect: pt-BR, text: "Tem algum humano aí?"}
+  - id: hum-07 # someone from the fraud team
+    utterances:
+      - {dialect: es-MX, text: "Quiero que me atienda alguien del área de fraudes"}
+      - {dialect: es-CO, text: "Necesito hablar con alguien del departamento de fraude"}
+      - {dialect: es-AR, text: "Pasame con alguien de fraudes, porfa"}
+      - {dialect: es-neutral, text: "Comuníqueme con una persona del departamento de fraudes"}
+      - {dialect: pt-BR, text: "Preciso falar com alguém do setor de fraudes"}
+  - id: hum-08 # a supervisor
+    utterances:
+      - {dialect: es-MX, text: "quiero hablar con un supervisor"}
+      - {dialect: es-CO, text: "Comuníqueme con un supervisor, por favor"}
+      - {dialect: es-AR, text: "Pasame con un supervisor"}
+      - {dialect: es-neutral, text: "Solicito hablar con un supervisor"}
+      - {dialect: pt-BR, text: "Quero falar com um supervisor"}
+  - id: hum-09 # human service because the chat does not help
+    utterances:
+      - {dialect: es-MX, text: "Quiero atención humana, esto no me está sirviendo"}
+      - {dialect: es-CO, text: "Necesito atención humana, el chat no me ayuda"}
+      - {dialect: es-AR, text: "Esto no me sirve para nada, quiero que me atienda gente"}
+      - {dialect: es-neutral, text: "Necesito atención humana"}
+      - {dialect: pt-BR, text: "Quero atendimento humano, isso não está ajudando"}
+  - id: hum-10 # someone who understands
+    utterances:
+      - {dialect: es-MX, text: "Pásame con alguien que sí me entienda"}
+      - {dialect: es-CO, text: "Quiero que me pasen con alguien que sí sepa"}
+      - {dialect: es-AR, text: "Pasame con alguien que entienda mi problema"}
+      - {dialect: es-neutral, text: "Comuníqueme con alguien que pueda entender mi caso"}
+      - {dialect: pt-BR, text: "Me passa pra alguém que me entenda"}
+  - id: hum-11 # the phone number to reach a person
+    utterances:
+      - {dialect: es-MX, text: "¿A qué número llamo para hablar con alguien?"}
+      - {dialect: es-CO, text: "¿Cuál es el número para hablar con un asesor?"}
+      - {dialect: es-AR, text: "¿A qué teléfono llamo para que me atienda alguien del banco?"}
+      - {dialect: es-neutral, text: "¿Cuál es el teléfono para hablar con una persona?"}
+      - {dialect: pt-BR, text: "Qual é o número pra falar com um atendente?"}
+  - id: hum-12 # a bank employee or account manager
+    utterances:
+      - {dialect: es-MX, text: "Prefiero que me atienda un ejecutivo de cuenta"}
+      - {dialect: es-CO, text: "Prefiero que me atienda un funcionario del banco"}
+      - {dialect: es-AR, text: "Prefiero que me atienda alguien del banco"}
+      - {dialect: es-neutral, text: "Prefiero ser atendido por un empleado del banco"}
+      - {dialect: pt-BR, text: "Quero falar com o gerente da minha conta"}
+  - id: hum-13 # tired of the chat
+    utterances:
+      - {dialect: es-MX, text: "Ya me cansé de este chat, que me atienda un humano"}
+      - {dialect: es-CO, text: "Estoy cansado de este chat, necesito un humano"}
+      - {dialect: es-AR, text: "Me cansé de este chat, quiero un humano ya"}
+      - {dialect: es-neutral, text: "Estoy cansado de este chat y quiero que me atienda un humano"}
+      - {dialect: pt-BR, text: "Cansei desse chat, quero um humano"}
+  - id: hum-14 # an operator
+    utterances:
+      - {dialect: es-MX, text: "Comunícame con un operador"}
+      - {dialect: es-CO, text: "Me comunica con un operador, por favor"}
+      - {dialect: es-AR, text: "¿Me pasás con un operador?"}
+      - {dialect: es-neutral, text: "Comuníqueme con un operador"}
+      - {dialect: pt-BR, text: "Me conecta com um operador"}
+  - id: hum-15 # a charge problem, but a person should handle it
+    utterances:
+      - {dialect: es-MX, text: "Tengo un problema con un cargo pero prefiero verlo con un asesor"}
+      - {dialect: es-CO, text: "Tengo un tema con un cobro pero quiero hablarlo con una persona"}
+      - {dialect: es-AR, text: "Tengo un problema con un consumo, pero quiero verlo con una persona"}
+      - {dialect: es-neutral, text: "Tengo un problema con un cargo y quiero que lo revise una persona"}
+      - {dialect: pt-BR, text: "Tenho um problema com uma cobrança mas quero falar com uma pessoa"}
+  - id: hum-16 # escalate my case to an agent
+    utterances:
+      - {dialect: es-MX, text: "Quiero que escalen mi caso con un asesor"}
+      - {dialect: es-CO, text: "Necesito que esto lo vea un asesor, escálenlo por favor"}
+      - {dialect: es-AR, text: "Quiero que escalen esto con alguien del banco"}
+      - {dialect: es-neutral, text: "Solicito que mi caso pase a un agente humano"}
+      - {dialect: pt-BR, text: "Quero que escalem meu caso para um atendente"}
+  - id: hum-17 # personal attention, not canned answers
+    utterances:
+      - {dialect: es-MX, text: "Necesito atención personalizada, no respuestas automáticas"}
+      - {dialect: es-CO, text: "Quiero una atención personalizada, por favor"}
+      - {dialect: es-AR, text: "No me mandes respuestas automáticas, quiero que me atienda alguien"}
+      - {dialect: es-neutral, text: "Requiero atención personalizada"}
+      - {dialect: pt-BR, text: "Quero atendimento personalizado"}
+  - id: hum-18 # chat with a real agent
+    utterances:
+      - {dialect: es-MX, text: "¿Puedo chatear con un agente de verdad?"}
+      - {dialect: es-CO, text: "¿Puedo chatear con un agente real?"}
+      - {dialect: es-AR, text: "¿Hay forma de chatear con un agente posta?"}
+      - {dialect: es-neutral, text: "¿Puedo hablar por chat con un agente humano?"}
+      - {dialect: pt-BR, text: "Posso conversar com um agente de verdade?"}
+  - id: hum-19 # the customer cannot use the chat
+    utterances:
+      - {dialect: es-MX, text: "No le entiendo a esto, ¿me puede atender alguien?"}
+      - {dialect: es-CO, text: "Sumercé, yo no sé manejar esto, ¿me atiende una persona?"}
+      - {dialect: es-AR, text: "No entiendo nada de esto, ¿me atiende alguien?"}
+      - {dialect: es-neutral, text: "No entiendo bien cómo funciona esto, ¿me puede atender alguien?"}
+      - {dialect: pt-BR, text: "Não entendo nada disso, alguém pode me atender?"}
+  - id: hum-20 # an agent should call back
+    utterances:
+      - {dialect: es-MX, text: "Necesito que un asesor me devuelva la llamada"}
+      - {dialect: es-CO, text: "Que me llame un asesor, por favor, no tengo tiempo de chatear"}
+      - {dialect: es-AR, text: "Necesito que alguien del banco me devuelva el llamado"}
+      - {dialect: es-neutral, text: "¿Puede un asesor llamarme más tarde?"}
+      - {dialect: pt-BR, text: "Preciso que um atendente me retorne a ligação"}

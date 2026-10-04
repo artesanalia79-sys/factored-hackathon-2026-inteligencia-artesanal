@@ -17,6 +17,7 @@ Modules:
 - ``scorer``: ``CaseTrace`` -> ``EvalResult`` with every ``UnsafeEvent``.
 - ``metrics``, ``gates``, ``report``: case-level metrics with Wilson CIs, gates and the report.
 - ``cli``: ``python -m bankagent.eval.cli smoke`` (``uv run poe eval-smoke``).
+- ``router``: offline evaluation of the learned intent router (Task 18, ``uv run poe router``).
 
 Production code must never import this package. Rules: ``docs/rules/eval.md``.
 """
