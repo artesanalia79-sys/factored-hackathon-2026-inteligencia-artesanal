@@ -17,7 +17,7 @@ from bankagent.api.wiring import create_default_app
 from bankagent.auth.service import AuthService
 from bankagent.auth.settings import AuthSettings, Secret
 from bankagent.contracts.domain import Session
-from bankagent.contracts.enums import StepOutcome
+from bankagent.contracts.enums import ActionType, StepOutcome, ToolName
 from bankagent.fixtures.builder import build
 from bankagent.interpret.stub import StubFault, StubProvider
 from bankagent.orchestrator.agent import create_agent
@@ -662,6 +662,141 @@ def test_an_unqualified_yes_after_clarification_still_blocks(
     confirmed = _turn(client, headers, "Sí")
     assert confirmed["claimed_actions"] == ["block_card"]
     assert store.count("card_blocks") == 1
+
+
+ES_OPENING = "Hola, tengo un cargo de 2,450 pesos en ELECTROMUNDO que no reconozco"
+ES_BLOCK_QUESTION = "¿Confirmas bloquear la tarjeta terminada en 4821?"
+PT_OPENING = (
+    "Oi, apareceu uma compra de 32.500 pesos na GAMESTORE DIGITAL que eu não fiz. "
+    "Não reconheço essa compra."
+)
+PT_BLOCK_QUESTION = "Você confirma o bloqueio do cartão com final 2208?"
+
+
+@pytest.mark.parametrize(
+    ("persona", "turns", "question", "qualified", "yes", "blocked_reply", "card"),
+    [
+        (
+            "Mariana",
+            (ES_OPENING, "No fui yo", "Sí, confirmo"),
+            ES_BLOCK_QUESTION,
+            "Sí, salvo el bloqueo",
+            "Sí",
+            "Bloqueé la tarjeta terminada en 4821.",
+            ("CUST-FX-001", "CARD-FX-011"),
+        ),
+        (
+            "Rafael",
+            (PT_OPENING, "Não, não reconheço.", "Sim, confirmo."),
+            PT_BLOCK_QUESTION,
+            "Sim, mas sem bloquear o cartão",
+            "Sim",
+            "Bloqueei o cartão com final 2208.",
+            ("CUST-FX-004", "CARD-FX-041"),
+        ),
+    ],
+)
+def test_a_yes_that_takes_the_block_back_issues_no_token_and_a_plain_yes_still_blocks(
+    system: tuple[TestClient, OpsStore],
+    persona: str,
+    turns: tuple[str, ...],
+    question: str,
+    qualified: str,
+    yes: str,
+    blocked_reply: str,
+    card: tuple[str, str],
+) -> None:
+    # A yes is a reply in which every word confirms, in a Portuguese conversation too.
+    client, store = system
+    headers = _headers(client, persona)
+    created: dict[str, Any] = {}
+    for text in turns:
+        created = _turn(client, headers, text)
+    assert created["claimed_actions"] == ["create_dispute"]
+    assert created["reply_text"].endswith(question)
+    asked = _turn(client, headers, qualified)
+    assert asked["claimed_actions"] == []
+    assert not asked["ended"]
+    assert asked["reply_text"].endswith(question)
+    assert store.count("card_blocks") == 0
+    assert store.count("confirmation_tokens") == 1  # the dispute's: none was issued for a block
+    # An unqualified yes still blocks, with a token of its own and a claim that was read back.
+    blocked = _turn(client, headers, yes)
+    assert blocked["ended"]
+    assert blocked["claimed_actions"] == ["block_card"]
+    assert blocked["reply_text"] == blocked_reply
+    assert store.get_card_block(*card) is not None
+    assert store.count("card_blocks") == 1
+    assert store.count("confirmation_tokens") == 2
+
+
+@pytest.mark.parametrize(
+    "qualified",
+    [
+        # Each of these was still read as a yes after the first fix for "sin bloquear" (#66).
+        "Sí, salvo el bloqueo",
+        "Ok, déjala activa",
+        "Sí, pero después",
+        "Si la bloqueo, ¿puedo seguir pagando?",
+        "Por favor, explícame qué significa",
+        "Sí, bloquea la otra tarjeta",
+    ],
+)
+def test_a_qualified_yes_writes_nothing_at_either_question(
+    system: tuple[TestClient, OpsStore], qualified: str
+) -> None:
+    client, store = system
+    headers = _headers(client, "Mariana")
+    _turn(client, headers, ES_OPENING)
+    asked = _turn(client, headers, "No fui yo")
+    assert "¿Confirmas crear un reclamo" in asked["reply_text"]
+    again = _turn(client, headers, qualified)
+    assert again["claimed_actions"] == []
+    assert "¿Confirmas crear un reclamo" in again["reply_text"]
+    assert store.count("confirmation_tokens") == store.count("disputes") == 0
+    created = _turn(client, headers, "Sí, confirmo")
+    assert created["reply_text"].endswith(ES_BLOCK_QUESTION)
+    offered = _turn(client, headers, qualified)
+    assert offered["claimed_actions"] == []
+    assert offered["reply_text"].endswith(ES_BLOCK_QUESTION)
+    assert store.count("card_blocks") == 0
+    assert store.count("disputes") == store.count("confirmation_tokens") == 1
+
+
+def test_a_qualified_yes_blocks_nothing_when_the_llm_is_down(
+    fixture_bank: Path, tmp_path: Path
+) -> None:
+    with OpsStore(tmp_path / "llm-down-block.sqlite") as store:
+        serving = ServingDB(fixture_bank)
+        agent = create_agent(
+            llm=StubProvider(always_fault=StubFault.UNAVAILABLE),
+            tools=build_tools(serving, store),
+            clock=lambda: NOW,
+            policy=build_policy_evaluator(serving, store, clock=lambda: NOW),
+            issue_confirmation=build_confirmation_issuer(store),
+        )
+        session = Session(
+            session_id="llm-down-block-session",
+            customer_id="CUST-FX-001",
+            issued_at=NOW - timedelta(minutes=1),
+            expires_at=NOW + timedelta(minutes=10),
+        )
+        agent.handle_turn(session, ES_OPENING)
+        agent.handle_turn(session, "No fui yo")
+        created = agent.handle_turn(session, "Sí, confirmo")
+        assert created.reply_text.endswith(ES_BLOCK_QUESTION)
+        asked = agent.handle_turn(session, "Ok, déjala activa")
+        assert any(record.outcome == StepOutcome.FALLBACK for record in asked.records)
+        assert asked.claimed_actions == ()
+        assert asked.reply_text.endswith(ES_BLOCK_QUESTION)
+        assert store.count("card_blocks") == 0
+        # The fallback still blocks on a plain yes, and the claim comes from a verified write.
+        blocked = agent.handle_turn(session, "Sí")
+        assert any(record.outcome == StepOutcome.FALLBACK for record in blocked.records)
+        assert blocked.claimed_actions == (ActionType.BLOCK_CARD,)
+        write = next(record for record in blocked.records if record.tool == ToolName.BLOCK_CARD)
+        assert write.verified
+        assert store.count("card_blocks") == 1
 
 
 @pytest.mark.parametrize(
