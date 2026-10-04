@@ -113,7 +113,10 @@ class ScriptedUser:
     def __init__(self, case: EvalCase) -> None:
         self._case = case
         self._pending = [turn.text for turn in case.turns[1:]]
-        self._answers = _ANSWERS[case.language]
+        # A case may word a yes or a no its own way; its facts still decide which one it is.
+        self._answers = _ANSWERS[case.language] | {
+            answer.value: text for answer, text in case.facts.answer_wording.items()
+        }
         self.events: list[SimEvent] = []
 
     @property

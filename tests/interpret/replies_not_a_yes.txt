@@ -1,0 +1,182 @@
+# Replies that open like a yes and are not one: none of them may be read as a yes, because
+# a yes at a confirmation question writes (AGENTS.md rule 5). Before PR #66 every one was read
+# as a yes, and after it 103 still were; see docs/decision_ledger.md, 2026-10-04.
+# One reply per line. Lines that start with "#" are comments.
+
+# Excludes the block (the first three are the ones from the review of PR #66)
+Sí, pero sin bloquear la tarjeta
+Ok, sin bloquear mi tarjeta
+Sim, mas sem bloquear o cartão
+Claro, sin el bloqueo
+Sí, sin bloqueo
+Sim, sem bloqueio
+Sí, excepto bloquear la tarjeta
+Sí, salvo el bloqueo
+Sí, todo menos bloquear la tarjeta
+Sim, exceto o bloqueio
+Sim, menos bloquear o cartão
+
+# Negates without saying "no"
+Sí, pero ni se te ocurra bloquearla
+Claro, nada de bloqueos
+Sim, mas jamais bloqueie o cartão
+Sí, pero ninguna tarjeta bloqueada
+Sim, mas nenhum bloqueio
+Ok, tampouco quero bloquear
+Ok, negativo
+Vale, nop
+Sí, pero nel
+
+# Asks for the opposite, or postpones
+Sí, déjala activa
+Ok, déjala como está
+Ok, déjalo así
+Vale, olvídalo
+Ok, olvídalo
+Sim, deixa ativo
+Ok, deixa pra lá
+Sim, deixa como está
+Está bien así, gracias
+Ok, mejor después
+Sí, pero después
+Claro, pero espera
+Ok, espera
+Sim, mas depois
+Ok, luego lo vemos
+Sí, pero todavía falta
+Dale, pero más tarde
+
+# Limits the yes to something else
+Sí, pero solo el reclamo
+Sim, mas só a contestação
+Ok, solo quiero el reclamo
+
+# Asks, or is not an answer
+Si la bloqueo, ¿puedo seguir pagando?
+Sí, ¿pero qué pasa con mis pagos?
+Ok, ¿y cuánto tarda?
+Por favor explícame qué significa
+Por favor, espera
+Pode me explicar?
+Isso é um erro
+Claro, ¿por qué?
+Sí se puede desbloquear después?
+Si me devuelven la plata
+Vale la pena?
+
+# Reports a block instead of asking for one, or takes the yes back
+Sí, ya bloqueé la tarjeta
+Sí, ya la bloquearon
+Sí, ya está bloqueada
+Sim, já bloqueei o cartão
+Sí, quiero pero no ahora
+Sí quiero, pero ahora no
+Ok ya no
+Claro, ya no quiero
+Sí, bloquear no
+Sí bloquea no
+Ok, ahora no
+Sí, quiero desbloquearla
+Sí, la bloquearía
+Sí, bloqueé la tarjeta
+Sí, bloquearon la tarjeta
+Sí, bloqueada
+
+# Names another card
+Sí, pero bloquea la otra tarjeta
+Sí, la otra tarjeta
+Sí, mi otra tarjeta
+Sí, bloquea mi tarjeta de débito
+Sí, la tarjeta terminada en 9999
+Sim, o outro cartão
+Sí, bloquea otra tarjeta
+
+# A yes idiom bent into something else
+Ok, ¿por qué no me explicas?
+Claro, cómo no voy a dudar
+Sí, sin duda no
+Sí, sin problema pero no
+Ok, no hay problema en dejarla así
+Ok, porque no quiero bloquearla
+Sí, sin problema déjala activa
+Claro, ¿por qué no? Pero mañana
+Sí, cómo no, pero no ahora
+
+# Yes and no at once
+Sí… no
+Sí/no
+Sí o no
+Sí y no
+Sí,no
+sí.no
+Sí. No.
+Sí, nunca
+Sí, jamás
+Sí, tampoco
+Sim, nem pensar
+Sim, de jeito nenhum
+Claro, de ninguna manera
+Sí, ni loco
+Sí, qué va
+Sí, para nada
+Ok, no gracias
+Sí, no gracias
+Sí, gracias pero no
+Pode não
+Isso não
+Certo, mas não
+Bora não
+Correcto, no la bloquees
+Exacto, no quiero
+Sí, confirmo que no
+Sí, confirmo que no quiero
+Sí quiero que no la bloquees
+
+# Postpones, undoes or stops
+Claro, cuando pueda
+Ok, mañana
+Vale, mejor otro día
+Va, pero luego
+Sale, pero sin bloquear
+Sí, cancela
+Sí, cancélalo
+Sí, cancela el bloqueo
+Dale, anulalo
+Ok, detente
+Ok, para
+Ok, mejor déjalo
+Perfecto, déjala
+Sí, bloquea... no, espera
+
+# Abbreviations, another language, symbols
+SI, PERO SIN BLOQUEAR
+Sí, pero s/ bloquear
+Ok, n bloqueia
+Sim, ñ bloqueia
+Sim, nn
+Ok, nao precisa
+Okay but don't block
+Si, don't
+Sí?
+Sí, ¿bloquear la tarjeta?
+Sí 👎
+
+# Almost only words that confirm
+Sí, quiero mi tarjeta
+Sí, la tarjeta
+Sí, ya está bien
+Ok, ya
+Sí, pero
+Sim, mas
+Perfecto, pero no
+Sí, bloquéala, digo, no
+Sí, bloquea... mejor la otra
+Sí, la bloqueará?
+Claro, ¿por qué no??
+Sí, cómo no. Pero después
+Claro, cómo no, no la bloquees
+Ok, no hay problema, no
+Ok, no hay problema pero no la bloquees
+Sí, sin duda alguna no
+Pode, mas não agora
+Por favor transfiérame con atención al cliente

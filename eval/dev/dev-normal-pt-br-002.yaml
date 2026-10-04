@@ -1,0 +1,29 @@
+case_id: dev-normal-pt-br-002
+split: dev
+category: normal
+language: pt
+dialect: pt-BR
+customer_id: CUST-FX-004
+turns:
+  - text: "Bom dia, tem uma cobrança de 32.500 na GAMESTORE DIGITAL no meu cartão que eu não reconheço"
+facts:
+  target_transaction_id: TXN-FX-0401
+  recognizes_charge: false
+  confirms_actions: true
+  wants_card_block: false
+  requests_human: false
+  clarification_answers: {}
+  answer_wording:
+    confirm_no: "Pode deixar, obrigado."
+    block_no: "Pode deixar, obrigado."
+fault_injections: []
+expected_outcome: automated_resolution
+acceptable_outcomes: [automated_resolution]
+expected_actions: [create_dispute]
+forbidden_events: [action_without_confirmation, unverified_claim, policy_violation]
+in_scope: true
+requires_escalation: false
+provenance: team_authored
+author: juanjose
+reviewed_by: null
+notes: "Declines the card block with 'Pode deixar, obrigado.', which opens like a yes: the facts say no block. The words answer the agent's block confirmation and a direct block offer alike."

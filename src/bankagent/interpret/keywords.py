@@ -16,7 +16,8 @@ from bankagent.contracts.enums import Dialect, DialogueAct, Intent, Language
 MODEL_NAME = "stub-keywords"
 # v2: language markers expanded (PR #48). v3: a yes that refuses is not a yes, a refused card
 # block is not a block request, and a slot the contract cannot hold is dropped (PR #29 audit).
-PROMPT_VERSION = "stub-v3"
+# v4: a reply is a yes only when every word of it confirms (follow-up of PR #66).
+PROMPT_VERSION = "stub-v4"
 
 
 def normalize(text: str) -> str:
@@ -236,29 +237,78 @@ _AFFIRM = re.compile(
 _DENY = re.compile(
     r"^(?:no|nao|nop|nel|para nada|cancel\w*|mejor no|todavia no|ainda nao|negativo)\b"
 )
-# A reply that opens like a yes may still refuse: "Claro que no", "Ok, no", "Por favor, no la
-# bloquees". Yeses that contain a negation are taken out before looking for one ("¿por qué no?").
-_NEGATION = _words("no", "nao", "nunca", "jamas", "tampoco", "nem")
-_YES_IDIOMS = _words(
-    "como no",
-    "por que no",
-    "porque no",
-    "no hay problema",
-    "no hay lio",
-    "no pasa nada",
-    "no te preocupes",
-    "no se preocupe",
-    "como nao",
-    "por que nao",
-    "porque nao",
-    "nao tem problema",
-    "nao ha problema",
-    "nao se preocupe",
+# A write needs an explicit yes (AGENTS.md rule 5), so a reply that opens like one is a yes only
+# when it says nothing else: with the words below taken out, only plain punctuation is left,
+# and a question mark is not plain. They agree, thank, or ask for the card block on screen;
+# none of them can refuse, exclude, postpone or ask a question. A list of refusals to look for
+# would always miss one: "sin bloquear", "salvo el bloqueo", "déjala activa", "Si la bloqueo,
+# ¿puedo seguir pagando?".
+_CONFIRMING_WORDS = """
+    si sim claro dale correcto correto confirmo confirmado isso pode puedes puede ok okay vale
+    hagale perfecto perfeito exacto exato afirmativo va sale bora certo adelante listo
+    gracias obrigado obrigada porfa hazlo hacelo hagalo quiero quero
+"""
+_CONFIRMING_PHRASES = (
+    "de una",
+    "esta bien",
+    "esta bem",
+    "tudo bem",
+    "por favor",
+    "por supuesto",
+    "de acuerdo",
+    "com certeza",
+    "que si",
+    "que sim",
+    "lo confirmo",
+    "yo confirmo",
+    "eu confirmo",
+    "muchas gracias",
+    "muito obrigado",
+    "muito obrigada",
 )
-# The negation right after the opening word is a refusal; one further on ("Sí, pero no bloquees
-# la tarjeta") answers two things at once, and the question is asked again.
+# Yeses that contain a negation.
+_YES_IDIOMS = _rx(
+    # "¿por qué no?", "cómo no": a yes only as a clause of its own, never in "porque no quiero".
+    r"\b(?:como|por que|porque) (?:no|nao)\b(?:\s*\?|(?=\s*(?:[,.;!]|$)))",
+    _words(
+        "no hay problema",
+        "no hay lio",
+        "no pasa nada",
+        "sin problemas",
+        "sin problema",
+        "sin duda",
+        "nao tem problema",
+        "nao ha problema",
+        "sem problemas",
+        "sem problema",
+        "sem duvida",
+    ).pattern,
+)
+# Asking for the block: "bloquear", "bloquéala ya", "pode bloquear o cartão". Not the forms that
+# report one ("ya la bloquearon", "está bloqueada"), and "bloquee" only with its pronoun, since
+# without accents it is also "bloqueé". The card and the hurry count only after the verb: on
+# their own they can say the opposite ("Sí, quiero mi tarjeta", "Sí, ya está bien").
+_BLOCK_REQUEST = (
+    r"\b(?:bloque(?:ar|a|en|ia|ie|iem)(?:me)?(?:la|lo)?|bloquee(?:me)?(?:la|lo))"
+    r"(?: (?:la|mi|esa) tarjeta| (?:o|meu|esse) cartao)?"
+    r"(?: (?:ya|ahora|agora)(?: mismo| mesmo)?| de inmediato)?\b"
+)
+_CONFIRMS = _rx(
+    _YES_IDIOMS.pattern,
+    _words(*_CONFIRMING_PHRASES, *_CONFIRMING_WORDS.split()).pattern,
+    _BLOCK_REQUEST,
+)
+_NOT_CONFIRMED = re.compile(r"[^\s.,;:!¡¿]")
+# A negation right after the opening word is a refusal: "Claro que no", "Ok, no", "Por favor,
+# no la bloquees". Anything else that is not an explicit yes gets the question asked again:
+# two answers at once ("Sí, pero no bloquees la tarjeta"), and reassurance, which neither
+# confirms nor refuses ("Ok, no te preocupes").
 _REFUSAL_AFTER_YES = re.compile(
     _AFFIRM.pattern + r"\W*(?:que\s+|pues\s+|mejor\s+|entonces\s+|entao\s+)?(?:no|nao)\b"
+)
+_NOT_A_REFUSAL = _rx(
+    _YES_IDIOMS.pattern,
+    _words("no te preocupes", "no se preocupe", "nao se preocupe").pattern,
 )
 
 # ---------------------------------------------------------------------------
@@ -399,17 +449,10 @@ def detect_dialogue_act(norm: str, intent: Intent, slots: DisputeSlots) -> Dialo
         return DialogueAct.RECOGNIZE_CHARGE
     if _DENY.search(norm):
         return DialogueAct.DENY
-    if _AFFIRM.search(norm):
-        # A write needs an explicit yes (AGENTS.md rule 5): a reply that also says no is not one.
-        if not _NEGATION.search(_YES_IDIOMS.sub(" ", norm)):
-            # "Yes, but without blocking" does not confirm a block. Keep the exclusion scoped to
-            # the action: "yes, no problem" is still an affirmative answer.
-            if _REFUSED_BLOCK.search(norm):
-                return DialogueAct.OTHER
-            return DialogueAct.AFFIRM
-        if _REFUSAL_AFTER_YES.search(norm):
-            return DialogueAct.DENY
-        return DialogueAct.OTHER
+    if is_explicit_yes(norm):
+        return DialogueAct.AFFIRM
+    if _REFUSAL_AFTER_YES.search(_NOT_A_REFUSAL.sub(" ", norm)):
+        return DialogueAct.DENY
     if intent not in (Intent.OUT_OF_SCOPE, Intent.ATTACK):
         return DialogueAct.NEW_REQUEST
     if slots != DisputeSlots():
@@ -428,6 +471,11 @@ def parse_currency(text: str) -> str | None:
     decide which. Shared with the LLM providers, so both interpreters read a currency alike.
     """
     return _currency_in(normalize(text))
+
+
+def is_explicit_yes(norm: str) -> bool:
+    """The normalized reply opens like a yes and every word of it confirms ("Sí, bloquéala")."""
+    return bool(_AFFIRM.search(norm)) and not _NOT_CONFIRMED.search(_CONFIRMS.sub(" ", norm))
 
 
 def block_requested(norm: str) -> bool:

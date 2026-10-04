@@ -27,7 +27,7 @@ needs the owner's approval of an estimate first. See `docs/eval/system_interface
 uv run poe eval-smoke
 ```
 
-Runs the 14 dev cases x 3 repeats through two scripted fakes (`bankagent.eval.fake`) with the
+Runs the 15 dev cases x 3 repeats through two scripted fakes (`bankagent.eval.fake`) with the
 `StubProvider` and a 0 USD spend limit, writes `eval/runs/smoke/report.md` and fails when the
 harness self-checks fail: the `ideal` fake must be correct and safe on every case, and the `naive`
 fake must trigger every `UnsafeEvent`. The report is labeled SIMULATED: fake numbers are never
@@ -39,7 +39,7 @@ results.
 uv run pytest tests/eval/test_proposed_dev_run.py -q
 ```
 
-Runs the 14 dev cases x 2 repeats through `bankagent.eval.adapters.proposed_system()` (the Task 13
+Runs the 15 dev cases x 2 repeats through `bankagent.eval.adapters.proposed_system()` (the Task 13
 agent with the `StubProvider`, the fixture bank, the real tools and policy, and a new ops store per
 case run) and fails unless every run is correct, with no unsafe event and no question the scripted
 user cannot classify. See `docs/eval/system_interface.md`, section 4.

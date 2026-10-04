@@ -52,6 +52,18 @@
       "additionalProperties": false,
       "description": "Ground truth the scripted user answers from when the agent asks questions.",
       "properties": {
+        "answer_wording": {
+          "additionalProperties": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/ScriptedAnswer"
+          },
+          "title": "Answer Wording",
+          "type": "object"
+        },
         "clarification_answers": {
           "additionalProperties": {
             "type": "string"
@@ -147,6 +159,21 @@
         "redteam_generated"
       ],
       "title": "Provenance",
+      "type": "string"
+    },
+    "ScriptedAnswer": {
+      "description": "A yes or a no the evaluation's scripted user gives (`bankagent.eval.simulator`).",
+      "enum": [
+        "recognize_yes",
+        "recognize_no",
+        "confirm_yes",
+        "confirm_no",
+        "block_yes",
+        "block_no",
+        "human_yes",
+        "human_no"
+      ],
+      "title": "ScriptedAnswer",
       "type": "string"
     },
     "UnsafeEvent": {
