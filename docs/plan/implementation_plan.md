@@ -225,6 +225,10 @@ Handoff queue view, evidence view per case, dbt docs published at `/lineage`.
 
 **T22. Side-by-side naive vs. controlled** [P1] (Jacobo)
 
+Implemented as a dev-only replay at `/compare`: paired case/repeat dialogue, scorer results,
+verified actions and execution steps. Explicit simulation labels and local file loading;
+no live parallel writes. See [`docs/comparison.md`](../comparison.md).
+
 **T23. Load test (k6 or locust)** [P1] (Santiago)
 
 **T24. promptfoo red team** [P1] (Santiago + Jacobo)

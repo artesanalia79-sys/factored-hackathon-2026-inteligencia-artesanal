@@ -51,6 +51,8 @@ class WebFiles(StaticFiles):
     """The built UI (``web/dist``), served with ``WEB_SECURITY_HEADERS`` and its cache policy."""
 
     async def get_response(self, path: str, scope: Scope) -> Response:
+        if path in {"compare", "compare/"}:
+            path = "index.html"
         response = await super().get_response(path, scope)
         response.headers.update(WEB_SECURITY_HEADERS)
         # ``path`` uses the OS separator; a 304 gets the same policy as the file it stands for.

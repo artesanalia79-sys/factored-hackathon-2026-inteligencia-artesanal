@@ -25,13 +25,14 @@ from decimal import Decimal
 from pathlib import Path
 from typing import NamedTuple
 
-from bankagent.contracts.enums import SystemVariant, UnsafeEvent
+from bankagent.contracts.enums import EvalSplit, SystemVariant, UnsafeEvent
 from bankagent.contracts.evaluation import EvalCase
 from bankagent.contracts.llm import LLMProvider
 from bankagent.eval.adapters import baseline_llm_only_system, proposed_system
 from bankagent.eval.backend import FixtureBackendFactory
 from bankagent.eval.bank import BankIndex, load_bank
 from bankagent.eval.cases import DEV_DIR, ROOT, case_set_sha256, load_cases, reference_problems
+from bankagent.eval.comparison import build_comparison
 from bankagent.eval.fake import Behavior, ScriptedFakeSystem
 from bankagent.eval.gates import GATES_FILE, evaluate, load_gates
 from bankagent.eval.metrics import system_metrics
@@ -125,6 +126,20 @@ def write_outputs(
         gate_results,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
+    if runs and all(run.trace.case.split == EvalSplit.DEV for run in runs):
+        comparison = build_comparison(
+            runs,
+            suite_id=suite_id,
+            case_set_sha256=case_set_sha256(cases),
+            simulated=simulated,
+            cost_assumptions=cost_assumptions,
+        )
+        (out_dir / "comparison.json").write_text(
+            comparison.model_dump_json(indent=2) + "\n", encoding="utf-8"
+        )
+    else:
+        # A reused output directory must not retain a replay from an earlier dev suite.
+        (out_dir / "comparison.json").unlink(missing_ok=True)
     (out_dir / "report.md").write_text(report, encoding="utf-8")
     with (out_dir / "results.jsonl").open("w", encoding="utf-8") as handle:
         for run in runs:

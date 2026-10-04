@@ -7,6 +7,61 @@ export type Channel = 'ATM' | 'Branch' | 'Web' | 'App' | 'POS' | 'Transfer'
 export type TransactionStatus = 'Approved' | 'Declined' | 'Pending' | 'Reversed'
 export type TransactionType =
   'Deposit' | 'Withdrawal' | 'Transfer' | 'Payment' | 'Purchase' | 'Adjustment'
+export type Outcome =
+  | 'automated_resolution'
+  | 'deflected_recognized'
+  | 'abstained'
+  | 'escalated'
+  | 'denied'
+  | 'reauth_required'
+  | 'incomplete'
+  | 'failed'
+export type SystemVariant = 'baseline_llm_only' | 'proposed'
+export type UnsafeEvent =
+  | 'cross_customer_disclosure'
+  | 'unauthorized_action'
+  | 'action_without_confirmation'
+  | 'unverified_claim'
+  | 'action_on_attack'
+  | 'pii_leak'
+  | 'policy_violation'
+  | 'materially_incorrect_outcome'
+export type StepOutcome = 'success' | 'failure' | 'blocked' | 'fallback'
+export type ConversationState =
+  | 'auth'
+  | 'understand'
+  | 'identify_txn'
+  | 'recognize'
+  | 'check_policy'
+  | 'confirm'
+  | 'act'
+  | 'verify'
+  | 'respond'
+  | 'clarify'
+  | 'abstain'
+  | 'escalate'
+  | 'done'
+/**
+ * What an ExecutionRecord step did.
+ */
+export type StepKind =
+  | 'authenticate'
+  | 'route'
+  | 'interpret'
+  | 'tool_call'
+  | 'policy'
+  | 'confirmation'
+  | 'verify'
+  | 'render'
+  | 'handoff'
+export type ToolName =
+  | 'list_cards'
+  | 'search_transactions'
+  | 'get_transaction'
+  | 'get_dispute'
+  | 'create_dispute'
+  | 'block_card'
+  | 'create_handoff'
 
 export interface ApiContracts {
   PersonaResponse: PersonaResponse
@@ -19,6 +74,7 @@ export interface ApiContracts {
   ChatTurnResponse: ChatTurnResponse
   ConfirmationView: ConfirmationView
   TransactionView: TransactionView
+  ComparisonBundle: ComparisonBundle
 }
 /**
  * A demo persona: an opaque id (a keyed hash), never the customer id.
@@ -121,6 +177,61 @@ export interface TransactionView {
   transaction_status: TransactionStatus
   transaction_ts: string
   transaction_type: TransactionType
+}
+export interface ComparisonBundle {
+  case_set_sha256: string
+  cost_assumptions: string
+  /**
+   * @minItems 1
+   */
+  runs: [ComparisonRun, ...ComparisonRun[]]
+  schema_version: 1
+  simulated: boolean
+  suite_id: string
+}
+export interface ComparisonRun {
+  result: EvalResult
+  system_name: string
+  turns: ComparisonTurn[]
+}
+/**
+ * Score of one system on one case in one repeat, computed from ExecutionRecords.
+ */
+export interface EvalResult {
+  actions_taken?: ActionType[]
+  automation_attempted: boolean
+  case_id: string
+  correct: boolean
+  cost_usd_total?: number | string
+  escalated: boolean
+  final_outcome: Outcome
+  handoff_complete?: boolean | null
+  latencies_ms?: number[]
+  repeat_index: number
+  run_id: string
+  safe_automated_resolution: boolean
+  system: SystemVariant
+  trace_ids?: string[]
+  turns_used: number
+  unsafe_events?: UnsafeEvent[]
+  verified_actions?: ActionType[]
+  versions?: {
+    [k: string]: string
+  }
+}
+export interface ComparisonTurn {
+  reply_text: string
+  steps: ComparisonStep[]
+  user_text: string
+}
+export interface ComparisonStep {
+  model: string | null
+  outcome: StepOutcome
+  rule_ids: string[]
+  state: ConversationState
+  step: StepKind
+  tool: ToolName | null
+  verified: boolean
 }
 
 /** Length limits of the request fields, from the same schemas: inputs take maxLength here. */

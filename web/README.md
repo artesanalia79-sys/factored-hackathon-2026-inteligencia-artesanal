@@ -7,7 +7,7 @@ movements, the chat, and a confirmation panel for every write. React 19 + Vite 8
 The production build (`web/dist/`, gitignored) is served by FastAPI at `/` on the same origin as
 the API, with a strict Content Security Policy (`bankagent.api.app.WEB_SECURITY_HEADERS`); the
 container image (T15) builds it in its `web` stage (`docs/operations.md`). Later
-views: agent console and evidence view (T21), side-by-side naive vs. controlled (T22).
+views: agent console and evidence view (T21). The T22 replay viewer is available at `/compare`.
 
 ## Run it
 
@@ -108,3 +108,10 @@ Calm retail-banking messenger: sage-tinted neutral canvas, charcoal ink as the a
 turquoise accent for the brand mark and focus, green reserved for "verified". Geist and Geist
 Mono (self-hosted, OFL), Phosphor icons. Tokens and the shape rule live at the top of
 `src/styles.css`.
+
+## Side-by-side comparison (T22)
+
+The sign-in screen links to `/compare`, a local replay viewer for the naive and controlled
+systems. Generate an example with `uv run poe eval-smoke` and open
+`eval/runs/smoke/comparison.json`. Scripted runs are clearly labeled simulations.
+See [the walkthrough and evidence boundaries](../docs/comparison.md).

@@ -1,5 +1,5 @@
 import { IconContext } from '@phosphor-icons/react'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import type { Language } from './api/contracts.gen.ts'
 import { ChatScreen } from './chat/ChatScreen.tsx'
 import { browserLanguage, COPY } from './i18n.ts'
@@ -7,6 +7,7 @@ import { LoginScreen } from './login/LoginScreen.tsx'
 import type { ChatSession } from './session.ts'
 
 const ICONS = { size: 20, weight: 'regular' } as const
+const ComparisonScreen = lazy(() => import('./comparison/ComparisonScreen.tsx'))
 
 export function App() {
   // Kept in memory only: a reload signs out, and nothing about the session reaches storage.
@@ -28,7 +29,11 @@ export function App() {
 
   return (
     <IconContext.Provider value={ICONS}>
-      {session === null ? (
+      {['/compare', '/compare/'].includes(window.location.pathname) ? (
+        <Suspense fallback={<output>Cargando comparación…</output>}>
+          <ComparisonScreen />
+        </Suspense>
+      ) : session === null ? (
         <LoginScreen
           language={language}
           notice={ended === 'expired' ? COPY[language].sessionEnded : null}

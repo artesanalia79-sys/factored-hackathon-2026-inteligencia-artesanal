@@ -357,6 +357,7 @@ export function LoginScreen({
         <Info aria-hidden="true" />
         <p>
           {copy.demoNotice}. {copy.credit}
+          {" · "}<a href="/compare">Comparar agentes</a>
         </p>
       </footer>
     </div>
