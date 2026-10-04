@@ -206,10 +206,14 @@ def test_the_conversations_never_go_where_git_would_see_them(
     bank: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     inside = ROOT / "docs" / "curated-run-that-must-not-exist"
-    code = cli.main(["--serving-db", str(bank), "--workdir", str(inside), "--no-report"])
-    assert code == cli.FAILED
-    assert "would put organizer data inside the repository" in capsys.readouterr().err
-    assert not inside.exists()
+    try:
+        code = cli.main(["--serving-db", str(bank), "--workdir", str(inside), "--no-report"])
+        assert code == cli.FAILED
+        assert "would put organizer data inside the repository" in capsys.readouterr().err
+        assert not inside.exists()
+    finally:
+        # If the guard ever fails, this test must not be what leaves a run in the repository.
+        shutil.rmtree(inside, ignore_errors=True)
     assert not cli.keeps_data_local(ROOT / "docs" / "x")
     assert not cli.keeps_data_local(ROOT / "src" / "bankagent" / "x")
     assert not cli.keeps_data_local(ROOT)
