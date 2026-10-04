@@ -17,8 +17,9 @@ from bankagent.api.wiring import create_default_app
 from bankagent.auth.service import AuthService
 from bankagent.auth.settings import AuthSettings, Secret
 from bankagent.contracts.domain import Session
-from bankagent.contracts.enums import ActionType, StepOutcome, ToolName
+from bankagent.contracts.enums import ActionType, StepKind, StepOutcome, ToolName
 from bankagent.fixtures.builder import build
+from bankagent.interpret.keywords import interpret_text
 from bankagent.interpret.stub import StubFault, StubProvider
 from bankagent.orchestrator.agent import create_agent
 from bankagent.orchestrator.wiring import build_confirmation_issuer, build_policy_evaluator
@@ -797,6 +798,56 @@ def test_a_qualified_yes_blocks_nothing_when_the_llm_is_down(
         write = next(record for record in blocked.records if record.tool == ToolName.BLOCK_CARD)
         assert write.verified
         assert store.count("card_blocks") == 1
+
+
+def test_a_models_yes_writes_only_when_every_word_of_the_reply_confirms(
+    fixture_bank: Path, tmp_path: Path
+) -> None:
+    # A model may read "Sí, salvo el bloqueo" as a yes: here it reads every answer as one. The
+    # write still needs the keyword rules to read an explicit yes, so it does not depend on the
+    # model.
+    model_yes = interpret_text("Sí").model_copy(update={"prompt_version": "interpret-v2"})
+    llm = StubProvider(
+        scripted=(interpret_text(ES_OPENING), interpret_text("No fui yo"), *[model_yes] * 4)
+    )
+    with OpsStore(tmp_path / "model-yes.sqlite") as store:
+        serving = ServingDB(fixture_bank)
+        agent = create_agent(
+            llm=llm,
+            tools=build_tools(serving, store),
+            clock=lambda: NOW,
+            policy=build_policy_evaluator(serving, store, clock=lambda: NOW),
+            issue_confirmation=build_confirmation_issuer(store),
+        )
+        session = Session(
+            session_id="model-yes-session",
+            customer_id="CUST-FX-001",
+            issued_at=NOW - timedelta(minutes=1),
+            expires_at=NOW + timedelta(minutes=10),
+        )
+        agent.handle_turn(session, ES_OPENING)
+        asked = agent.handle_turn(session, "No fui yo")
+        assert "¿Confirmas crear un reclamo" in asked.reply_text
+        answers = {
+            text: agent.handle_turn(session, text)
+            for text in ("Sí, salvo el bloqueo", "Sí, confirmo", "Ok, déjala activa", "Sí")
+        }
+        assert llm.calls == 6
+        for output in answers.values():
+            # The model answered every turn: no fallback to the keyword rules.
+            interpreted = [r for r in output.records if r.step == StepKind.INTERPRET]
+            assert [r.outcome for r in interpreted] == [StepOutcome.SUCCESS]
+            assert interpreted[0].prompt_version == "interpret-v2"
+        qualified = answers["Sí, salvo el bloqueo"]
+        assert qualified.claimed_actions == ()
+        assert "¿Confirmas crear un reclamo" in qualified.reply_text
+        assert answers["Sí, confirmo"].claimed_actions == (ActionType.CREATE_DISPUTE,)
+        kept = answers["Ok, déjala activa"]
+        assert kept.claimed_actions == ()
+        assert kept.reply_text.endswith(ES_BLOCK_QUESTION)
+        assert answers["Sí"].claimed_actions == (ActionType.BLOCK_CARD,)
+        assert store.count("disputes") == store.count("card_blocks") == 1
+        assert store.count("confirmation_tokens") == 2
 
 
 @pytest.mark.parametrize(
