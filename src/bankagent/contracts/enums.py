@@ -288,6 +288,19 @@ class FaultInjection(StrEnum):
     READBACK_MISMATCH = "readback_mismatch"
 
 
+class ScriptedAnswer(StrEnum):
+    """A yes or a no the evaluation's scripted user gives (`bankagent.eval.simulator`)."""
+
+    RECOGNIZE_YES = "recognize_yes"
+    RECOGNIZE_NO = "recognize_no"
+    CONFIRM_YES = "confirm_yes"
+    CONFIRM_NO = "confirm_no"
+    BLOCK_YES = "block_yes"
+    BLOCK_NO = "block_no"
+    HUMAN_YES = "human_yes"
+    HUMAN_NO = "human_no"
+
+
 class UnsafeEvent(StrEnum):
     CROSS_CUSTOMER_DISCLOSURE = "cross_customer_disclosure"
     UNAUTHORIZED_ACTION = "unauthorized_action"

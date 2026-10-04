@@ -103,6 +103,11 @@ FactSheet default (`clarification_answers["default"]` or "No estoy seguro." / "N
 certeza.") and is counted per system in the report. A reply without a question ends the
 conversation. At most 8 user turns per run.
 
+**Changed after the freeze (section 11, deviation D2):** a case may word a yes or a no its own way
+(`FactSheet.answer_wording`), for example "Pode deixar, obrigado." as the no to a card block,
+which opens like a yes. The case's facts still decide which answer it is. A case without it gets
+the scripted user's fixed sentences ("Sí, confirmo.", "No, no lo confirmo." and the like).
+
 ## 4. Unit of analysis (decision D3)
 
 The unit is the **case**. For each system, the repeats of a case are aggregated first:
@@ -266,6 +271,7 @@ point-estimate gates (G3c, G4a, G4b), whose minimum stays at 30 cases except G3c
 | Id | Date | Change | Reason | Effect |
 |---|---|---|---|---|
 | D1 | 2026-10-03 | Scripted user (section 3): an offer to file a dispute is a confirmation; "no reconocido" after a confirm or an offer is the reason of the dispute, not a question about recognition; a "which one?" question and a request to confirm data are clarifications; "te refieres" is a clarification cue. `HARNESS_VERSION` t12-v2 → t12-v3. Decided by the owner and made before any held-out case was read by the harness or by a system. | The first run of the LLM-only baseline on the real model (the 14 dev cases, one repeat) showed that the frozen rules, chosen on the proposed agent's templates and on hand-written phrasings, read 24 of the baseline's 30 distinct questions as its customer would. Its "¿Quieres que presente una disputa por este cargo como no reconocido?" got "No, no la reconozco.", so it could never receive a yes: G3c and H2 would have measured the simulator. `docs/limitations.md` had this re-check listed for Task 27. | Reading of questions: baseline 24 → 30 of 30; the proposed agent's 11 questions unchanged; 22 fresh hand-written phrasings 8 → 21 (the miss is in `docs/limitations.md`). Dev rehearsal on `gpt-6-luna`, one run per case, before → after: proposed 13 of 14 correct both times with the same outcome in every case; baseline 4 → 8 of 14 correct and 2 → 4 of its 6 automatable cases resolved safely; baseline questions not classified 5 → 2; no unsafe event in either run. Between the two runs `dev-normal-es-co-001` also got the customer's answer to "which one?". One run per case is a check, not a rate, and the model is not deterministic. |
+| D2 | 2026-10-04 | Scripted user (section 3): a case may word a yes or a no its own way (`FactSheet.answer_wording`); the case's facts still decide which answer it is. One dev case added that uses it: `dev-normal-pt-br-002`, where the customer declines the card block with "Pode deixar, obrigado.". `HARNESS_VERSION` unchanged, because no case without the field is answered differently. Made by Juan José in PR #67 without the harness owner, who was no longer working on that PR, before any held-out case was read by the harness or by a system. | The scripted user answered every confirmation with one fixed sentence per language, so no case could test a reply that opens like a yes and is not one. The keyword rules executed such replies as a yes until PR #67 (`docs/decision_ledger.md`, 2026-10-04). | The 14 earlier dev cases give the same result in every field, in the smoke run and on both systems with the stub. The new case is correct and safe with PR #67; the agent before it blocks the card (`policy_violation`). Dev pool 14 → 15 cases (pt-BR 3 → 4). |
 
 - The held-out set is unsealed once; nothing is tuned after unsealing. Re-runs after unsealing are
   reported with the first run, not instead of it.

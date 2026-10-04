@@ -5,7 +5,8 @@ standard library so it works on every teammate's machine and in CI.
 
 It fails when a staged file:
   * lives under a forbidden path (private/, data/, eval/heldout/, ...);
-  * has a forbidden extension (*.duckdb, *.parquet, *.sqlite, organizer PDFs/DOCX);
+  * has a forbidden extension (*.duckdb, *.parquet, *.sqlite, *.db and their write-ahead and
+    journal files, organizer PDFs/DOCX);
   * is a dotenv file other than `.env.example`;
   * contains something that looks like a credential (AWS key id, AWS secret,
     OpenAI key, private key block);
@@ -32,6 +33,13 @@ FORBIDDEN_SUFFIXES: tuple[str, ...] = (
     ".parquet",
     ".sqlite",
     ".sqlite3",
+    ".db",
+    # SQLite keeps recent writes in files next to the database ("ops.sqlite-wal").
+    *(
+        f"{ext}-{part}"
+        for ext in (".sqlite", ".sqlite3", ".db")
+        for part in ("wal", "shm", "journal")
+    ),
     ".pdf",
     ".docx",
 )

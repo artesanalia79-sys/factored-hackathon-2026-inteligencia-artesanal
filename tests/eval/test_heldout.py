@@ -6,6 +6,7 @@ Every case here is synthetic and written to a temporary folder; no test reads ``
 from __future__ import annotations
 
 import hashlib
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -37,8 +38,9 @@ def _raw(index: int, **overrides: Any) -> dict[str, Any]:
     dialect = DIALECTS[index % len(DIALECTS)]
     escalates = index % 2 == 1
     outcome = "escalated" if escalates else "automated_resolution"
+    author = overrides.get("author", AUTHORS[index % len(AUTHORS)])
     raw: dict[str, Any] = {
-        "case_id": f"heldout-synthetic-{index:03d}",
+        "case_id": f"heldout-{heldout.person(author)}-{index:03d}",
         "split": "heldout",
         "category": CATEGORIES[index % len(CATEGORIES)],
         "language": dialect.split("-")[0],
@@ -132,6 +134,38 @@ def test_every_shortfall_of_the_plan_is_named() -> None:
     ]
 
 
+def test_each_minimum_of_the_plan_is_inclusive() -> None:
+    def labelled(automatable: int, escalating: int) -> list[EvalCase]:
+        outcomes = [
+            "automated_resolution"
+            if index < automatable
+            else "escalated"
+            if index < automatable + escalating
+            else "abstained"
+            for index in range(12)
+        ]
+        return [
+            EvalCase.model_validate(
+                _raw(
+                    index,
+                    expected_outcome=outcome,
+                    acceptable_outcomes=[outcome],
+                    requires_escalation=outcome == "escalated",
+                    expected_actions=[],
+                )
+            )
+            for index, outcome in enumerate(outcomes)
+        ]
+
+    assert heldout.plan_problems(labelled(4, 4), SMALL_PLAN) == []
+    assert heldout.plan_problems(labelled(3, 4), SMALL_PLAN) == [
+        "3 automatable cases, the plan needs at least 4"
+    ]
+    assert heldout.plan_problems(labelled(4, 3), SMALL_PLAN) == [
+        "3 cases that require escalation, the plan needs at least 4"
+    ]
+
+
 def test_an_acceptable_automated_resolution_makes_a_case_automatable() -> None:
     case = EvalCase.model_validate(
         _raw(1, acceptable_outcomes=["escalated", "automated_resolution"])
@@ -164,16 +198,44 @@ def test_each_case_problem_is_reported_with_its_file_name() -> None:
     files = _files(raws)
     files.append(heldout.CaseFile(name="another-name.yaml", case=files[0].case))
     assert heldout.case_problems(files, bank, dev) == [
-        "heldout-synthetic-000.yaml: split must be heldout",
-        "heldout-synthetic-001.yaml: customer_id is not in the fixture bank",
-        "heldout-synthetic-002.yaml: facts.target_transaction_id is not a transaction of "
+        "heldout-jacobo-000.yaml: split must be heldout",
+        "heldout-juanjose-001.yaml: customer_id is not in the fixture bank",
+        "heldout-santiago-002.yaml: facts.target_transaction_id is not a transaction of "
         "customer_id",
-        "heldout-synthetic-003.yaml: same customer and messages as heldout-synthetic-000.yaml",
-        "heldout-synthetic-004.yaml: same customer and messages as a dev case",
+        "heldout-jacobo-003.yaml: same customer and messages as heldout-jacobo-000.yaml",
+        "heldout-juanjose-004.yaml: same messages as a dev case",
         "another-name.yaml: the file name must be <case_id>.yaml",
         "another-name.yaml: split must be heldout",
-        "another-name.yaml: same case_id as heldout-synthetic-000.yaml",
-        "another-name.yaml: same customer and messages as heldout-synthetic-000.yaml",
+        "another-name.yaml: same case_id as heldout-jacobo-000.yaml",
+        "another-name.yaml: same customer and messages as heldout-jacobo-000.yaml",
+    ]
+
+
+def test_a_case_id_names_its_author_and_a_number_only() -> None:
+    # The id is on the blind sheet and in the versioned manifest: one that names the category
+    # tells the second annotator the label (PR #62 review).
+    raws = [
+        _raw(0, case_id="heldout-prompt-injection-000"),
+        _raw(1, case_id="heldout-jacobo-001"),  # written by juanjose
+        _raw(2, author="Juan José", case_id="heldout-juanjose-002"),
+    ]
+    assert heldout.case_problems(_files(raws), load_bank(), load_cases()) == [
+        "heldout-prompt-injection-000.yaml: case_id must be heldout-jacobo-<number>",
+        "heldout-jacobo-001.yaml: case_id must be heldout-juanjose-<number>",
+    ]
+
+
+def test_a_dev_message_is_refused_with_any_customer_and_any_spelling() -> None:
+    # The agent was tuned on the dev messages, whoever the customer is (PR #62 review).
+    dev = load_cases()
+    text = next(case for case in dev if case.case_id == "dev-normal-es-mx-001").turns[0].text
+    raws = [
+        _raw(0, turns=[{"text": text}], customer_id="CUST-FX-002", facts={}),
+        _raw(1, turns=[{"text": text.upper().replace(",", "") + "!"}]),
+    ]
+    assert heldout.case_problems(_files(raws), load_bank(), dev) == [
+        "heldout-jacobo-000.yaml: same messages as a dev case",
+        "heldout-juanjose-001.yaml: same messages as a dev case",
     ]
 
 
@@ -194,9 +256,9 @@ def test_problems_never_quote_an_utterance_or_a_label(
     assert files == []
     assert [problem.split(":")[0] for problem in problems] == [
         "broken.yaml",
-        "heldout-synthetic-000.yaml",
-        "heldout-synthetic-001.yaml",
-        "heldout-synthetic-002.yaml",
+        "heldout-jacobo-000.yaml",
+        "heldout-juanjose-001.yaml",
+        "heldout-santiago-002.yaml",
     ]
     assert heldout.main(["--cases", str(directory), "check", "--partial"]) == 1
     printed = capsys.readouterr()
@@ -227,13 +289,14 @@ def test_seal_writes_the_manifest_and_verify_detects_every_change(
 
     first.write_bytes(first.read_bytes() + b"\n")
     (directory / names[1]).unlink()
-    _write(directory, [_raw(500)])
+    added = _raw(500)
+    _write(directory, [added])
     capsys.readouterr()
     assert heldout.main([*base, "verify", "--manifest", str(manifest)]) == 1
     assert capsys.readouterr().err.splitlines()[:3] == [
-        "heldout-synthetic-000.yaml: content differs from the manifest",
-        "heldout-synthetic-001.yaml: listed in the manifest, missing",
-        "heldout-synthetic-500.yaml: not in the manifest",
+        f"{names[0]}: content differs from the manifest",
+        f"{names[1]}: listed in the manifest, missing",
+        f"{added['case_id']}.yaml: not in the manifest",
     ]
 
 
@@ -314,6 +377,10 @@ def test_cohen_kappa() -> None:
     agreement = heldout.cohen_kappa(first, second)
     assert (agreement.n, agreement.agreed) == (50, 35)
     assert agreement.kappa == pytest.approx(0.4)
+    # Different marginals (yes 30/50 against 20/50): po 0.60, pe 0.48, kappa 0.12 / 0.52.
+    third = ["yes"] * 30 + ["no"] * 20
+    fourth = ["yes"] * 15 + ["no"] * 15 + ["yes"] * 5 + ["no"] * 15
+    assert heldout.cohen_kappa(third, fourth).kappa == pytest.approx(0.12 / 0.52)
     assert heldout.cohen_kappa(first, first).kappa == pytest.approx(1.0)
     assert heldout.cohen_kappa(["yes", "no"], ["no", "yes"]).kappa == pytest.approx(-1.0)
     assert heldout.cohen_kappa(["yes"] * 4, ["yes"] * 4).kappa is None
@@ -383,8 +450,44 @@ def test_sample_then_kappa_reports_agreement_and_disagreements(
     assert f"{disputed.stem}: annotated by its own author" in capsys.readouterr().err
 
 
+def test_a_valid_agreement_needs_a_fifth_once_each_by_another_person() -> None:
+    cases = _cases(10)  # 20% of 10 is 2; the first two are by jacobo and juanjose
+    first, second = cases[0], cases[1]
+
+    def note(case: EvalCase, annotator: str) -> heldout.Annotation:
+        return heldout.Annotation(
+            case.case_id, annotator, case.expected_outcome, case.requires_escalation
+        )
+
+    _, problems = heldout.annotation_report(cases, [note(first, "santiago"), note(second, "x")])
+    assert problems == []
+    _, problems = heldout.annotation_report(cases, [note(first, "santiago")])
+    assert problems == ["1 annotated cases, 20% of 10 needs 2"]
+    twice = [note(first, "santiago"), note(first, "juanjose"), note(second, "santiago")]
+    _, problems = heldout.annotation_report(cases, twice)
+    assert problems == [f"{first.case_id}: annotated more than once"]
+    # The author is not a second annotator, however the name is written (PR #62 review).
+    _, problems = heldout.annotation_report(cases, [note(first, "Jacobo "), note(second, "x")])
+    assert problems[0] == f"{first.case_id}: annotated by its own author"
+
+
+def test_an_author_name_cannot_lead_the_sheets_out_of_the_folder(tmp_path: Path) -> None:
+    raws = [_raw(index, author="x/../../escaped") for index in range(5)]
+    base = ["--cases", str(_write(tmp_path / "set", raws))]
+    assert heldout.main([*base, "sample", "--out", str(tmp_path / "sheets")]) == 0
+    sheets = [path for path in tmp_path.rglob("*.yaml") if path.parent != tmp_path / "set"]
+    assert sheets
+    assert {path.parent.relative_to(tmp_path).as_posix() for path in sheets} == {
+        "sheets/cases-by-xescaped"
+    }
+
+
 def test_the_sheets_are_never_written_inside_the_repository(tmp_path: Path) -> None:
     base = ["--cases", str(_write(tmp_path / "set", [_raw(0)]))]
-    inside = ROOT / "eval" / "runs" / "sheets-test"
-    assert heldout.main([*base, "sample", "--out", str(inside)]) == 1
-    assert not inside.exists()
+    # A name of this run only, removed afterwards: a broken guard must not leave sheets behind.
+    inside = ROOT / "eval" / "runs" / f"sheets-test-{tmp_path.name}"
+    try:
+        assert heldout.main([*base, "sample", "--out", str(inside)]) == 1
+        assert not inside.exists()
+    finally:
+        shutil.rmtree(inside, ignore_errors=True)

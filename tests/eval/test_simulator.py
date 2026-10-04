@@ -6,7 +6,9 @@ from typing import Any
 
 import pytest
 
+from bankagent.contracts.enums import ScriptedAnswer
 from bankagent.contracts.evaluation import EvalCase
+from bankagent.eval.cases import load_cases
 from bankagent.eval.simulator import QuestionKind, ScriptedUser, classify_question
 
 # What the proposed agent asks, as its templates render it (`bankagent.render.templates`).
@@ -108,6 +110,70 @@ def test_the_block_confirmation_follows_wants_card_block() -> None:
     assert declines.next_message(OFFER_BLOCK_ES, 3) == "No, no lo confirmo."
     accepts = ScriptedUser(make_case(confirms_actions=True, wants_card_block=True))
     assert accepts.next_message(OFFER_BLOCK_ES, 3) == "Sí, confirmo."
+
+
+def test_a_case_words_an_answer_its_own_way_and_its_facts_still_decide_it() -> None:
+    # "Pode deixar, obrigado." opens like a yes and is a no (PR #67): only the words change.
+    declines = "Pode deixar, obrigado."
+    user = ScriptedUser(
+        make_case(
+            "pt",
+            recognizes_charge=False,
+            confirms_actions=True,
+            wants_card_block=False,
+            answer_wording={"confirm_no": declines, "block_no": declines},
+        )
+    )
+    assert user.next_message(CONFIRM_DISPUTE_PT, 2) == "Sim, confirmo."  # not worded: scripted
+    assert user.next_message("Você confirma o bloqueio do cartão com final 2208?", 3) == declines
+    assert user.next_message("Você também quer bloquear o seu cartão final 2208?", 4) == declines
+    assert [(e.kind, e.value) for e in user.events] == [
+        (QuestionKind.CONFIRM, True),
+        (QuestionKind.CONFIRM, False),
+        (QuestionKind.CARD_BLOCK, False),
+    ]
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Você confirma o bloqueio do cartão com final 2208?",  # the proposed agent confirms it
+        "Você também quer bloquear o seu cartão final 2208?",  # another system may offer it
+    ],
+)
+def test_the_worded_dev_case_declines_either_block_question_alike(question: str) -> None:
+    # Both systems run on the same scripted user: the same words for the same answer.
+    case = next(case for case in load_cases() if case.case_id == "dev-normal-pt-br-002")
+    assert ScriptedUser(case).next_message(question, 3) == "Pode deixar, obrigado."
+
+
+WORDED_ANSWERS: list[tuple[str, dict[str, bool], ScriptedAnswer]] = [
+    ("¿Reconoces este cargo?", {"recognizes_charge": True}, ScriptedAnswer.RECOGNIZE_YES),
+    ("¿Reconoces este cargo?", {"recognizes_charge": False}, ScriptedAnswer.RECOGNIZE_NO),
+    ("¿Confirmas abrir la disputa?", {"confirms_actions": True}, ScriptedAnswer.CONFIRM_YES),
+    ("¿Confirmas abrir la disputa?", {"confirms_actions": False}, ScriptedAnswer.CONFIRM_NO),
+    ("¿Quieres que bloqueemos tu tarjeta?", {"wants_card_block": True}, ScriptedAnswer.BLOCK_YES),
+    ("¿Quieres que bloqueemos tu tarjeta?", {"wants_card_block": False}, ScriptedAnswer.BLOCK_NO),
+    ("¿Quieres hablar con un asesor?", {"requests_human": True}, ScriptedAnswer.HUMAN_YES),
+    ("¿Quieres hablar con un asesor?", {"requests_human": False}, ScriptedAnswer.HUMAN_NO),
+]
+
+
+def test_every_answer_a_case_can_word_is_one_the_scripted_user_gives() -> None:
+    assert {answer for _, _, answer in WORDED_ANSWERS} == set(ScriptedAnswer)
+
+
+@pytest.mark.parametrize("language", ["es", "pt"])
+@pytest.mark.parametrize(("question", "facts", "answer"), WORDED_ANSWERS)
+def test_a_worded_answer_replaces_that_answer_only(
+    language: str, question: str, facts: dict[str, bool], answer: ScriptedAnswer
+) -> None:
+    scripted = ScriptedUser(make_case(language, **facts)).next_message(question, 1)
+    own = ScriptedUser(make_case(language, answer_wording={answer: "Mis palabras."}, **facts))
+    assert own.next_message(question, 1) == "Mis palabras." != scripted
+    others = {other: "Otras palabras." for other in ScriptedAnswer if other != answer}
+    rest = ScriptedUser(make_case(language, answer_wording=others, **facts))
+    assert rest.next_message(question, 1) == scripted
 
 
 def test_statements_before_the_question_do_not_change_the_kind() -> None:

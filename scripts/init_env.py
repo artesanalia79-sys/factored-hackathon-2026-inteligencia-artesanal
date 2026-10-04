@@ -7,12 +7,15 @@ Usage:
 
 AWS access keys are intentionally NOT written to .env. Store them with
 `aws configure --profile factored` so they only live in your AWS CLI profile.
-Existing non-empty values in .env are preserved.
+Existing non-empty values in .env are preserved, also those written as `export KEY=value` or
+`KEY = value`, and keys that are not in .env.example are kept at the end of the file. The file
+is readable by its owner only (mode 600).
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import secrets
 import sys
@@ -22,18 +25,29 @@ ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / ".env.example"
 TARGET = ROOT / ".env"
 
-_LINE = re.compile(r"^(?P<key>[A-Z][A-Z0-9_]*)=(?P<value>.*)$")
+_LINE = re.compile(r"^(?:export\s+)?(?P<key>[A-Z][A-Z0-9_]*)\s*=\s*(?P<value>.*)$")
 
 
-def _parse(path: Path) -> dict[str, str]:
+def _parse(path: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """(value by key, original line by key) of an existing dotenv file."""
     values: dict[str, str] = {}
+    lines: dict[str, str] = {}
     if not path.exists():
-        return values
+        return values, lines
     for line in path.read_text(encoding="utf-8").splitlines():
         match = _LINE.match(line.strip())
         if match:
             values[match["key"]] = match["value"]
-    return values
+            lines[match["key"]] = line
+    return values, lines
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Write a file only its owner can read: it holds secrets."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+    path.chmod(0o600)  # os.open keeps the mode of a file that already existed
 
 
 def _from_dictionary(path: Path) -> dict[str, str]:
@@ -60,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         print("ERROR: .env.example not found", file=sys.stderr)
         return 1
 
-    existing = _parse(TARGET)
+    existing, existing_lines = _parse(TARGET)
     overrides: dict[str, str] = {}
     if args.from_dictionary is not None:
         if not args.from_dictionary.exists():
@@ -70,12 +84,14 @@ def main(argv: list[str] | None = None) -> int:
 
     filled: list[str] = []
     out_lines: list[str] = []
+    template_keys: set[str] = set()
     for line in EXAMPLE.read_text(encoding="utf-8").splitlines():
         match = _LINE.match(line.strip())
         if not match:
             out_lines.append(line)
             continue
         key, default = match["key"], match["value"]
+        template_keys.add(key)
         value = existing.get(key) or overrides.get(key) or default
         if key == "APP_SECRET_KEY" and not value:
             value = secrets.token_urlsafe(48)
@@ -83,7 +99,13 @@ def main(argv: list[str] | None = None) -> int:
             filled.append(key)
         out_lines.append(f"{key}={value}")
 
-    TARGET.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+    kept = [key for key in existing_lines if key not in template_keys]
+    if kept:
+        out_lines += ["", "# Kept from your .env (not in .env.example)."]
+        out_lines += [existing_lines[key] for key in kept]
+        filled += [key for key in kept if existing[key]]
+
+    _write_private(TARGET, "\n".join(out_lines) + "\n")
     # Only key NAMES are printed, never values.
     print(f"Wrote {TARGET.name}. Keys with local values: {', '.join(sorted(filled)) or 'none'}")
     print("Reminder: AWS keys belong in `aws configure --profile factored`, not in .env.")

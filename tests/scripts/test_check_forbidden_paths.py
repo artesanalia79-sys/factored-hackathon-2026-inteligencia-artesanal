@@ -60,6 +60,20 @@ def _fake_openai_key() -> str:
         "web/.env.production",
         "./data/raw/x.csv",
         "data\\raw\\x.csv",
+        # Each rule below had no test: breaking it went unnoticed (PR #29 audit).
+        "docs/private/notes.md",
+        "DATA/raw/x.csv",
+        "Private/notes.md",
+        "Export.PARQUET",
+        "ops.sqlite3",
+        "warehouse.duckdb.wal",
+        "mlartifacts/1/model.pkl",
+        # SQLite databases and the files they keep recent writes in.
+        "state.db",
+        "ops.sqlite-wal",
+        "ops.sqlite-shm",
+        "ops.sqlite-journal",
+        "state.db-wal",
     ],
 )
 def test_forbidden_paths_are_blocked(path: str) -> None:
@@ -75,6 +89,9 @@ def test_forbidden_paths_are_blocked(path: str) -> None:
         "tests/fixtures/bank/cards.yaml",
         "eval/dev/case-001.yaml",
         "src/bankagent/fixtures/builder.py",
+        "src/bankagent/store/ops.py",
+        "docs/database.md",
+        "data_pipeline/dbt/dbt_project.yml",
     ],
 )
 def test_allowed_paths_pass(path: str) -> None:
@@ -103,6 +120,14 @@ def test_local_env_values_are_detected(tmp_path: Path) -> None:
     assert guard.scan_env_leaks("s3://other/transactions", values) == []
 
 
+def test_a_quoted_env_value_is_guarded_without_its_quotes(tmp_path: Path) -> None:
+    env = tmp_path / ".env"
+    bucket = "bucket-" + "".join(RNG.choices(string.ascii_lowercase, k=12))
+    env.write_text(f"S3_BUCKET=\"{bucket}\"\nHELDOUT_DIR='/sealed/{bucket}'\n", encoding="utf-8")
+    values = guard.load_sensitive_env_values(env)
+    assert values == {"S3_BUCKET": bucket, "HELDOUT_DIR": f"/sealed/{bucket}"}
+
+
 @pytest.mark.parametrize("key", ["DEMO_ACCESS_CODE", "LLM_API_KEY"])
 def test_the_demo_access_code_and_the_compat_key_are_guarded_too(tmp_path: Path, key: str) -> None:
     # Neither has a recognizable prefix, so only the comparison with the local value finds it.
@@ -128,3 +153,19 @@ def test_main_blocks_a_staged_secret_and_passes_clean_files(
     assert "aws_access_key_id" in err
     assert "forbidden location" in err
     assert "AK" + "IA" not in err  # the value itself is never printed
+
+
+def test_main_blocks_a_local_env_value_in_a_staged_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The value has no recognizable shape: only the comparison with the local .env finds it.
+    monkeypatch.chdir(tmp_path)
+    secret = "".join(RNG.choices(string.ascii_lowercase + string.digits, k=24))
+    (tmp_path / ".env").write_text(f"APP_SECRET_KEY={secret}\n", encoding="utf-8")
+    leaked = tmp_path / "settings.py"
+    leaked.write_text(f'SECRET = "{secret}"\n', encoding="utf-8")
+
+    assert guard.main([leaked.name]) == 1
+    err = capsys.readouterr().err
+    assert "APP_SECRET_KEY" in err
+    assert secret not in err

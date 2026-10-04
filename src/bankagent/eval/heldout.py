@@ -23,6 +23,7 @@ import argparse
 import hashlib
 import math
 import os
+import re
 import sys
 from collections import Counter
 from collections.abc import Hashable, Iterable, Sequence
@@ -38,6 +39,7 @@ from bankagent.contracts.evaluation import EvalCase
 from bankagent.eval.bank import BankIndex, load_bank
 from bankagent.eval.cases import ATTACK_CATEGORIES, DEV_DIR, ROOT, load_cases
 from bankagent.eval.gates import GATES_FILE, HeldoutPlan, load_gates
+from bankagent.interpret.keywords import normalize
 
 MANIFEST_FILE = ROOT / "eval" / "heldout_manifest.sha256"
 QUOTA_DIALECTS: tuple[Dialect, ...] = (
@@ -120,20 +122,37 @@ def read_case_files(directory: Path) -> tuple[list[CaseFile], list[str]]:
     return files, problems
 
 
+def person(name: str) -> str:
+    """An author or annotator as one key: "Juan José", "juan-jose" and "JuanJose" are one person."""
+    return re.sub(r"[^a-z0-9]", "", normalize(name))
+
+
+def _messages(case: EvalCase) -> tuple[str, ...]:
+    """The messages as letters and digits only (no case, accents, punctuation or spaces), so a
+    copy stays a copy: "2,450" and "2450" are one amount."""
+    return tuple("".join(re.findall(r"[a-z0-9]+", normalize(turn.text))) for turn in case.turns)
+
+
 def _conversation(case: EvalCase) -> tuple[str, tuple[str, ...]]:
-    return case.customer_id, tuple(" ".join(turn.text.lower().split()) for turn in case.turns)
+    return case.customer_id, _messages(case)
 
 
 def case_problems(
     files: Sequence[CaseFile], bank: BankIndex, dev_cases: Sequence[EvalCase] = ()
 ) -> list[str]:
-    """Problems of single cases: split, file name, fixture references, repeated conversations."""
+    """Problems of single cases: id and file name, split, fixture references, copies."""
     problems: list[str] = []
-    dev_conversations = {_conversation(case) for case in dev_cases}
+    # A dev message is one the agent was tuned on, whoever the customer is.
+    dev_messages = {_messages(case) for case in dev_cases}
     seen_ids: dict[str, str] = {}
     seen_conversations: dict[tuple[str, tuple[str, ...]], str] = {}
     for item in files:
         case = item.case
+        author = person(case.author)
+        # The id is on the blind sheet and in the versioned manifest: one that names the
+        # category would tell the second annotator, and anyone reading the manifest, the label.
+        if not re.fullmatch(rf"heldout-{re.escape(author)}-[0-9]+", case.case_id):
+            problems.append(f"{item.name}: case_id must be heldout-{author}-<number>")
         if item.name != f"{case.case_id}.yaml":
             problems.append(f"{item.name}: the file name must be <case_id>.yaml")
         if case.split != EvalSplit.HELDOUT:
@@ -149,8 +168,8 @@ def case_problems(
                 f"{item.name}: facts.target_transaction_id is not a transaction of customer_id"
             )
         conversation = _conversation(case)
-        if conversation in dev_conversations:
-            problems.append(f"{item.name}: same customer and messages as a dev case")
+        if _messages(case) in dev_messages:
+            problems.append(f"{item.name}: same messages as a dev case")
         if conversation in seen_conversations:
             problems.append(
                 f"{item.name}: same customer and messages as {seen_conversations[conversation]}"
@@ -267,10 +286,10 @@ def verify_manifest(directory: Path, manifest: Path) -> list[str]:
 def blind_sample(
     cases: Sequence[EvalCase], *, share: float = SAMPLE_SHARE, seed: str = SAMPLE_SEED
 ) -> dict[str, list[EvalCase]]:
-    """For each author, ``share`` of their cases (rounded up), chosen by a seeded hash."""
+    """For each author (``person`` key), ``share`` of their cases (rounded up), by a seeded hash."""
     by_author: dict[str, list[EvalCase]] = {}
     for case in cases:
-        by_author.setdefault(case.author, []).append(case)
+        by_author.setdefault(person(case.author), []).append(case)
 
     def rank(case: EvalCase) -> str:
         return hashlib.sha256(f"{seed}:{case.case_id}".encode()).hexdigest()
@@ -296,11 +315,16 @@ def blind_sheet(case: EvalCase) -> str:
     return body + _SHEET_FOOTER.format(outcomes=outcomes)
 
 
+def sheet_folder(author: str) -> str:
+    """Letters and digits only, so an author name can never lead out of ``--out``."""
+    return f"cases-by-{person(author) or 'unnamed'}"
+
+
 def write_sample(sample: dict[str, list[EvalCase]], out_dir: Path) -> int:
     """One folder per author, to be annotated by a teammate who is not that author."""
     written = 0
     for author, cases in sample.items():
-        folder = out_dir / f"cases-by-{author}"
+        folder = out_dir / sheet_folder(author)
         folder.mkdir(parents=True, exist_ok=True)
         for case in cases:
             (folder / f"{case.case_id}.yaml").write_bytes(blind_sheet(case).encode("utf-8"))
@@ -365,7 +389,7 @@ def annotation_report(
             problems.append(f"{annotation.case_id}: not a case of the held-out set")
         elif annotation.case_id in seen:
             problems.append(f"{annotation.case_id}: annotated more than once")
-        elif annotation.annotator == case.author:
+        elif person(annotation.annotator) == person(case.author):
             problems.append(f"{annotation.case_id}: annotated by its own author")
         else:
             pairs.append((case, annotation))
@@ -465,7 +489,7 @@ def sample(directory: Path, out_dir: Path) -> int:
     chosen = blind_sample([item.case for item in files])
     written = write_sample(chosen, out_dir)
     for author, cases in chosen.items():
-        print(f"cases-by-{author}: {len(cases)} sheets, for an annotator other than {author}")
+        print(f"{sheet_folder(author)}: {len(cases)} sheets, for an annotator other than {author}")
     print(f"sample: {written} sheets of {len(files)} cases in {out_dir}")
     return 0
 
