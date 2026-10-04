@@ -56,7 +56,11 @@ SECRET_TOKEN = re.compile(
     r"\beyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]{5,}|(?<![\w-])sk-[A-Za-z0-9_-]{16,}"
     r"|(?<![\w-])AKIA[0-9A-Z]{16}(?![\w-])"
 )
-EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
+# An email is found from its ``@``: the domain after it, then the local part before it
+# (``_redact_emails``). One pattern for the whole address, ``[\w.+-]+@…``, rescans a long run
+# of name characters from every position in it: seconds for one 16 KB request path.
+EMAIL_DOMAIN = re.compile(r"[\w-]+\.[\w.-]*\w")
+_EMAIL_LOCAL_PUNCTUATION = frozenset(".+-")
 # The fixture bank's documents, a Brazilian CPF and a Mexican CURP as they are written.
 DOCUMENT = re.compile(
     r"\bFX-DOC-[A-Z]{2}-\d{4}\b|(?<![\w.-])\d{3}\.\d{3}\.\d{3}-\d{2}(?![\w-])"
@@ -69,15 +73,21 @@ CARD = re.compile(r"(?<![\w-])(?:\d[ -]?){12,18}\d(?![\w-])")
 PHONE = re.compile(
     r"(?<![\w.,-])\+?\d{1,3}[ -]?\(?\d{2,3}\)?[ -]?\d{3,4}[ -]?\d{4}(?![\w,]|[.,]\d)"
 )
-IPV4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])")
-IPV6 = re.compile(r"(?<![\w:.])[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]+(?:%[\w.-]+)?(?![\w:.])")
+# Candidates only: ``_redact_ip`` keeps what ``ipaddress`` does not accept. A full stop that
+# ends a sentence may follow an address. The IPv6 run is possessive (``++``), so a long run
+# of colons is read once instead of once per way of splitting it.
+IPV4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?!\.?\w)")
+IPV6 = re.compile(r"(?<![\w:.])[0-9A-Fa-f:.]++(?:%[\w.-]++)?(?![\w:.])")
+# The longest IPv6 text is 45 characters; the rest is room for a zone id.
+_MAX_IP_TEXT = 80
 
-_STEPS: tuple[tuple[re.Pattern[str], str], ...] = (
+_STEPS_BEFORE_EMAIL: tuple[tuple[re.Pattern[str], str], ...] = (
     (SECRET_PAIR, r"\1[REDACTED:secret]"),
     (DOCUMENT_PAIR, r"\1[REDACTED:document]"),
     (AUTH_SCHEME, r"\1 [REDACTED:secret]"),
     (SECRET_TOKEN, "[REDACTED:secret]"),
-    (EMAIL, "[REDACTED:email]"),
+)
+_STEPS_AFTER_EMAIL: tuple[tuple[re.Pattern[str], str], ...] = (
     (DOCUMENT, "[REDACTED:document]"),
     (IDENTITY, "[REDACTED:identity]"),
     (CARD, "[REDACTED:card]"),
@@ -90,20 +100,62 @@ _FAILED = "log record withheld: redaction failed"
 _MARK = "_bankagent_redacting"
 
 
+def _is_word(char: str) -> bool:
+    return char == "_" or char.isalnum()
+
+
+def _redact_emails(text: str) -> str:
+    """``text`` with every ``local@domain.tld`` replaced, in time linear in its length."""
+    at = text.find("@")
+    if at < 0:
+        return text
+    parts: list[str] = []
+    last = 0
+    while at >= 0:
+        domain = EMAIL_DOMAIN.match(text, at + 1)
+        start = at
+        if domain is not None:
+            # Back over the local part, never into text already replaced, then past the
+            # punctuation it cannot start with.
+            while start > last and (
+                _is_word(text[start - 1]) or text[start - 1] in _EMAIL_LOCAL_PUNCTUATION
+            ):
+                start -= 1
+            while start < at and not _is_word(text[start]):
+                start += 1
+        if domain is not None and start < at:
+            parts.append(text[last:start])
+            parts.append("[REDACTED:email]")
+            last = domain.end()
+            at = text.find("@", last)
+        else:
+            at = text.find("@", at + 1)
+    parts.append(text[last:])
+    return "".join(parts)
+
+
 def _apply(text: str) -> str:
-    for pattern, replacement in _STEPS:
+    for pattern, replacement in _STEPS_BEFORE_EMAIL:
         text = pattern.sub(replacement, text)
-    for pattern in (IPV4, IPV6):
+    text = _redact_emails(text)
+    for pattern, replacement in _STEPS_AFTER_EMAIL:
+        text = pattern.sub(replacement, text)
+    # IPv6 first: a mapped address (``::ffff:203.0.113.7``) ends in an IPv4 one.
+    for pattern in (IPV6, IPV4):
         text = pattern.sub(_redact_ip, text)
     return text
 
 
 def _redact_ip(match: re.Match[str]) -> str:
+    found = match.group()
+    candidate = found.rstrip(".")
+    if len(candidate) > _MAX_IP_TEXT:
+        return found
     try:
-        ipaddress.ip_address(match.group())
+        ipaddress.ip_address(candidate)
     except ValueError:
-        return match.group()
-    return CLIENT_ADDRESS
+        return found
+    return CLIENT_ADDRESS + found[len(candidate) :]
 
 
 def redact(text: str) -> str:

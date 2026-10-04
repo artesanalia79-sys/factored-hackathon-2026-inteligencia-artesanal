@@ -7,6 +7,7 @@ import io
 import logging
 import os
 import random
+import time
 
 import pytest
 
@@ -355,3 +356,58 @@ def test_a_malformed_format_cannot_reinsert_a_short_secret(
     assert record.getMessage() == "log record withheld: redaction failed"
     assert record.args is None
     assert "482913" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("from 2001:db8::8a2e:370:7334.", "from [REDACTED:ip]."),
+        ("the client was 203.0.113.7.", "the client was [REDACTED:ip]."),
+        ("mapped ::ffff:203.0.113.7", "mapped [REDACTED:ip]"),
+        ("zone fe80::1%eth0 up", "zone [REDACTED:ip] up"),
+        (
+            "a@b.co, c.d+e@f-g.com.mx; -x@y.org",
+            "[REDACTED:email], [REDACTED:email]; -[REDACTED:email]",
+        ),
+        ("ana@example.com@example.org", "[REDACTED:email]@example.org"),
+        ("correo: ana.perez@example.com.", "correo: [REDACTED:email]."),
+    ],
+)
+def test_an_address_at_the_end_of_a_sentence_or_next_to_another_is_redacted(
+    text: str, expected: str
+) -> None:
+    assert redact(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "at 17:06:10 and 00:00:01",
+        "tests/obs/test_redaction.py::test_redaction_is_idempotent",
+        "version 1.2.3 of 300.1.2.3 and 1.2.3.4.5",
+        "user@localhost and @example.com and ana@",
+        "std::cafe dead.beef",
+    ],
+)
+def test_what_only_looks_like_an_address_is_left_alone(text: str) -> None:
+    assert redact(text) == text
+
+
+# A request line may be 64 KB (uvicorn's limit), and the access log is written on the event
+# loop of the only worker: a pattern that takes quadratic time on a crafted path stops the
+# service for every customer. Before the fix the first two took 6 s and 1.5 s at 16 KB.
+_PATH_SIZE = 64_000
+_UNITS = (
+    ":", "1:", "a:", "::", "1.", "a.", "1-", "a-", "a+", "a@", "@a.", "a.a@", "1 ", "1", "A",
+    "%25", "%2540", "+", '"', "'", "=", "otp=", "otp ", "a=", "1.1.1.", "0-", "(1", "eyJ", "sk-",
+    "Bearer ", "CUST-", "FX-DOC-", "_", "é",
+)  # fmt: skip
+
+
+@pytest.mark.parametrize("unit", _UNITS)
+def test_a_crafted_request_path_is_redacted_in_linear_time(unit: str) -> None:
+    body = unit * (_PATH_SIZE // len(unit))
+    for text in ("/x?" + body, "/x?" + body + "g", "/x?" + body + "@", "/x?q=" + body + "&z"):
+        started = time.perf_counter()
+        redact(text)
+        assert time.perf_counter() - started < 2.0, f"{unit!r} x {len(body)}"
