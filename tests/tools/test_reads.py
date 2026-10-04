@@ -219,6 +219,7 @@ def test_search_matches_a_card_by_last4_only_within_the_session(desk: Desk) -> N
         ("CUST-FX-005", "PAYPAL SPOTIFYMX", ["TXN-FX-0501"]),  # PAYPAL *SPOTIFYMX
         ("CUST-FX-005", "Spotify MX", ["TXN-FX-0501"]),
         (MARIANA, "Electro Mundo", ["TXN-FX-0101"]),  # ELECTROMUNDO ONLINE
+        ("CUST-FX-003", "Mércado Libre", ["TXN-FX-0301"]),  # an accent inside a word, too
         (ANDRES, "Rappi restaurante", ["TXN-FX-0202", "TXN-FX-0201"]),  # RAPPI*RESTAURANTE
         (MARIANA, "Mercado Libre", []),  # Lucía's merchant
         (MARIANA, "Electro Mundo Tienda", []),  # more than the name says
@@ -230,6 +231,25 @@ def test_search_finds_a_merchant_written_with_other_spaces_or_punctuation(
     # A real model returns the merchant as the customer wrote it. Compared as plain text it
     # found nothing, and the agent asked for "un dato más" until it gave up.
     assert _search(desk, customer_id, merchant_query=written) == expected
+
+
+def test_search_drops_the_accents_of_the_stored_name_too(
+    make_desk: MakeDesk, altered_bank: AlteredBank
+) -> None:
+    # 7 of the 24 merchant names in the curated serving DB carry an accented letter; this one
+    # also differs in punctuation, so only the compacted comparison can find it.
+    bank = altered_bank(
+        "UPDATE transactions_enriched SET merchant_name = ? WHERE transaction_id = ?",
+        ["PANADERÍA*LA ESPIGA", "TXN-FX-0201"],
+    )
+    desk = make_desk(serving_db=bank)
+    for written in ("Panadería La Espiga", "panaderia la espiga"):
+        assert _search(desk, ANDRES, merchant_query=written) == ["TXN-FX-0201"]
+
+
+def test_a_query_of_one_or_two_letters_still_matches_as_plain_text(desk: Desk) -> None:
+    # Too short for the compacted comparison, it keeps the plain-text match it always had.
+    assert _search(desk, merchant_query="mx") == ["TXN-FX-0105", "TXN-FX-0104"]
 
 
 def test_blank_merchant_query_is_no_filter_and_wildcards_are_plain_text(desk: Desk) -> None:
