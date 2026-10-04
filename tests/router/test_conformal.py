@@ -23,7 +23,8 @@ def _calibration(rng: np.random.Generator, n: int, k: int = 4) -> tuple[np.ndarr
 @pytest.mark.parametrize(
     ("n", "alpha", "rank"),
     [
-        (159, 0.1, 144),  # (n + 1)(1 - alpha) = 144 exactly, in spite of 160 * 0.9 = 144.00..03
+        (159, 0.1, 144),  # (n + 1)(1 - alpha) = 144 exactly
+        (249, 0.172, 207),  # 250 * (1 - 0.172) is 207.00000000000003 in floating point
         (160, 0.1, 145),  # 144.9 -> 145
         (9, 0.1, 9),  # the smallest n that can reach 90%
         (8, 0.1, 9),  # 8.1 -> 9 > n: not enough calibration messages
@@ -66,6 +67,8 @@ def test_prediction_set_is_ordered_by_probability_and_can_be_empty() -> None:
     assert prediction_set(probs, 0.75) == (1, 2)
     assert prediction_set(probs, 0.6) == (1,)
     assert prediction_set(probs, 0.1) == ()
+    # A score equal to q_hat is inside: the set is 1 - p <= q_hat, as the guarantee needs.
+    assert prediction_set(np.array([0.25, 0.75]), 0.75) == (1, 0)
 
 
 def test_bad_inputs_are_refused() -> None:

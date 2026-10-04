@@ -7,7 +7,10 @@ calibration nor the test split shapes the model. The keyword router
 (``bankagent.interpret.keywords``) needs no training and is scored on the same test messages.
 
 BLAS runs on one thread: the matrices are small, so more threads only add overhead (six times
-slower on a 4-CPU container), and one thread keeps the floating-point sums in the same order.
+slower on a 4-CPU container, forty times on a 22-CPU laptop), and one thread keeps the
+floating-point sums in the same order from run to run. Another CPU's BLAS kernels can still round
+a sum differently (around the 15th digit), so the report test allows one unit in the last printed
+digit of a decimal.
 """
 
 from __future__ import annotations
@@ -90,10 +93,16 @@ def grouped_splits(examples: Sequence[Example], seed: int) -> Splits:
     return Splits(tuple(fit), tuple(calibration), tuple(test))
 
 
+def best_c(scores: Mapping[float, float]) -> float:
+    """The ``C`` with the highest mean macro-F1; a tie (to 9 decimals) goes to the smaller C,
+    the stronger regularization."""
+    return min(scores, key=lambda c: (-round(scores[c], 9), c))
+
+
 def select_c(
     examples: Sequence[Example], seed: int, grid: Sequence[float] = C_GRID
 ) -> tuple[float, dict[float, float]]:
-    """Mean macro-F1 of each ``C`` over grouped folds of ``examples``; ties go to the smaller C."""
+    """Mean macro-F1 of each ``C`` over grouped folds of ``examples``, and the best one."""
     texts = [e.text for e in examples]
     labels = [e.intent.value for e in examples]
     folds = _folds(examples, INNER_FOLDS, seed)
@@ -106,8 +115,7 @@ def select_c(
             predicted = [str(p) for p in pipeline.predict([texts[i] for i in held])]
             fold_scores.append(macro_f1([labels[i] for i in held], predicted))
         scores[c] = statistics.fmean(fold_scores)
-    best = min(grid, key=lambda c: (-round(scores[c], 9), c))
-    return best, scores
+    return best_c(scores), scores
 
 
 @dataclass(frozen=True)
@@ -319,6 +327,11 @@ def _point(rate: Rate) -> float:
     return rate.point if rate.point is not None else float("nan")
 
 
+def repeat_seeds(seed: int, repeats: int) -> tuple[int, ...]:
+    """The split seeds of the repeats: the ones after ``seed``, never ``seed`` itself."""
+    return tuple(seed + 1 + r for r in range(repeats))
+
+
 def _repeat(examples: Sequence[Example], *, alpha: float, seed: int) -> Repeat:
     trained = train_router(examples, alpha=alpha, seed=seed)
     test = [examples[i] for i in trained.splits.test]
@@ -389,6 +402,6 @@ def evaluate(
         abstention=abstention(scored.truth, scored.sets),
         keyword_answers=keyword_answers(scored.truth, scored.keyword),
         slices=slices(test, scored),
-        repeats=tuple(_repeat(examples, alpha=alpha, seed=seed + 1 + r) for r in range(repeats)),
+        repeats=tuple(_repeat(examples, alpha=alpha, seed=s) for s in repeat_seeds(seed, repeats)),
         external=_external(trained.router, external),
     )

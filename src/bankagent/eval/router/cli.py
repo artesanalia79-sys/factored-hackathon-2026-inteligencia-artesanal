@@ -9,10 +9,12 @@ is saved between the two, so no pickle is ever loaded from disk. Costs nothing: 
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from bankagent.eval.metrics import Rate
 from bankagent.eval.router.evaluate import (
     ALPHA,
     REPEATS,
@@ -34,6 +36,33 @@ from bankagent.router.corpus import (
 DEFAULT_REPORT = ROOT / "docs" / "evidence" / "router_eval.md"
 
 
+def _alpha(value: str) -> float:
+    """``--alpha``: a number strictly between 0 and 1."""
+    try:
+        alpha = float(value)
+    except ValueError:
+        alpha = math.nan
+    if not 0.0 < alpha < 1.0:
+        raise argparse.ArgumentTypeError(f"alpha must be a number in (0, 1), got {value!r}")
+    return alpha
+
+
+def _repeats(value: str) -> int:
+    """``--repeats``: a whole number, zero or more."""
+    try:
+        repeats = int(value)
+    except ValueError:
+        repeats = -1
+    if repeats < 0:
+        raise argparse.ArgumentTypeError(f"repeats must be a whole number >= 0, got {value!r}")
+    return repeats
+
+
+def _percent(rate: Rate) -> str:
+    """A rate for the console: ``n/a`` when nothing was counted (a router that never answers)."""
+    return "n/a" if rate.point is None else f"{rate.point:.1%}"
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m bankagent.eval.router.cli",
@@ -41,15 +70,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train", help="evaluate, write the report, log an MLflow run")
-    train.add_argument("--alpha", type=float, default=ALPHA)
+    train.add_argument("--alpha", type=_alpha, default=ALPHA)
     train.add_argument("--seed", type=int, default=SEED)
-    train.add_argument("--repeats", type=int, default=REPEATS, help="extra split seeds")
+    train.add_argument("--repeats", type=_repeats, default=REPEATS, help="extra split seeds")
     train.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     train.add_argument("--tracking-uri", default=DEFAULT_TRACKING_URI)
     train.add_argument("--no-mlflow", action="store_true", help="skip the MLflow run")
     predict = commands.add_parser("predict", help="route one message")
     predict.add_argument("text")
-    predict.add_argument("--alpha", type=float, default=ALPHA)
+    predict.add_argument("--alpha", type=_alpha, default=ALPHA)
     predict.add_argument("--seed", type=int, default=SEED)
     return parser
 
@@ -71,12 +100,12 @@ def _train(args: argparse.Namespace) -> int:
     print(f"corpus: {len(corpus.examples)} messages, sha256 {corpus.sha256[:12]}")
     print(
         f"split seed {args.seed}: C = {evaluation.trained.c:g}, q_hat = {router.q_hat:.4f}; "
-        f"test accuracy learned {evaluation.learned.accuracy.point:.1%}, "
-        f"keyword {evaluation.keyword.accuracy.point:.1%}"
+        f"test accuracy learned {_percent(evaluation.learned.accuracy)}, "
+        f"keyword {_percent(evaluation.keyword.accuracy)}"
     )
     print(
-        f"abstention: set coverage {conformal.set_coverage.point:.1%}, answered "
-        f"{conformal.answered.point:.1%} at {conformal.answered_accuracy.point:.1%} accuracy"
+        f"abstention: set coverage {_percent(conformal.set_coverage)}, answered "
+        f"{_percent(conformal.answered)} at {_percent(conformal.answered_accuracy)} accuracy"
     )
     if evaluation.repeats:
         coverage = [r.set_coverage for r in evaluation.repeats]

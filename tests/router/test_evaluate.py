@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import random
+from collections.abc import Sequence
 
 import numpy as np
 import pytest
@@ -11,15 +12,21 @@ from sklearn.metrics import f1_score
 
 from bankagent.contracts.enums import Intent
 from bankagent.eval.metrics import Rate
+from bankagent.eval.router import evaluate as evaluate_module
 from bankagent.eval.router.evaluate import (
+    C_GRID,
     KEYWORD_ANSWER_CONFIDENCE,
+    REPEATS,
     TrainedRouter,
     abstention,
+    best_c,
     grouped_splits,
     keyword_answers,
     macro_f1,
+    repeat_seeds,
     train_router,
 )
+from bankagent.router.conformal import conformal_threshold
 from bankagent.router.corpus import Example, load_corpus
 from bankagent.router.model import MODEL_VERSION
 
@@ -69,6 +76,45 @@ def test_the_test_split_never_shapes_the_model(
     assert again.router.q_hat == trained.router.q_hat
     probe = ["Perdí mi tarjeta", "Me cobraron dos veces", "¿Cómo va mi reclamo?"]
     assert np.allclose(again.router.predict_proba(probe), trained.router.predict_proba(probe))
+
+
+def test_c_is_chosen_on_the_fit_split_only(
+    examples: tuple[Example, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # With a one-value grid C cannot move, so look at what the C search is given instead.
+    seen: list[set[str]] = []
+    real = evaluate_module.select_c
+
+    def spy(
+        chosen_from: Sequence[Example], seed: int, grid: Sequence[float] = C_GRID
+    ) -> tuple[float, dict[float, float]]:
+        seen.append({e.text for e in chosen_from})
+        return real(chosen_from, seed, grid)
+
+    monkeypatch.setattr(evaluate_module, "select_c", spy)
+    again = train_router(examples, alpha=0.1, seed=42, grid=ONE_C)
+    assert seen == [{examples[i].text for i in again.splits.fit}]
+
+
+def test_q_hat_is_the_conformal_threshold_of_the_calibration_split(
+    examples: tuple[Example, ...], trained: TrainedRouter
+) -> None:
+    router = trained.router
+    calibration = [examples[i] for i in trained.splits.calibration]
+    probs = router.predict_proba([e.text for e in calibration])
+    labels = np.array([router.classes.index(e.intent) for e in calibration], dtype=np.int64)
+    assert router.q_hat == pytest.approx(conformal_threshold(probs, labels, 0.1), abs=1e-12)
+
+
+def test_the_best_c_has_the_highest_score_and_a_tie_goes_to_the_smaller_c() -> None:
+    assert best_c({1.0: 0.70, 10.0: 0.80, 100.0: 0.75}) == 10.0
+    assert best_c({100.0: 0.80, 3.0: 0.80 + 1e-12, 30.0: 0.79}) == 3.0  # equal to 9 decimals
+
+
+def test_the_repeats_never_reuse_the_main_split_seed() -> None:
+    assert repeat_seeds(42, 3) == (43, 44, 45)
+    assert 42 not in repeat_seeds(42, REPEATS)
+    assert repeat_seeds(42, 0) == ()
 
 
 def test_route_returns_a_consistent_router_result(trained: TrainedRouter) -> None:

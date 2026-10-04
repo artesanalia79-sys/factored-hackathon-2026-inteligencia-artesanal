@@ -17,8 +17,9 @@ import math
 import numpy as np
 from numpy.typing import NDArray
 
-# (n + 1)(1 - alpha) is computed in floating point: 160 * 0.9 gives 144.00000000000003, and a
-# plain ceil would take the 145th score instead of the 144th.
+# (n + 1)(1 - alpha) is computed in floating point and can land just above an integer: with
+# n = 249 and alpha = 0.172 it gives 207.00000000000003, and a plain ceil would take the 208th
+# score instead of the 207th.
 _RANK_TOLERANCE = 1e-9
 
 

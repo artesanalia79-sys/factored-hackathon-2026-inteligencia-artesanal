@@ -1,11 +1,13 @@
 """Render a router evaluation as ``docs/evidence/router_eval.md`` (Task 18).
 
 Deterministic: no timings, no environment details, so regenerating it on the same corpus gives
-the same file. Timings and the artifact size go to the MLflow run and the console instead.
+the same file (another CPU's BLAS kernels may move a printed decimal by one unit). Timings and the
+artifact size go to the MLflow run and the console instead.
 """
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import Counter
 from collections.abc import Iterable, Sequence
@@ -60,10 +62,15 @@ def _table(header: Sequence[str], rows: Iterable[Sequence[str]]) -> list[str]:
 
 
 def _spread(values: Sequence[float]) -> tuple[str, str, str]:
+    """Mean, min and max over the splits that have the value: a split where the router never
+    answers has no accuracy when answering (NaN)."""
+    present = [v for v in values if not math.isnan(v)]
+    if not present:
+        return ("n/a", "n/a", "n/a")
     return (
-        f"{statistics.fmean(values):.1%}",
-        f"{min(values):.1%}",
-        f"{max(values):.1%}",
+        f"{statistics.fmean(present):.1%}",
+        f"{min(present):.1%}",
+        f"{max(present):.1%}",
     )
 
 
@@ -86,6 +93,8 @@ def render_report(evaluation: Evaluation) -> str:
         else "pending (a teammate reviews a sample before merge)"
     )
     groups = {e.group for e in examples}
+    dialects = {e.dialect for e in examples}
+    test_groups = {examples[i].group for i in splits.test}
     c_scores = ", ".join(
         f"{_number(c)}: {ev.trained.c_scores[c]:.3f}" for c in sorted(ev.trained.c_scores)
     )
@@ -104,7 +113,7 @@ def render_report(evaluation: Evaluation) -> str:
         f"  boundaries (min_df {MIN_DF}) on the keyword normalization, then a class-balanced",
         f"  logistic regression; split-conformal abstention with α = {_number(ev.alpha)}.",
         f"- Corpus: {len(examples)} messages, {len(groups)} scenario groups, {len(INTENTS)}"
-        " intents, 5 dialects.",
+        f" intents, {len(dialects)} dialects.",
         f"- Corpus sha256: `{ev.corpus.sha256}`",
         f"- External check sha256: `{ev.external_sha256}`",
         f"- Corpus review: {review}.",
@@ -220,7 +229,8 @@ def render_report(evaluation: Evaluation) -> str:
             "",
             "The whole pipeline (split, C, fit, calibration) again on split seeds"
             f" {min(seeds)}-{max(seeds)}.",
-            "With about 32 scenario groups per test split, one split's coverage moves a lot;",
+            f"With about {len(test_groups)} scenario groups per test split, one split's coverage"
+            " moves a lot;",
             "the conformal guarantee is about the average over splits, which this table checks.",
             "",
         ]

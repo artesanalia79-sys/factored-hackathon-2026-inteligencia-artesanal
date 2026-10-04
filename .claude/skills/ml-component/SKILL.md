@@ -15,8 +15,8 @@ router only (the LLM zero-shot comparison and ONNX are T29), trained on the synt
 `eval/router/corpus/` (one file per intent, scenario groups in five dialects) and checked on
 `eval/router/external_check.yaml`. `uv run poe router` evaluates and writes
 `docs/evidence/router_eval.md`; the card is `docs/models/router.md`. The router is offline: the
-agent's router gate is still the keyword attack gate. After any corpus edit, rerun `poe router`
-and commit the report (a test compares its corpus sha256).
+agent's router gate is still the keyword attack gate. After any change to the corpus or the router
+code, rerun `poe router` and commit the report: a test checks that it is what the code produces.
 
 ## 1. Data and splits
 
@@ -58,7 +58,7 @@ def conformal_threshold(cal_probs: np.ndarray, cal_labels: np.ndarray, alpha: fl
     """Nonconformity = 1 - p(true class). q_hat is the ceil((n + 1)(1 - alpha))-th smallest score."""
     n = len(cal_labels)
     scores = 1.0 - cal_probs[np.arange(n), cal_labels]
-    rank = math.ceil((n + 1) * (1 - alpha) - 1e-9)  # 160 * 0.9 is 144.00000000000003 in floats
+    rank = math.ceil((n + 1) * (1 - alpha) - 1e-9)  # 250 * (1 - 0.172) is 207.00000000000003
     if rank > n:
         return 1.0  # too few calibration points: every class enters the set
     return float(np.sort(scores)[rank - 1])

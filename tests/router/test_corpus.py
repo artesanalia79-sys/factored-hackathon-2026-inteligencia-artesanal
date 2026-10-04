@@ -65,7 +65,11 @@ def test_the_external_check_quotes_its_sources_verbatim() -> None:
 # ---------------------------------------------------------------------------
 # Loader rules, on a small corpus written to a temporary directory
 # ---------------------------------------------------------------------------
-def _write_corpus(directory: Path, texts: dict[Intent, list[str]] | None = None) -> None:
+def _write_corpus(
+    directory: Path,
+    texts: dict[Intent, list[str]] | None = None,
+    reviewed_by: str | None = None,
+) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     for n, intent in enumerate(Intent, 1):
         messages = (texts or {}).get(intent, [f"mensaje de prueba {n} para {intent.value}"])
@@ -73,7 +77,7 @@ def _write_corpus(directory: Path, texts: dict[Intent, list[str]] | None = None)
             "intent": intent.value,
             "provenance": "llm_generated_reviewed",
             "author": "test",
-            "reviewed_by": None,
+            "reviewed_by": reviewed_by,
             "groups": [
                 {
                     "id": f"{intent.value[:3]}-{n:02d}",
@@ -89,6 +93,11 @@ def test_a_valid_small_corpus_loads(tmp_path: Path) -> None:
     corpus = load_corpus(tmp_path)
     assert len(corpus.examples) == len(Intent)
     assert set(corpus.reviewed_by.values()) == {None}
+
+
+def test_the_loader_keeps_who_reviewed_each_file(tmp_path: Path) -> None:
+    _write_corpus(tmp_path, reviewed_by="jjresher")
+    assert load_corpus(tmp_path).reviewed_by == dict.fromkeys(Intent, "jjresher")
 
 
 def test_a_file_must_hold_the_intent_it_is_named_after(tmp_path: Path) -> None:

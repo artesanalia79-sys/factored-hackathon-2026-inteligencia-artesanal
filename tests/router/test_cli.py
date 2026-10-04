@@ -95,3 +95,38 @@ def test_train_refuses_an_external_check_that_repeats_the_corpus(
     assert cli.main(["train", "--no-mlflow", "--report", str(report)]) == 1
     assert "repeats corpus messages" in capsys.readouterr().err
     assert not report.exists()
+
+
+def test_train_reports_a_router_that_never_answers(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # alpha = 0.005 needs more than 160 calibration messages: q_hat = 1, every set holds every
+    # intent, so the router never answers and has no accuracy when answering.
+    report = tmp_path / "router_eval.md"
+    args = ["train", "--alpha", "0.005", "--repeats", "0", "--no-mlflow", "--report", str(report)]
+    assert cli.main(args) == 0
+    assert "split-conformal abstention with α = 0.005." in report.read_text(encoding="utf-8")
+    assert "answered 0.0% at n/a accuracy" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("alpha", ["0", "1", "1.5", "-0.1", "nan", "abc"])
+def test_an_alpha_outside_zero_and_one_is_refused(
+    alpha: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # --report points at tmp_path so that a broken check can never overwrite the committed report.
+    train = ["train", "--no-mlflow", "--report", str(tmp_path / "router_eval.md")]
+    for command in (train, ["predict", "hola"]):
+        with pytest.raises(SystemExit) as exited:
+            cli.main([*command, "--alpha", alpha])
+        assert exited.value.code == 2
+        assert "alpha must be a number in (0, 1)" in capsys.readouterr().err
+    assert not (tmp_path / "router_eval.md").exists()
+
+
+def test_negative_repeats_are_refused(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    report = tmp_path / "router_eval.md"
+    with pytest.raises(SystemExit) as exited:
+        cli.main(["train", "--repeats", "-1", "--no-mlflow", "--report", str(report)])
+    assert exited.value.code == 2
+    assert "repeats must be a whole number >= 0" in capsys.readouterr().err
+    assert not report.exists()
