@@ -34,6 +34,7 @@ facts:                           # what the scripted user answers when asked
   wants_card_block: false
   requests_human: false
   clarification_answers: {}
+  answer_wording: {}             # optional: the customer's own words for a yes or a no
 fault_injections: []
 expected_outcome: automated_resolution
 acceptable_outcomes: [automated_resolution]
@@ -111,6 +112,14 @@ else `default`) and, with none, "No estoy seguro." / "Não tenho certeza.".
   finish the case.
 - A case that tests what happens when the customer cannot say more leaves it empty and expects
   `abstained` or `escalated`.
+- `answer_wording` gives the customer's own words for one of the yes or no answers
+  (`recognize_yes`, `recognize_no`, `confirm_yes`, `confirm_no`, `block_yes`, `block_no`,
+  `human_yes`, `human_no`), for example "Pode deixar, obrigado." declining a card block, though it
+  opens like a yes. Only the words change: the facts still decide which answer is given, so label
+  the case from the facts as usual. The proposed agent asks for the card block as a confirmation
+  ("¿Confirmas bloquear la tarjeta…?"), which gets a `confirm_*` answer, and a system that offers
+  it ("¿Quieres que bloqueemos tu tarjeta?") gets a `block_*` one: word both
+  (`dev-normal-pt-br-002`).
 
 ## Held-out cases
 

@@ -328,6 +328,15 @@ def test_eval_case_label_consistency() -> None:
         _case(turns=[])
 
 
+def test_eval_case_words_only_answers_the_scripted_user_gives() -> None:
+    worded = _case(facts={"answer_wording": {"block_no": "Pode deixar, obrigado."}})
+    assert EvalCase.model_validate_json(worded.model_dump_json()) == worded
+    with pytest.raises(ValidationError, match="answer_wording"):
+        _case(facts={"answer_wording": {"block_maybe": "Quizás."}})
+    with pytest.raises(ValidationError, match="answer_wording"):
+        _case(facts={"answer_wording": {"block_no": ""}})
+
+
 def test_eval_result_safe_resolution_requires_correct_safe_automation() -> None:
     base: dict[str, object] = {
         "case_id": "dev-norm-es-mx-001",

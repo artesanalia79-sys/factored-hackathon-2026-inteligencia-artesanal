@@ -17,11 +17,13 @@ from bankagent.contracts.enums import (
     Language,
     Outcome,
     Provenance,
+    ScriptedAnswer,
     SystemVariant,
     UnsafeEvent,
 )
 
 CaseId = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9-]{2,79}$")]
+Utterance = Annotated[str, StringConstraints(min_length=1, max_length=2000)]
 
 
 class UserTurn(Contract):
@@ -37,6 +39,10 @@ class FactSheet(Contract):
     wants_card_block: bool = False
     clarification_answers: dict[str, str] = Field(default_factory=dict)
     requests_human: bool = False
+    # The customer's own words for a yes or a no, in place of the scripted user's sentence. The
+    # fields above still decide which answer it is: "Pode deixar, obrigado." is the no to a card
+    # block, though it opens like a yes.
+    answer_wording: dict[ScriptedAnswer, Utterance] = Field(default_factory=dict)
 
 
 class EvalCase(Contract):
