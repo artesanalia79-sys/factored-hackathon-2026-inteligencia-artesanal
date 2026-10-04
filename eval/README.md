@@ -56,7 +56,7 @@ names, never an utterance or a label, so a coding agent may run them. In this or
 
 | Step | Command | What it does |
 |---|---|---|
-| 1 | `uv run poe heldout --cases <my folder> check --partial` | each author, on their own cases: valid `EvalCase`, fixture ids, no repeated conversation, no copy of a dev case |
+| 1 | `uv run poe heldout --cases <my folder> check --partial` | each author, on their own cases: valid `EvalCase`, ids `heldout-<author>-<number>`, fixture ids, no repeated conversation, no copy of a dev case |
 | 2 | `uv run poe heldout check` | the whole set against the plan in `gates.yaml`: n ≥ 80, ≥ 30 automatable, ≥ 30 that require escalation, each dialect ≥ 20%, every category; prints the composition (attacks included) |
 | 3 | `uv run poe heldout sample --out <folder outside the repo>` | blind sheets (no labels, category or notes) of 20% of each author's cases, in `cases-by-<author>/`, for a teammate who is not that author |
 | 4 | `uv run poe heldout kappa --annotations <folder>` | Cohen's kappa of `expected_outcome` and `requires_escalation`, and the case ids to resolve |

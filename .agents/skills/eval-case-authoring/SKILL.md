@@ -114,11 +114,13 @@ else `default`) and, with none, "No estoy seguro." / "Não tenho certeza.".
 
 ## Held-out cases
 
-- `split: heldout`, file name `<case_id>.yaml`, ids like `heldout-<author>-<number>` (an id that
-  names the category tells the second annotator the label).
+- `split: heldout`, file name `<case_id>.yaml`, id `heldout-<author>-<number>` with `author` as
+  letters and digits ("Juan José" is `juanjose`). The check refuses any other id: an id that
+  names the category tells the second annotator the label.
 - Write them in a folder outside the repository and check your own part with
   `uv run poe heldout --cases <folder> check --partial`. It prints counts and file names only.
 - `provenance: cross_authored`, or `llm_generated_reviewed` when a model drafted the case and
   you checked every line of it.
-- Do not copy a dev case or repeat a conversation: the check refuses both.
+- Do not copy a dev case or repeat a conversation: the check refuses both, also with other
+  capitals, accents, punctuation or spacing, and a dev message with any customer.
 - The steps for the whole set (plan check, blind sample, kappa, seal) are in `eval/README.md`.
