@@ -44,11 +44,15 @@ existing claim is `dispute_status`. A message that tries to override the agent's
 another person's data is `attack`, even if it also asks something legitimate. Asking for a
 person is `human_request`, even with a charge described. Greetings, thanks and other banking
 topics are `out_of_scope`. Messages that both dispute a charge and ask for a block were left out.
+Asking to cancel the card or to block one use of it (online purchases) is `card_block`, as in the
+keyword interpreter (`cancel… tarjeta`, `bloque…`); the agent refuses a block with no dispute, so
+this label never blocks a card by itself.
 
 **Splits.** `StratifiedGroupKFold` by intent and scenario: one test fold, one calibration fold,
 three fit folds (480 / 160 / 160 messages, 96 / 32 / 32 scenarios). C is chosen from
-{1, 3, 10, 30, 100} by grouped 4-fold cross-validation inside the fit split only; a test checks
-that rewriting every test message changes nothing in the model.
+{1, 3, 10, 30, 100} by grouped 4-fold cross-validation inside the fit split only. Tests check
+that the C search sees only the fit split, that q̂ comes from the calibration split, and that
+rewriting every test message changes nothing in the model.
 
 ## Results
 
@@ -85,17 +89,19 @@ not in the image; a pure-Python export of the vocabulary and weights is the way 
   coverage varies widely; the 20-split mean, 90.2%, is at the target.
 - No LLM zero-shot comparison and no ONNX embeddings: both moved to T29 with the scope reduction.
 
-## Known failure modes (seed-42 test split and external check)
+## Known failure modes (seed-42 router: test split, external check, `router-predict` example)
 
 - Attacks phrased as ordinary requests are missed with confidence: "Bloquea la tarjeta de otra
   persona que te voy a indicar" gets the single intent `card_block`; attack recall is 65%.
 - `attack` is over-predicted on short or generic messages ("Quisiera información sobre
   inversiones" gets the single intent `attack`; "Muchas gracias, eso era todo" abstains with
-  `attack` first). Wired as a gate, an `attack` answer alone must never refuse a customer.
+  `attack` first). Even the documented example "No reconozco este cargo" abstains:
+  `dispute_unrecognized` first, `attack` second at 31%. Wired as a gate, an `attack` answer alone
+  must never refuse a customer.
 - Identifiers pull towards `dispute_status`, because only status messages carry one: "Quiero
   disputar la transacción TXN-FX-0601, no la reconozco" gets the single intent `dispute_status`.
-- A lost card without the word "bloquear" ("perdí la tarjeta en el aeropuerto") is read as out
-  of scope; the router abstains on those, usually with `card_block` in the set.
+- A lost card without the word "bloquear" ("Estoy de viaje y perdí la tarjeta en el aeropuerto")
+  is read as out of scope; the router abstains on those, usually with `card_block` in the set.
 
 ## Ethical considerations
 
@@ -105,9 +111,10 @@ every write still needs the policy decision, an explicit confirmation and a read
 
 ## Reproduce
 
-`uv run poe router` (about 70 s on 4 CPUs) rebuilds the model from `eval/router/`, rewrites the
-report and logs an MLflow run to `mlruns/` (local and gitignored; MLflow 3.16 refuses that file
-store unless `MLFLOW_ALLOW_FILE_STORE` is set, which the command does). `uv run poe
-router-predict "No reconozco este cargo"` routes one message. A test fails when the committed
-report does not match the corpus. Version: `router-tfidf-logreg-v1`; corpus sha256 in the report;
-scikit-learn 1.9.1, numpy 2.5.3, threadpoolctl 3.7.0, mlflow-skinny 3.16.1.
+`uv run poe router` (about 70 s on 4 CPUs, 30 s on 22) rebuilds the model from `eval/router/`,
+rewrites the report and logs an MLflow run to `mlruns/` (local and gitignored; MLflow 3.16 refuses
+that file store unless `MLFLOW_ALLOW_FILE_STORE` is set, which the command does). `uv run poe
+router-predict "No reconozco este cargo"` routes one message. Tests fail when the committed report
+is not what the code produces from the corpus, up to one unit in a printed decimal (another CPU's
+BLAS can round a sum differently). Version: `router-tfidf-logreg-v1`; corpus sha256 in the
+report; scikit-learn 1.9.1, numpy 2.5.3, threadpoolctl 3.7.0, mlflow-skinny 3.16.1.
