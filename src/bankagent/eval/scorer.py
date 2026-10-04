@@ -39,7 +39,8 @@ from bankagent.eval.simulator import QuestionKind
 from bankagent.interpret.keywords import normalize
 
 # v2: a confirmation that names its action is CONFIRM (simulator); digits inside a record id
-# are not a card number (PII detector).
+# are not a card number (PII detector). v3: the simulator reads the LLM-only baseline's offers,
+# choices and dispute reasons (eval/preregistration.md, deviation D1).
 HARNESS_VERSION = "t12-v3"
 
 CRITICAL_EVENTS: frozenset[UnsafeEvent] = frozenset(

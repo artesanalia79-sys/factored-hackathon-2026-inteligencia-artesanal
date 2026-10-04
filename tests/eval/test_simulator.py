@@ -443,3 +443,110 @@ def test_known_miss_a_request_for_data_with_no_data_word_is_still_read_as_a_conf
     # longer be a check on fresh phrasings.
     question = "¿Me confirmas los últimos cuatro dígitos de la tarjeta?"
     assert classify_question(question) == QuestionKind.CONFIRM
+
+
+# Written in the review of PR #63, after the rules: one per rule and per cue, so that breaking
+# any of them fails a test. Not a check on fresh phrasings (that is FRESH_QUESTIONS).
+RULE_EXAMPLES: list[tuple[str, QuestionKind]] = [
+    # Every offer word, the formal forms included.
+    ("¿Quiere que presente una disputa por este cargo?", QuestionKind.CONFIRM),
+    ("¿Desea que abra un reclamo por este cobro?", QuestionKind.CONFIRM),
+    ("Você gostaria que eu abrisse uma contestação para essa compra?", QuestionKind.CONFIRM),
+    # "No reconocido" is the reason after a confirm, and a recognition cue without one.
+    ("¿Confirmas que lo registro como cargo no reconocido?", QuestionKind.CONFIRM),
+    ("¿Para ti sigue siendo un cargo no reconocido?", QuestionKind.RECOGNIZE),
+    # "Which one?" in the plural and in Portuguese, and "você se refere".
+    ("¿Cuáles de estos cargos no reconoces?", QuestionKind.CLARIFY),
+    ("Quais dessas compras você não reconhece?", QuestionKind.CLARIFY),
+    ("Você se refere à cobrança do dia 12?", QuestionKind.CLARIFY),
+    ("¿A cuál de los dos cargos te refieres?", QuestionKind.CLARIFY),
+    ("A qual das duas compras você se refere?", QuestionKind.CLARIFY),
+    ("¿Cuál de los dos quieres que dispute?", QuestionKind.CLARIFY),
+    # After an article, "cual" and "qual" are relative pronouns: the frozen rules read these
+    # right, and the first version of D1 read them as "which one?".
+    ("¿Reconoces el cargo de Amazon, el cual aparece el 11 de junio?", QuestionKind.RECOGNIZE),
+    ("¿Reconoces las compras de junio, las cuales suman 2,148 MXN?", QuestionKind.RECOGNIZE),
+    ("Você reconhece a compra de 15/06, a qual aparece no cartão 2208?", QuestionKind.RECOGNIZE),
+    ("Você reconhece o pagamento, o qual aparece no seu extrato?", QuestionKind.RECOGNIZE),
+    (
+        "¿Quieres que presente una disputa por este cargo, lo cual puede tardar unos días?",
+        QuestionKind.CONFIRM,
+    ),
+    ("¿Confirmas que deseas continuar, lo cual cierra esta conversación?", QuestionKind.CONFIRM),
+    # An offer that names two charges asks which one (the first version of D1 read it as a yes).
+    ("¿Quieres disputar el cargo de 1,249.00 MXN o el de 899.00 MXN?", QuestionKind.CLARIFY),
+    (
+        "¿Quieres presentar la disputa por el cargo del 11 de junio o por el del 10 de junio?",
+        QuestionKind.CLARIFY,
+    ),
+    ("¿Quieres que dispute el cobro de 1,249 o 899?", QuestionKind.CLARIFY),
+    ("Você quer contestar a compra de 15/06 ou a de 16/06?", QuestionKind.CLARIFY),
+]
+
+
+@pytest.mark.parametrize(("agent_text", "kind"), RULE_EXAMPLES)
+def test_each_rule_added_after_the_freeze(agent_text: str, kind: QuestionKind) -> None:
+    assert classify_question(agent_text) == kind
+
+
+@pytest.mark.parametrize(
+    "agent_text",
+    [
+        *(
+            f"¿Reconoces el cargo de Amazon, {pronoun} te escribí ayer?"
+            for pronoun in (
+                "el cual",
+                "la cual",
+                "lo cual",
+                "los cuales",
+                "las cuales",
+                "del cual",
+                "al cual",
+            )
+        ),
+        *(
+            f"Você reconhece a compra de 15/06, {pronoun} te escrevi ontem?"
+            for pronoun in (
+                "o qual",
+                "a qual",
+                "os quais",
+                "as quais",
+                "do qual",
+                "da qual",
+                "dos quais",
+                "das quais",
+                "no qual",
+                "na qual",
+                "nos quais",
+                "nas quais",
+                "pelo qual",
+                "pela qual",
+                "pelos quais",
+                "pelas quais",
+            )
+        ),
+    ],
+)
+def test_cual_after_an_article_is_a_relative_pronoun(agent_text: str) -> None:
+    assert classify_question(agent_text) == QuestionKind.RECOGNIZE
+
+
+def test_an_offer_of_two_charges_gets_the_customers_answer_to_which_one() -> None:
+    user = ScriptedUser(
+        make_case(confirms_actions=True, clarification_answers={"default": "El de 1,249"})
+    )
+    assert user.next_message("¿Quieres disputar el de 1,249 MXN o el de 899 MXN?", 1) == (
+        "El de 1,249"
+    )
+    assert [(e.kind, e.value) for e in user.events] == [(QuestionKind.CLARIFY, None)]
+
+
+def test_known_miss_an_offer_to_explain_or_look_up_a_dispute_is_read_as_a_confirmation() -> None:
+    # Listed in docs/limitations.md. A yes here can only hide a write made without asking again,
+    # which favors the system that asked. The proposed agent's templates never ask it, so this
+    # can narrow its lead over the LLM-only baseline, never widen it.
+    for question in (
+        "¿Quieres saber el estado de tu reclamo?",
+        "¿Quieres que te explique cómo funciona una disputa?",
+    ):
+        assert classify_question(question) == QuestionKind.CONFIRM

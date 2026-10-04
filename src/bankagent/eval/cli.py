@@ -23,6 +23,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import NamedTuple
 
 from bankagent.contracts.enums import SystemVariant, UnsafeEvent
 from bankagent.contracts.evaluation import EvalCase
@@ -44,6 +45,7 @@ from bankagent.eval.runner import (
 )
 from bankagent.eval.scorer import ScoredRun, score
 from bankagent.eval.system import System
+from bankagent.interpret.keywords import MODEL_NAME as STUB_MODEL
 from bankagent.interpret.stub import FAULTS_BY_INJECTION
 
 RUNS_DIR = ROOT / "eval" / "runs"
@@ -204,14 +206,27 @@ SYSTEMS: dict[str, Callable[[], System]] = {
 PROVIDERS = ("stub", "openai", "compat")
 
 
-def provider_factory_for(provider: str, budget_usd: Decimal) -> tuple[ProviderFactory, str]:
-    """The provider of each case run, and the cost line of the report.
+class ProviderChoice(NamedTuple):
+    factory: ProviderFactory  # the provider of each case run
+    assumptions: str  # the cost line of the report
+    model: str
 
-    Raises ``ValueError`` when the OpenAI-compatible endpoint is not configured (the message
-    names keys, never values).
+
+def provider_factory_for(provider: str, budget_usd: Decimal) -> ProviderChoice:
+    """The provider of each case run, the cost line of the report and the model.
+
+    Raises ``ValueError`` when the provider is not configured, before any case runs (the
+    message names keys, never values).
     """
     if provider == "openai":
-        from bankagent.interpret.openai_provider import OpenAIProvider
+        from openai import OpenAIError
+
+        from bankagent.interpret.openai_provider import MODEL, OpenAIProvider
+
+        try:
+            OpenAIProvider()  # makes no call: a missing key fails here, not in the first case
+        except OpenAIError as exc:
+            raise ValueError("OPENAI_API_KEY is not set") from exc
 
         def openai_factory(case: EvalCase) -> LLMProvider:
             # Injected LLM faults stay simulated (0 USD), so both systems see the same fault.
@@ -219,7 +234,9 @@ def provider_factory_for(provider: str, budget_usd: Decimal) -> tuple[ProviderFa
                 return stub_provider_for(case)
             return OpenAIProvider()  # one budgeted provider per case run
 
-        return openai_factory, "OpenAIProvider (config/pricing.yaml), real cost"
+        return ProviderChoice(
+            openai_factory, "OpenAIProvider (config/pricing.yaml), real cost", MODEL
+        )
     if provider == "compat":
         from bankagent.interpret.compat_provider import from_env
 
@@ -232,8 +249,14 @@ def provider_factory_for(provider: str, budget_usd: Decimal) -> tuple[ProviderFa
                 return stub_provider_for(case)
             return shared
 
-        return compat_factory, f"OpenAI-compatible endpoint, model {shared.model} (LLM_* variables)"
-    return stub_provider_for, "StubProvider (keyword rules), 0 USD per call"
+        return ProviderChoice(
+            compat_factory,
+            f"OpenAI-compatible endpoint, model {shared.model} (LLM_* variables)",
+            shared.model,
+        )
+    return ProviderChoice(
+        stub_provider_for, "StubProvider (keyword rules), 0 USD per call", STUB_MODEL
+    )
 
 
 def real_run(
@@ -260,7 +283,7 @@ def real_run(
         return 1
     systems = [SYSTEMS[name]() for name in system_names]
     try:
-        provider_factory, assumptions = provider_factory_for(provider, budget_usd)
+        provider_factory, assumptions, _ = provider_factory_for(provider, budget_usd)
     except ValueError as exc:  # names keys, never values
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

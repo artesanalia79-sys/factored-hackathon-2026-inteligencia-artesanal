@@ -54,6 +54,16 @@ _ACTION = re.compile(_DISPUTE.pattern + r"|\bbloque")
 _OFFER = re.compile(r"\b(?:quieres|queres|quiere|deseas|desea|gustaria|quer|deseja|gostaria)\b")
 # "Which one?" asks for a choice, whatever else the question mentions.
 _WHICH = re.compile(r"\bcual(?:es)?\b|\bqual\b|\bquais\b")
+# After an article, "cual" and "qual" are relative pronouns, not a question: "el cargo, el cual
+# aparece…", "lo cual", "a compra, a qual…". Accents are gone, so "cuál" cannot tell them apart.
+_RELATIVE = re.compile(
+    r"\b(?:el|la|lo|los|las|del|al|o|os|as|do|da|dos|das|no|na|nos|nas|pelo|pela|pelos|pelas)"
+    r" (?:cual(?:es)?|qual|quais)\b|, a (?:qual|quais)\b"
+)
+# Two charges offered side by side: "¿Quieres disputar el de 1,249 o el de 899?".
+_ALTERNATIVES = re.compile(
+    r"\b(?:o|ou) (?:(?:por|a|para) )?(?:el|la|al|o|a|ao|do|da) (?:de|del|do|da)\b|\b(?:o|ou) \d"
+)
 # The reason of a dispute, not a question about recognizing: "como cargo no reconocido".
 _REASON = re.compile(r"\b(?:no|nao) (?:reconocid[oa]s?|reconhecid[oa]s?)\b")
 _CARD_BLOCK = re.compile(r"\bbloque")
@@ -106,17 +116,22 @@ def classify_question(agent_text: str, clarification_keys: tuple[str, ...] = ())
     # The four rules below were added after the freeze, on the questions the LLM-only baseline
     # asks on the dev cases (eval/preregistration.md, section 11).
     offers = bool(_OFFER.search(norm))
-    which = bool(_WHICH.search(norm))
+    plain = _RELATIVE.sub(" ", norm)
+    which = bool(_WHICH.search(plain))
     # After a confirm or an offer, "no reconocido" is the reason of the dispute.
     recognition = _REASON.sub(" ", norm) if confirms or offers else norm
     # "¿Cuál de los dos no reconoces?" asks for a choice: a clarification, below.
     if _RECOGNIZE.search(recognition) and not which:
         return QuestionKind.RECOGNIZE
-    # An offer to file a dispute is a confirmation: "¿Quieres que presente una disputa…?".
-    if offers and _DISPUTE.search(norm) and not which and not _HUMAN_OFFER.search(norm):
+    # An offer to file a dispute is a confirmation: "¿Quieres que presente una disputa…?". One
+    # that names two charges asks which ("¿Quieres disputar el de 1,249 o el de 899?"), and an
+    # offer of a person is a human offer, below.
+    if offers and _DISPUTE.search(norm) and not _HUMAN_OFFER.search(norm):
+        if which or _ALTERNATIVES.search(norm):
+            return QuestionKind.CLARIFY
         return QuestionKind.CONFIRM
     # "¿Podrías confirmar la moneda y la fecha?" asks for data, not for a yes.
-    if confirms and not which and not _CLARIFY.search(norm):
+    if confirms and not which and not _CLARIFY.search(plain):
         return QuestionKind.CONFIRM
     if _CARD_BLOCK.search(norm):
         return QuestionKind.CARD_BLOCK
