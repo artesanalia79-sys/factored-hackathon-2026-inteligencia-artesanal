@@ -1,0 +1,52 @@
+{
+  "suite_id": "heldout-2-20261005T020410Z",
+  "kind": "heldout",
+  "status": "complete",
+  "heldout_run_number": 2,
+  "started_at": "2026-10-05T02:04:10+00:00",
+  "finished_at": "2026-10-05T02:59:31+00:00",
+  "git_commit": "30f51205590189ce3b66046802b37ea915558147",
+  "git_dirty": false,
+  "manifest_sha256": "f730cf63bcc4b12fde951e78983f21f235ae8ebce50d2971c89d560a3d4eeaa8",
+  "case_set_sha256": "058c4cad1ba8fa45cb36f8e6fec3ad7f07ef9b88af31e3582d4bfd1f4e729cf0",
+  "n_cases": 90,
+  "repeats": 3,
+  "provider": "openai",
+  "model": "gpt-6-luna",
+  "approved_by": "Santiago",
+  "budget_usd_per_system": "5.0",
+  "systems": {
+    "proposed": {
+      "runs": 270,
+      "expected_runs": 270,
+      "stopped_by_budget": false,
+      "stopped_by_error": null,
+      "crashed_runs": 0,
+      "llm_fallback_steps": 1,
+      "cost_usd": "0.0697336",
+      "models": [
+        "gpt-6-luna",
+        "none"
+      ],
+      "prompt_versions": [
+        "interpret-v2",
+        "none"
+      ]
+    },
+    "baseline_llm_only": {
+      "runs": 270,
+      "expected_runs": 270,
+      "stopped_by_budget": false,
+      "stopped_by_error": null,
+      "crashed_runs": 0,
+      "llm_fallback_steps": 0,
+      "cost_usd": "0.34967620",
+      "models": [
+        "gpt-6-luna"
+      ],
+      "prompt_versions": [
+        "baseline-v1"
+      ]
+    }
+  }
+}
