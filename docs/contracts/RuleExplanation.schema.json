@@ -1,0 +1,24 @@
+{
+  "additionalProperties": false,
+  "description": "A policy rule id next to the human-readable text from ``dispute_policy_v1.yaml``.",
+  "properties": {
+    "description": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "rule_id": {
+      "maxLength": 16,
+      "minLength": 1,
+      "title": "Rule Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "rule_id",
+    "description"
+  ],
+  "title": "RuleExplanation",
+  "type": "object"
+}

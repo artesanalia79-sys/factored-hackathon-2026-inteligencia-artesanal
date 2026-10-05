@@ -24,6 +24,7 @@ from bankagent.contracts.enums import (
     Specialty,
     StepKind,
     StepOutcome,
+    ToolName,
 )
 from bankagent.contracts.handoff import HandoffPacket, HandoffRouting
 from bankagent.contracts.records import ExecutionRecord
@@ -249,6 +250,58 @@ def test_console_reads_are_unscoped_and_live_outside_the_store(store: OpsStore) 
     assert console.get_handoff("HND-missing") is None
     # The customer-facing store has no unscoped handoff read at all.
     assert not hasattr(store, "list_handoffs")
+
+
+def test_console_lists_disputes_and_card_blocks_across_customers(store: OpsStore) -> None:
+    older = _dispute("DSP-1", "idem-key-0005", "TXN-1")
+    newer = _dispute("DSP-2", "idem-key-0006", "TXN-2").model_copy(
+        update={"created_at": NOW + timedelta(minutes=1)}
+    )
+    store.insert_dispute("CUST-A", older)
+    store.insert_dispute("CUST-B", newer)
+    store.insert_card_block("CUST-A", _block("BLK-1", "idem-key-0007", "CARD-1"))
+    store.insert_card_block(
+        "CUST-B",
+        _block("BLK-2", "idem-key-0008", "CARD-2").model_copy(
+            update={"blocked_at": NOW + timedelta(minutes=1)}
+        ),
+    )
+    console = HandoffConsole(store.database)
+    disputes = console.list_disputes()
+    assert [(customer_id, case.dispute_id) for customer_id, case in disputes] == [
+        ("CUST-B", "DSP-2"),
+        ("CUST-A", "DSP-1"),
+    ]
+    blocks = console.list_card_blocks()
+    assert [(customer_id, event.block_id) for customer_id, event in blocks] == [
+        ("CUST-B", "BLK-2"),
+        ("CUST-A", "BLK-1"),
+    ]
+    assert [(c, e.block_id) for c, e in console.list_card_blocks(limit=1)] == [("CUST-B", "BLK-2")]
+
+
+def test_console_lists_the_execution_trace_of_one_handoff(store: OpsStore) -> None:
+    store.append_records(
+        [
+            ExecutionRecord(
+                record_id="rec-1",
+                trace_id="trace-1",
+                turn_index=0,
+                step_index=0,
+                step=StepKind.TOOL_CALL,
+                state=ConversationState.IDENTIFY_TXN,
+                tool=ToolName.CREATE_HANDOFF,
+                outcome=StepOutcome.SUCCESS,
+                verified=True,
+                latency_ms=5.0,
+                created_at=NOW,
+            )
+        ]
+    )
+    console = HandoffConsole(store.database)
+    records = console.list_records("trace-1")
+    assert [r.record_id for r in records] == ["rec-1"]
+    assert console.list_records("trace-missing") == []
 
 
 def test_tools_layer_never_imports_the_console() -> None:

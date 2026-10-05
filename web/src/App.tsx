@@ -8,6 +8,7 @@ import type { ChatSession } from './session.ts'
 
 const ICONS = { size: 20, weight: 'regular' } as const
 const ComparisonScreen = lazy(() => import('./comparison/ComparisonScreen.tsx'))
+const ConsoleScreen = lazy(() => import('./console/ConsoleScreen.tsx'))
 
 export function App() {
   // Kept in memory only: a reload signs out, and nothing about the session reaches storage.
@@ -32,6 +33,10 @@ export function App() {
       {['/compare', '/compare/'].includes(window.location.pathname) ? (
         <Suspense fallback={<output>Cargando comparación…</output>}>
           <ComparisonScreen />
+        </Suspense>
+      ) : ['/console', '/console/'].includes(window.location.pathname) ? (
+        <Suspense fallback={<output>Cargando consola…</output>}>
+          <ConsoleScreen />
         </Suspense>
       ) : session === null ? (
         <LoginScreen

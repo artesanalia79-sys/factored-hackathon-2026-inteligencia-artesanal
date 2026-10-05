@@ -1,0 +1,576 @@
+{
+  "$defs": {
+    "ActionTaken": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ActionType"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "ref_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Ref Id",
+          "type": "string"
+        },
+        "verified": {
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action",
+        "ref_id",
+        "verified",
+        "at"
+      ],
+      "title": "ActionTaken",
+      "type": "object"
+    },
+    "ActionType": {
+      "enum": [
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    },
+    "ConsoleHandoffEntry": {
+      "additionalProperties": false,
+      "description": "One row of the handoff queue: escalated to a human, not resolved automatically.",
+      "properties": {
+        "handoff": {
+          "$ref": "#/$defs/HandoffPacket"
+        },
+        "rule_explanations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RuleExplanation"
+          },
+          "title": "Rule Explanations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "handoff"
+      ],
+      "title": "ConsoleHandoffEntry",
+      "type": "object"
+    },
+    "ConversationState": {
+      "enum": [
+        "auth",
+        "understand",
+        "identify_txn",
+        "recognize",
+        "check_policy",
+        "confirm",
+        "act",
+        "verify",
+        "respond",
+        "clarify",
+        "abstain",
+        "escalate",
+        "done"
+      ],
+      "title": "ConversationState",
+      "type": "string"
+    },
+    "ExecutionRecord": {
+      "additionalProperties": false,
+      "description": "One step of one turn. Never contains raw PII, prompts or secrets.",
+      "properties": {
+        "args_hash": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Args Hash"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,8}0*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Cost Usd"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "latency_ms": {
+          "minimum": 0.0,
+          "title": "Latency Ms",
+          "type": "number"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "outcome": {
+          "$ref": "#/$defs/StepOutcome"
+        },
+        "prompt_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Version"
+        },
+        "record_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Record Id",
+          "type": "string"
+        },
+        "rule_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        },
+        "state": {
+          "$ref": "#/$defs/ConversationState"
+        },
+        "step": {
+          "$ref": "#/$defs/StepKind"
+        },
+        "step_index": {
+          "minimum": 0,
+          "title": "Step Index",
+          "type": "integer"
+        },
+        "tokens_in": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tokens In",
+          "type": "integer"
+        },
+        "tokens_out": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tokens Out",
+          "type": "integer"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolName"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "trace_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Trace Id",
+          "type": "string"
+        },
+        "turn_index": {
+          "minimum": 0,
+          "title": "Turn Index",
+          "type": "integer"
+        },
+        "verified": {
+          "default": false,
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "record_id",
+        "trace_id",
+        "turn_index",
+        "step_index",
+        "step",
+        "state",
+        "outcome",
+        "latency_ms",
+        "created_at"
+      ],
+      "title": "ExecutionRecord",
+      "type": "object"
+    },
+    "HandoffPacket": {
+      "additionalProperties": false,
+      "description": "Stored handoff. ``customer_id`` is filled server-side from the session.",
+      "properties": {
+        "actions_taken": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ActionTaken"
+          },
+          "title": "Actions Taken",
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "customer_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "handoff_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Handoff Id",
+          "type": "string"
+        },
+        "intent": {
+          "$ref": "#/$defs/Intent"
+        },
+        "language": {
+          "$ref": "#/$defs/Language"
+        },
+        "open_questions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Open Questions",
+          "type": "array"
+        },
+        "policy_version": {
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "request": {
+          "description": "customer request, redacted",
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Request",
+          "type": "string"
+        },
+        "routing": {
+          "$ref": "#/$defs/HandoffRouting"
+        },
+        "trace_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Trace Id",
+          "type": "string"
+        },
+        "trigger_rule_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Trigger Rule Ids",
+          "type": "array"
+        },
+        "verified_facts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/VerifiedFact"
+          },
+          "title": "Verified Facts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "trace_id",
+        "language",
+        "request",
+        "intent",
+        "policy_version",
+        "routing",
+        "handoff_id",
+        "created_at",
+        "customer_id"
+      ],
+      "title": "HandoffPacket",
+      "type": "object"
+    },
+    "HandoffRouting": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent Id"
+        },
+        "language": {
+          "$ref": "#/$defs/Language"
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority"
+        },
+        "specialty": {
+          "$ref": "#/$defs/Specialty"
+        }
+      },
+      "required": [
+        "specialty",
+        "language",
+        "priority"
+      ],
+      "title": "HandoffRouting",
+      "type": "object"
+    },
+    "Intent": {
+      "enum": [
+        "dispute_unrecognized",
+        "dispute_duplicate",
+        "dispute_not_received",
+        "card_block",
+        "dispute_status",
+        "human_request",
+        "out_of_scope",
+        "attack"
+      ],
+      "title": "Intent",
+      "type": "string"
+    },
+    "Language": {
+      "enum": [
+        "es",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "Priority": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "RuleExplanation": {
+      "additionalProperties": false,
+      "description": "A policy rule id next to the human-readable text from ``dispute_policy_v1.yaml``.",
+      "properties": {
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "rule_id": {
+          "maxLength": 16,
+          "minLength": 1,
+          "title": "Rule Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "description"
+      ],
+      "title": "RuleExplanation",
+      "type": "object"
+    },
+    "Specialty": {
+      "enum": [
+        "disputes",
+        "fraud",
+        "cards",
+        "general"
+      ],
+      "title": "Specialty",
+      "type": "string"
+    },
+    "StepKind": {
+      "description": "What an ExecutionRecord step did.",
+      "enum": [
+        "authenticate",
+        "route",
+        "interpret",
+        "tool_call",
+        "policy",
+        "confirmation",
+        "verify",
+        "render",
+        "handoff"
+      ],
+      "title": "StepKind",
+      "type": "string"
+    },
+    "StepOutcome": {
+      "enum": [
+        "success",
+        "failure",
+        "blocked",
+        "fallback"
+      ],
+      "title": "StepOutcome",
+      "type": "string"
+    },
+    "ToolErrorCode": {
+      "enum": [
+        "unauthorized",
+        "not_found",
+        "confirmation_required",
+        "tool_unavailable",
+        "session_expired",
+        "invalid_arguments"
+      ],
+      "title": "ToolErrorCode",
+      "type": "string"
+    },
+    "ToolName": {
+      "enum": [
+        "list_cards",
+        "search_transactions",
+        "get_transaction",
+        "get_dispute",
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ToolName",
+      "type": "string"
+    },
+    "VerifiedFact": {
+      "additionalProperties": false,
+      "description": "A fact read from a system of record, with where it came from.",
+      "properties": {
+        "key": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "record id, e.g. a txn id",
+          "title": "Ref"
+        },
+        "source": {
+          "description": "tool or table that produced it",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 500,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "source"
+      ],
+      "title": "VerifiedFact",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One handoff plus the execution trace of the turn that created it.",
+  "properties": {
+    "entry": {
+      "$ref": "#/$defs/ConsoleHandoffEntry"
+    },
+    "records": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ExecutionRecord"
+      },
+      "title": "Records",
+      "type": "array"
+    }
+  },
+  "required": [
+    "entry"
+  ],
+  "title": "ConsoleHandoffDetail",
+  "type": "object"
+}
