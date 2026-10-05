@@ -13,10 +13,15 @@ interface Props {
   onPick: (text: string) => void
 }
 
+// Always with its cents. The amount is a two-decimal value, and Intl's default for some
+// currencies is none: 85,900.50 COP would read "85.901 COP", an amount the customer never paid
+// and the agent cannot find when the question below names it.
 function amountOf(transaction: TransactionView, locale: string): string {
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: transaction.currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(Number(transaction.amount))
 }
 

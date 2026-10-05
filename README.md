@@ -139,7 +139,9 @@ the run: [`eval/reports/heldout-2-20261005T020410Z/report.md`](eval/reports/held
 
 Organizer data is never committed. The public demo and the evaluation run on team-authored
 **synthetic** personas. The sealed held-out cases live outside the repository; only their sha256
-manifest is versioned. Known limitations: [`docs/limitations.md`](docs/limitations.md).
+manifest is versioned. The same agent also runs end to end on the organizer data, locally only:
+[`docs/evidence/curated_e2e.md`](docs/evidence/curated_e2e.md).
+Known limitations: [`docs/limitations.md`](docs/limitations.md).
 
 ## Team
 

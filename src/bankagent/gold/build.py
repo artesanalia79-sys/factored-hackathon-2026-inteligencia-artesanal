@@ -14,6 +14,7 @@ from pathlib import Path
 
 import duckdb
 
+from bankagent.contracts.enums import DataMode
 from bankagent.contracts.serving import (
     SERVING_CONTRACT_VERSION,
     SERVING_TABLES,
@@ -25,15 +26,16 @@ from bankagent.silver.build import (
     BUILD_SCOPE_FULL,
     GOLD_SELECTOR,
     METADATA_TABLE,
-    ROOT,
     BuildConfig,
     DbtBuildError,
     DbtRun,
     run_dbt,
 )
 from bankagent.silver.verify import MANIFEST_NAME
+from bankagent.store.selection import SERVING_DBS
 
-DEFAULT_SERVING_DB = ROOT / "data" / "serving" / "bank_curated.duckdb"
+# The file the runtime opens with DATA_MODE=curated (T19).
+DEFAULT_SERVING_DB = SERVING_DBS[DataMode.CURATED]
 
 # Serving table -> gold model (`_serving_metadata` -> `gold_serving_metadata`).
 GOLD_MODELS: dict[str, str] = {

@@ -5,8 +5,9 @@ Usage:
     python -m bankagent.gold.cli --full-refresh   # rebuild the incremental model from scratch
     python -m bankagent.gold.cli --serving-db /tmp/serving.duckdb
 
-Needs a full, successful `uv run poe dbt-build` of the current bronze manifest. The runtime reads
-the result with `DATA_MODE=curated` and `SERVING_DB_PATH=data/serving/bank_curated.duckdb`.
+Needs a full, successful `uv run poe dbt-build` of the current bronze manifest. The runtime opens
+the default file with `DATA_MODE=curated` (`bankagent.store.selection`); `uv run poe curated-check`
+checks it and `uv run poe curated-e2e` runs the agent on it.
 
 Env overrides: BRONZE_DIR, WAREHOUSE_PATH, DUCKDB_MEMORY_LIMIT, DBT_THREADS.
 """
