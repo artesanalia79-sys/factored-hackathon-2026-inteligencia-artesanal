@@ -1,7 +1,7 @@
 # Implementation plan
 
-Team Inteligencia Artesanal: Victor (backend), Jacobo (fullstack), Juan José (data engineering and
-analysis), Santiago (data engineering and automation: harness, CI, evaluation, deploy).
+Team Inteligencia Artesanal: Jacobo (fullstack), Juan José (data engineering, analysis and
+backend), Santiago (data engineering and automation: harness, CI, evaluation, deploy).
 Workflow: **transaction dispute intake** with **card block** as a sub-action.
 Submission: **Mon Oct 5, 2026**. Code freeze: end of **Sat Oct 3, 2026**.
 
@@ -137,7 +137,7 @@ uv project (Python 3.12), poe tasks, `AGENTS.md` (canonical) + `CLAUDE.md` impor
 Create GitHub issues and labels for all tasks after user confirmation.
 *Tests:* `poe check`, `skills-check` detects drift, CI green on the first PR.
 
-**T3. Shared contracts, stub LLM and fixture bank** [P0] (all, led by Victor)
+**T3. Shared contracts, stub LLM and fixture bank** [P0] (all, led by Juan José)
 Pydantic v2 contracts (`bankagent.contracts`) + JSON Schema export; `Tool` and `LLMProvider`
 protocols; `StubProvider` with deterministic ES/PT keyword rules and fault modes; synthetic fixture
 personas in YAML and a deterministic DuckDB builder validated against the serving contract.
@@ -211,10 +211,10 @@ committed; 20% second-annotator sample and kappa.
 Local ONNX embeddings + logistic regression vs. keywords vs. LLM zero-shot; split-conformal
 α = 0.1; MLflow; model card.
 
-**T19. Wire curated data** [P0] (Juan José + Victor)
+**T19. Wire curated data** [P0] (Juan José)
 Serving DB built from organizer data (`DATA_MODE=curated`, local only), same contract.
 
-**T20. Observability and reliability** [P0] (Santiago + Victor)
+**T20. Observability and reliability** [P0] (Santiago)
 Fallback matrix (LLM timeout/malformed/unavailable, tool unavailable), PII redaction in logs,
 `docs/operations.md`.
 

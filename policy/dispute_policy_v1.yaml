@@ -82,7 +82,7 @@ rules:
       source: "ADR 0003 (accepted); docs/evidence/fraud_score_thresholds.md, offline on 4.43M
         labelled transactions (4,316 fraud, base rate 0.0975%): >=30 escalates 2,982 transactions
         (0.067%) at precision 0.80, recall 0.55"
-      verified_by: "Santiago, Victor, Juan José"
+      verified_by: "Santiago, Juan José"
       verified_on: "2026-09-29"
 
   - rule_id: DSP-ESC-02
