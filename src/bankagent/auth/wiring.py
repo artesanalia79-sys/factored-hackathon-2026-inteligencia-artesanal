@@ -16,7 +16,7 @@ from pathlib import Path
 from bankagent.auth.service import AuthService
 from bankagent.auth.settings import AuthSettings
 from bankagent.store.ops import OpsStore
-from bankagent.store.selection import ROOT, serving_db_path
+from bankagent.store.selection import ROOT, open_serving_db
 from bankagent.store.serving import ServingDB
 
 DEFAULT_OPS_DB = ROOT / "data" / "runtime" / "ops.sqlite"
@@ -45,12 +45,14 @@ def create_auth_service(
 
     Pass ``store`` to share one ``OpsStore`` with the tools, and ``customers`` to share the
     serving DB the app already opened and checked (``open_serving_db``); otherwise each is
-    opened from the environment. Raises ``AuthConfigError`` when the mock OTP is exposed on
-    data that is not synthetic.
+    opened from the environment, the serving DB with the same checks the app runs. Raises
+    ``AuthConfigError`` when the mock OTP is exposed on data that is not synthetic, and
+    ``ServingConfigError`` when a serving DB opened here does not hold what ``DATA_MODE``
+    declares or does not fit the serving contract.
     """
     env = os.environ if environ is None else environ
     settings = AuthSettings.from_env(env)
-    serving = customers if customers is not None else ServingDB(serving_db_path(env))
+    serving = customers if customers is not None else open_serving_db(env)
     # DATA_MODE is only a declaration; the serving DB records what it really holds.
     settings.require_safe_for(serving.data_mode())
     return AuthService(

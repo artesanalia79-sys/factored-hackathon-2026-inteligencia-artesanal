@@ -13,6 +13,7 @@ from bankagent.auth.settings import AuthConfigError
 from bankagent.auth.wiring import create_auth_service
 from bankagent.contracts.enums import Language
 from bankagent.fixtures.builder import build
+from bankagent.store.selection import ServingConfigError
 from bankagent.store.serving import ServingDB
 
 NOW = datetime(2026, 6, 17, 12, 0, tzinfo=UTC)
@@ -78,7 +79,6 @@ def test_serving_db_reports_its_data_mode(fixture_bank: Path) -> None:
 def test_exposed_mock_otp_is_refused_on_a_curated_serving_db(
     fixture_bank: Path, tmp_path: Path, secret: str
 ) -> None:
-    # DATA_MODE is only a declaration: here it says synthetic, but the DB itself is curated.
     curated = tmp_path / "bank_curated.duckdb"
     shutil.copy(fixture_bank, curated)
     with duckdb.connect(str(curated)) as con:
@@ -87,7 +87,11 @@ def test_exposed_mock_otp_is_refused_on_a_curated_serving_db(
         )
     env = {**_env(fixture_bank, tmp_path, secret), "SERVING_DB_PATH": str(curated)}
     with pytest.raises(AuthConfigError, match="only allowed with synthetic"):
-        create_auth_service({**env, "DATA_MODE": "synthetic"})
+        create_auth_service({**env, "DATA_MODE": "curated"})
+    # DATA_MODE is only a declaration: declared synthetic, the curated file is refused before
+    # the OTP is even looked at, as the app refuses it (T19).
+    with pytest.raises(ServingConfigError, match="records 'curated'"):
+        create_auth_service({**env, "DATA_MODE": "synthetic", "AUTH_EXPOSE_MOCK_OTP": "false"})
     # Without the exposed OTP the curated DB is accepted, and no code is returned.
     service = create_auth_service(
         {**env, "DATA_MODE": "curated", "AUTH_EXPOSE_MOCK_OTP": "false"}, clock=lambda: NOW
@@ -133,8 +137,50 @@ def test_serving_db_without_a_data_mode_is_not_treated_as_synthetic(
     with duckdb.connect(str(unlabeled)) as con:
         con.execute(statement)
     assert ServingDB(unlabeled).data_mode() == "unknown"
-    env = {**_env(fixture_bank, tmp_path, secret), "SERVING_DB_PATH": str(unlabeled)}
+    env = _env(fixture_bank, tmp_path, secret)
+    # Handed the file (as the app hands over the one it opened), the OTP check itself refuses.
     with pytest.raises(AuthConfigError, match="only allowed with synthetic"):
-        create_auth_service(env)
-    # It still starts when the OTP is not exposed.
-    assert create_auth_service({**env, "AUTH_EXPOSE_MOCK_OTP": "false"}, clock=lambda: NOW)
+        create_auth_service(env, customers=ServingDB(unlabeled))
+    # It has nothing to refuse when the OTP is not exposed.
+    assert create_auth_service(
+        {**env, "AUTH_EXPOSE_MOCK_OTP": "false"}, clock=lambda: NOW, customers=ServingDB(unlabeled)
+    )
+    # Opened from the environment, the file is refused either way: it matches no DATA_MODE.
+    for exposed in ("true", "false"):
+        with pytest.raises(ServingConfigError, match="records 'unknown'"):
+            create_auth_service(
+                {**env, "SERVING_DB_PATH": str(unlabeled), "AUTH_EXPOSE_MOCK_OTP": exposed}
+            )
+
+
+@pytest.mark.parametrize(
+    ("statement", "problem"),
+    [
+        ("DROP TABLE agents_routing", "agents_routing: missing table"),
+        ("ALTER TABLE customer_profile_min ADD COLUMN email VARCHAR", "forbidden column"),
+    ],
+)
+def test_a_serving_db_opened_from_the_environment_gets_the_apps_checks(
+    fixture_bank: Path, tmp_path: Path, secret: str, statement: str, problem: str
+) -> None:
+    # Follow-up of the PR #70 review: without `customers=`, the service opens the file itself,
+    # and it must not skip what `create_default_app` checks before it serves a row.
+    broken = tmp_path / "bank_broken.duckdb"
+    shutil.copy(fixture_bank, broken)
+    with duckdb.connect(str(broken)) as con:
+        con.execute(statement)
+    env = {**_env(fixture_bank, tmp_path, secret), "SERVING_DB_PATH": str(broken)}
+    for exposed in ("true", "false"):
+        with pytest.raises(ServingConfigError, match="does not fit serving contract") as caught:
+            create_auth_service({**env, "AUTH_EXPOSE_MOCK_OTP": exposed})
+        assert problem in str(caught.value)
+    with pytest.raises(ServingConfigError, match="DATA_MODE must be"):
+        create_auth_service(
+            {
+                **_env(fixture_bank, tmp_path, secret),
+                "DATA_MODE": "demo",
+                "AUTH_EXPOSE_MOCK_OTP": "false",
+            }
+        )
+    # No ops store was created for a service that never started.
+    assert not (tmp_path / "runtime" / "ops.sqlite").exists()
