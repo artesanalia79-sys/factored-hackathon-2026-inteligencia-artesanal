@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from bankagent.api.app import create_app
+from bankagent.api.console import ConsoleDeps
 from bankagent.auth.wiring import DEFAULT_OPS_DB, create_auth_service, utc_now
 from bankagent.contracts.llm import LLMProvider
 from bankagent.contracts.tools import SearchTransactionsArgs
@@ -19,6 +20,8 @@ from bankagent.interpret.stub import StubProvider
 from bankagent.obs import install_log_redaction
 from bankagent.orchestrator.agent import create_agent
 from bankagent.orchestrator.wiring import build_confirmation_issuer, build_policy_evaluator
+from bankagent.policy.schema import load_policy
+from bankagent.store.console import HandoffConsole
 from bankagent.store.ops import OpsStore
 from bankagent.store.selection import ROOT, open_serving_db
 from bankagent.tools import build_tools
@@ -87,6 +90,7 @@ def create_default_app(environ: Mapping[str, str] | None = None) -> FastAPI:
     policy = build_policy_evaluator(serving, store, clock=clock)
     issuer = build_confirmation_issuer(store)
     llm = build_llm(env)
+    console_reads = HandoffConsole(store.database)
     return create_app(
         auth=auth,
         transaction_reader=lambda customer_id: serving.search_transactions(
@@ -101,4 +105,15 @@ def create_default_app(environ: Mapping[str, str] | None = None) -> FastAPI:
             "ops_store": lambda: store.count("sessions"),
         },
         web_dist=_configured_path(env, "WEB_DIST_DIR", ROOT / "web" / "dist"),
+        console=ConsoleDeps(
+            list_handoffs=console_reads.list_handoffs,
+            get_handoff=console_reads.get_handoff,
+            list_disputes=console_reads.list_disputes,
+            list_card_blocks=console_reads.list_card_blocks,
+            list_records=console_reads.list_records,
+            customer_name=lambda customer_id: (
+                profile.first_name if (profile := serving.customer(customer_id)) else None
+            ),
+            policy=load_policy(),
+        ),
     )

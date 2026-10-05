@@ -62,6 +62,26 @@ export type ToolName =
   | 'create_dispute'
   | 'block_card'
   | 'create_handoff'
+export type Intent =
+  | 'dispute_unrecognized'
+  | 'dispute_duplicate'
+  | 'dispute_not_received'
+  | 'card_block'
+  | 'dispute_status'
+  | 'human_request'
+  | 'out_of_scope'
+  | 'attack'
+export type Priority = 'low' | 'medium' | 'high' | 'critical'
+export type Specialty = 'disputes' | 'fraud' | 'cards' | 'general'
+export type ToolErrorCode =
+  | 'unauthorized'
+  | 'not_found'
+  | 'confirmation_required'
+  | 'tool_unavailable'
+  | 'session_expired'
+  | 'invalid_arguments'
+export type DisputeReason = 'unrecognized' | 'duplicate' | 'not_received'
+export type DisputeStatus = 'submitted' | 'escalated_for_review'
 
 export interface ApiContracts {
   PersonaResponse: PersonaResponse
@@ -75,6 +95,11 @@ export interface ApiContracts {
   ConfirmationView: ConfirmationView
   TransactionView: TransactionView
   ComparisonBundle: ComparisonBundle
+  RuleExplanation: RuleExplanation
+  ConsoleHandoffEntry: ConsoleHandoffEntry
+  ConsoleHandoffDetail: ConsoleHandoffDetail
+  ConsoleDisputeEntry: ConsoleDisputeEntry
+  ConsoleCardBlockEntry: ConsoleCardBlockEntry
 }
 /**
  * A demo persona: an opaque id (a keyed hash), never the customer id.
@@ -130,11 +155,20 @@ export interface ChatTurnRequest {
  * when the reply asks the customer to confirm a write; the customer answers in the chat ("Sí"
  * or "No"), and the token for the write is issued at that yes, server side. ``language`` is the
  * language the agent replied in, which follows the requested preference when provided, or the
- * customer's message otherwise.
+ * customer's message otherwise. ``disputed_transaction_id`` is set exactly when
+ * ``claimed_actions`` includes ``create_dispute``: the disputed transaction's own id, already
+ * shown to the customer as "Ref. <id>" in the Transactions panel, so the UI can mark it there.
+ * ``blocked_product_id`` is the same for ``block_card``: the blocked card's product id, which
+ * each of its movements carries in that panel (``TransactionView.product_id``); not the card
+ * ending, which two cards of one customer can share. Unlike ``ConfirmationView`` (the
+ * question's own facts, nothing more), these fields are about a write already verified, not
+ * about what a question says, and neither may be set without its claim.
  */
 export interface ChatTurnResponse {
+  blocked_product_id?: string | null
   claimed_actions: ActionType[]
   confirmation?: ConfirmationView | null
+  disputed_transaction_id?: string | null
   ended: boolean
   language: Language
   reply_text: string
@@ -232,6 +266,149 @@ export interface ComparisonStep {
   step: StepKind
   tool: ToolName | null
   verified: boolean
+}
+/**
+ * A policy rule id next to the human-readable text from ``dispute_policy_v1.yaml``.
+ *
+ * ``decisive`` marks a rule that actually decided something case-specific, as opposed to one
+ * that was checked and simply passed. For a handoff this is always true: ``trigger_rule_ids``
+ * is already curated to the rule(s) that caused the escalation. For a dispute it separates the
+ * one rule a `proceed` decision can still vary on (today, only ``card_blockable``: whether this
+ * card qualifies for an offered block) from the rest of the rulebook, which this case also
+ * checked and passed — shown in full too, so the whole evaluation stays visible, just not all
+ * weighted the same.
+ */
+export interface RuleExplanation {
+  decisive?: boolean
+  description: string
+  rule_id: string
+}
+/**
+ * One row of the handoff queue: escalated to a human, not resolved automatically.
+ */
+export interface ConsoleHandoffEntry {
+  customer_name?: string | null
+  handoff: HandoffPacket
+  rule_explanations?: RuleExplanation[]
+}
+/**
+ * Stored handoff. ``customer_id`` is filled server-side from the session.
+ */
+export interface HandoffPacket {
+  actions_taken?: ActionTaken[]
+  created_at: string
+  customer_id: string
+  evidence_refs?: string[]
+  handoff_id: string
+  intent: Intent
+  language: Language
+  open_questions?: string[]
+  policy_version: string
+  /**
+   * customer request, redacted
+   */
+  request: string
+  routing: HandoffRouting
+  trace_id: string
+  trigger_rule_ids?: string[]
+  verified_facts?: VerifiedFact[]
+}
+export interface ActionTaken {
+  action: ActionType
+  at: string
+  ref_id: string
+  verified: boolean
+}
+export interface HandoffRouting {
+  agent_id?: string | null
+  language: Language
+  priority: Priority
+  specialty: Specialty
+}
+/**
+ * A fact read from a system of record, with where it came from.
+ */
+export interface VerifiedFact {
+  key: string
+  /**
+   * record id, e.g. a txn id
+   */
+  ref?: string | null
+  /**
+   * tool or table that produced it
+   */
+  source: string
+  value: string
+}
+/**
+ * One handoff plus the execution trace of the turn that created it.
+ */
+export interface ConsoleHandoffDetail {
+  entry: ConsoleHandoffEntry
+  records?: ExecutionRecord[]
+}
+/**
+ * One step of one turn. Never contains raw PII, prompts or secrets.
+ */
+export interface ExecutionRecord {
+  args_hash?: string | null
+  cost_usd?: number | string
+  created_at: string
+  error_code?: ToolErrorCode | null
+  latency_ms: number
+  model?: string | null
+  outcome: StepOutcome
+  prompt_version?: string | null
+  record_id: string
+  rule_ids?: string[]
+  session_id?: string | null
+  state: ConversationState
+  step: StepKind
+  step_index: number
+  tokens_in?: number
+  tokens_out?: number
+  tool?: ToolName | null
+  trace_id: string
+  turn_index: number
+  verified?: boolean
+}
+/**
+ * One dispute the agent resolved on its own, with the customer id its own contract omits.
+ */
+export interface ConsoleDisputeEntry {
+  case: DisputeCase
+  customer_id: string
+  customer_name?: string | null
+  rule_explanations?: RuleExplanation[]
+}
+export interface DisputeCase {
+  amount: number | string
+  created_at: string
+  currency: string
+  dispute_id: string
+  idempotency_key: string
+  policy_version: string
+  reason: DisputeReason
+  rule_ids?: string[]
+  sla_due_date?: string | null
+  status: DisputeStatus
+  transaction_id: string
+}
+/**
+ * One card block the agent carried out, with the customer id its own contract omits.
+ */
+export interface ConsoleCardBlockEntry {
+  customer_id: string
+  customer_name?: string | null
+  event: CardBlockEvent
+}
+export interface CardBlockEvent {
+  block_id: string
+  blocked_at: string
+  card_last4: string
+  idempotency_key: string
+  product_id: string
+  reason: string
 }
 
 /** Length limits of the request fields, from the same schemas: inputs take maxLength here. */

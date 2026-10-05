@@ -2,7 +2,7 @@
 # with write access, and they only block merges once branch protection with
 # "Require review from Code Owners" is enabled on main.
 #
-# Victor: @VictorJVA · Jacobo: @jacobozj · Juan José: @jjresher · Santiago: @santig005
+# Jacobo: @jacobozj · Juan José: @jjresher · Santiago: @santig005
 # Later rules override earlier ones for the same path.
 
 *                               @santig005 @artesanalia79-sys
@@ -16,16 +16,16 @@
 /.kiro/                         @santig005
 /scripts/                       @santig005
 /eval/                          @santig005
-/docs/rules/                    @santig005 @VictorJVA @jacobozj @jjresher
+/docs/rules/                    @santig005 @jacobozj @jjresher
 
 # Shared contracts: everyone depends on them
-/src/bankagent/contracts/       @VictorJVA @jacobozj @jjresher @santig005
-/docs/contracts/                @VictorJVA @jacobozj @jjresher @santig005
+/src/bankagent/contracts/       @jacobozj @jjresher @santig005
+/docs/contracts/                @jacobozj @jjresher @santig005
 
 # Data pipeline and fixture bank (Juan José)
 /data_pipeline/                 @jjresher
-/src/bankagent/fixtures/        @jjresher @VictorJVA
-/tests/fixtures/                @jjresher @VictorJVA
+/src/bankagent/fixtures/        @jjresher
+/tests/fixtures/                @jjresher
 /docs/evidence/                 @jjresher
 
 # Learned router (Juan José + Santiago)
@@ -41,7 +41,7 @@
 /src/bankagent/store/           @jjresher @santig005
 /src/bankagent/orchestrator/    @jacobozj @santig005
 /src/bankagent/api/             @jacobozj @santig005
-/src/bankagent/obs/             @santig005 @VictorJVA
+/src/bankagent/obs/             @santig005
 /policy/                        @jjresher @santig005
 
 # Interpreter, templates, web (Jacobo)

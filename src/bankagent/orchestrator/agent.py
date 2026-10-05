@@ -203,6 +203,14 @@ class AgentTurnOutput:
     language: Language = field(kw_only=True)
     # The write the reply asks the customer to confirm, if it asks (the UI's panel, T14).
     confirmation: ConfirmationView | None = None
+    # Set exactly when claimed_actions includes CREATE_DISPUTE this turn: the disputed
+    # transaction's own id, already shown to the customer as "Ref. <id>" in the Transactions
+    # panel (T14), so the UI can mark it there without parsing facts out of reply_text.
+    disputed_transaction_id: str | None = None
+    # Set exactly when claimed_actions includes BLOCK_CARD this turn: the blocked card's
+    # product id, which every movement of that card already carries in the Transactions panel.
+    # Not the card ending: two cards of one customer can end in the same four digits.
+    blocked_product_id: str | None = None
 
 
 class Agent:
@@ -305,6 +313,8 @@ class Agent:
         ended: bool = False,
         claimed_actions: tuple[ActionType, ...] = (),
         confirmation: ConfirmationView | None = None,
+        disputed_transaction_id: str | None = None,
+        blocked_product_id: str | None = None,
     ) -> AgentTurnOutput:
         self._ended = ended
         output = AgentTurnOutput(
@@ -314,6 +324,8 @@ class Agent:
             claimed_actions,
             language=self._language,
             confirmation=confirmation,
+            disputed_transaction_id=disputed_transaction_id,
+            blocked_product_id=blocked_product_id,
         )
         self._turn_index += 1
         return output
@@ -324,11 +336,17 @@ class Agent:
         *,
         lead: str | None = None,
         claimed_actions: tuple[ActionType, ...] = (),
+        disputed_transaction_id: str | None = None,
     ) -> AgentTurnOutput:
         """Ask to confirm a write. The question and the UI's panel come from one prompt, so
         they cannot disagree; ``lead`` goes before the question (a claim just verified)."""
         text = prompt.text if lead is None else f"{lead} {prompt.text}"
-        return self._reply(text, claimed_actions=claimed_actions, confirmation=prompt.view)
+        return self._reply(
+            text,
+            claimed_actions=claimed_actions,
+            confirmation=prompt.view,
+            disputed_transaction_id=disputed_transaction_id,
+        )
 
     def _interpret(self, session: Session, text: str) -> InterpretationResult:
         # A deterministic attack gate runs before the provider sees the utterance.
@@ -727,6 +745,7 @@ class Agent:
             return self._reask(session)
         if self._pending_args is None or self._issue_confirmation is None:
             return self._reply(render_outcome(Outcome.ABSTAINED, self._language), ended=True)
+        disputed_transaction_id = self._pending_args.transaction_id
         written = self._write(
             session,
             ToolName.CREATE_DISPUTE,
@@ -748,9 +767,19 @@ class Agent:
         self._pending_args = None
         offered = self._offer_block(session)
         if offered is None:
-            return self._reply(written, ended=True, claimed_actions=(ActionType.CREATE_DISPUTE,))
+            return self._reply(
+                written,
+                ended=True,
+                claimed_actions=(ActionType.CREATE_DISPUTE,),
+                disputed_transaction_id=disputed_transaction_id,
+            )
         # The dispute is claimed now, and the conversation stays open for the block question.
-        return self._ask(offered, lead=written, claimed_actions=(ActionType.CREATE_DISPUTE,))
+        return self._ask(
+            offered,
+            lead=written,
+            claimed_actions=(ActionType.CREATE_DISPUTE,),
+            disputed_transaction_id=disputed_transaction_id,
+        )
 
     def _write[ArgsT: Contract, ResultT: Contract](
         self,
@@ -916,7 +945,12 @@ class Agent:
         )
         if isinstance(written, AgentTurnOutput):
             return written
-        return self._reply(written, ended=True, claimed_actions=(ActionType.BLOCK_CARD,))
+        return self._reply(
+            written,
+            ended=True,
+            claimed_actions=(ActionType.BLOCK_CARD,),
+            blocked_product_id=args.product_id,
+        )
 
     def _follow_language(
         self, session: Session, text: str, preferred_language: Language | None = None

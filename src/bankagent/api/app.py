@@ -13,6 +13,7 @@ from starlette.responses import Response
 from starlette.routing import BaseRoute, Match, Mount
 from starlette.types import Scope
 
+from bankagent.api.console import ConsoleDeps, build_console_router
 from bankagent.auth.http import SafeValidationRoute, build_auth_router, session_dependency
 from bankagent.auth.service import AuthService
 from bankagent.contracts.api import ChatTurnRequest, ChatTurnResponse
@@ -51,7 +52,7 @@ class WebFiles(StaticFiles):
     """The built UI (``web/dist``), served with ``WEB_SECURITY_HEADERS`` and its cache policy."""
 
     async def get_response(self, path: str, scope: Scope) -> Response:
-        if path in {"compare", "compare/"}:
+        if path in {"compare", "compare/", "console", "console/"}:
             path = "index.html"
         response = await super().get_response(path, scope)
         response.headers.update(WEB_SECURITY_HEADERS)
@@ -94,6 +95,7 @@ def create_app(
     record_sink: Callable[[Sequence[ExecutionRecord]], None] | None = None,
     readiness: Mapping[str, Callable[[], object]] | None = None,
     web_dist: Path | None = None,
+    console: ConsoleDeps | None = None,
 ) -> FastAPI:
     """Build the API with an authenticated session and injected conversation factory.
 
@@ -102,9 +104,13 @@ def create_app(
     ``web_dist`` is the UI's production build. It is served at ``/`` when it holds an
     ``index.html``; every API route, `/health` and `/ready` keep precedence because they are
     registered before it, and a wrong method on them gets 405 (``WebMount``).
+    ``console`` mounts the read-only human-agent console (T21) at ``/api/console/*`` when given;
+    an app built without it never answers those paths at all, not even with 401.
     """
     app = FastAPI(title="Bank dispute intake")
     app.include_router(build_auth_router(auth))
+    if console is not None:
+        app.include_router(build_console_router(auth=auth, deps=console))
     router = APIRouter(prefix="/api/chat", tags=["chat"], route_class=SafeValidationRoute)
     current_session = session_dependency(auth)
     agents: dict[str, TurnAgent] = {}
@@ -132,6 +138,8 @@ def create_app(
             claimed_actions=output.claimed_actions,
             language=output.language,
             confirmation=output.confirmation,
+            disputed_transaction_id=output.disputed_transaction_id,
+            blocked_product_id=output.blocked_product_id,
         )
 
     if transaction_reader is not None:

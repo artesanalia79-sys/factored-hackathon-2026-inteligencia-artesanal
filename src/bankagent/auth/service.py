@@ -167,14 +167,20 @@ class AuthService:
         retry_after = releasing + self._settings.lockout_window - now
         raise TooManyAttempts(max(1, int(retry_after.total_seconds())))
 
-    def _check_access_code(self, presented: str | None) -> None:
+    def _check_access_code(self, presented: str | None, *, purpose: str = "login") -> None:
         expected = self._settings.access_code
         if expected is None:
             return
         given = presented if presented is not None and presented.isascii() else ""
         if not hmac.compare_digest(given.encode(), expected.reveal()):
-            log.info("login_rejected reason=access_code")
+            log.info("access_rejected purpose=%s reason=access_code", purpose)
             raise AccessCodeRequired(AccessCodeRequired.code)
+
+    def check_console_access(self, presented: str | None) -> None:
+        """Gate for the human-agent console (T21): the same shared code as login, presented as
+        a header instead of a login field. Raises ``AccessCodeRequired`` on a mismatch; no code
+        configured means no gate, exactly like an unset ``DEMO_ACCESS_CODE`` at login."""
+        self._check_access_code(presented, purpose="console")
 
     def start_login(self, persona_id: str, access_code: str | None = None) -> ChallengeIssued:
         # First, before any lookup or write: without the code a caller can neither create a

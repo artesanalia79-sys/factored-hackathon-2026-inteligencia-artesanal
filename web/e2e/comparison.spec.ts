@@ -114,6 +114,16 @@ test('rejects malformed and duplicate files; handles missing counterparts and re
   await expect(page.locator('.comparison img')).toHaveCount(0)
 })
 
+test('the bundled demo example loads with one click, no file needed', async ({ page }) => {
+  await page.goto('/compare')
+  await page.getByRole('button', { name: 'Cargar ejemplo de demo' }).click()
+  await expect(
+    page.getByText('EJECUCIÓN REGISTRADA · consulta el proveedor y modelo'),
+  ).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Agente ingenuo' })).toContainText('failed')
+  await expect(page.getByRole('region', { name: 'Agente controlado' })).toContainText('escalated')
+})
+
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`comparison is accessible on mobile (${colorScheme})`, async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 740 })

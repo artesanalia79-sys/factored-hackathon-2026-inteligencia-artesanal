@@ -1,0 +1,29 @@
+{
+  "additionalProperties": false,
+  "description": "A policy rule id next to the human-readable text from ``dispute_policy_v1.yaml``.\n\n``decisive`` marks a rule that actually decided something case-specific, as opposed to one\nthat was checked and simply passed. For a handoff this is always true: ``trigger_rule_ids``\nis already curated to the rule(s) that caused the escalation. For a dispute it separates the\none rule a `proceed` decision can still vary on (today, only ``card_blockable``: whether this\ncard qualifies for an offered block) from the rest of the rulebook, which this case also\nchecked and passed — shown in full too, so the whole evaluation stays visible, just not all\nweighted the same.",
+  "properties": {
+    "decisive": {
+      "default": true,
+      "title": "Decisive",
+      "type": "boolean"
+    },
+    "description": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "rule_id": {
+      "maxLength": 16,
+      "minLength": 1,
+      "title": "Rule Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "rule_id",
+    "description"
+  ],
+  "title": "RuleExplanation",
+  "type": "object"
+}

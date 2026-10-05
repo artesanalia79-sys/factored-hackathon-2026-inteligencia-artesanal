@@ -57,6 +57,8 @@ export interface Copy {
   transactionsAsk: string
   transactionsAskShort: string
   transactionsCard: (last4: string) => string
+  transactionsCardBlocked: string
+  transactionsDisputed: string
   transactionsReference: (reference: string) => string
   transactionsQuestion: (
     reference: string,
@@ -159,6 +161,8 @@ const es: Copy = {
   transactionsAsk: 'Preguntar por este movimiento',
   transactionsAskShort: 'Preguntar',
   transactionsCard: (last4) => `Tarjeta terminada en ${last4}`,
+  transactionsCardBlocked: 'Tarjeta bloqueada',
+  transactionsDisputed: 'Reclamo en curso',
   transactionsReference: (reference) => `Ref. ${reference}`,
   transactionsQuestion: (reference, merchant, amount, date) =>
     `Tengo un problema con el cargo de la transacción ${reference}${merchant ? ` en ${merchant}` : ''}, por ${amount}, del ${date}.`,
@@ -260,6 +264,8 @@ const pt: Copy = {
   transactionsAsk: 'Perguntar sobre esta transação',
   transactionsAskShort: 'Perguntar',
   transactionsCard: (last4) => `Cartão com final ${last4}`,
+  transactionsCardBlocked: 'Cartão bloqueado',
+  transactionsDisputed: 'Contestação em andamento',
   transactionsReference: (reference) => `Ref. ${reference}`,
   transactionsQuestion: (reference, merchant, amount, date) =>
     `Tenho um problema com a cobrança da transação ${reference}${merchant ? ` em ${merchant}` : ''}, no valor de ${amount}, de ${date}.`,

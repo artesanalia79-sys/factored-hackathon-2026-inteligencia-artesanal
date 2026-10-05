@@ -23,6 +23,11 @@ const MODELS = [
   'ConfirmationView',
   'TransactionView',
   'ComparisonBundle',
+  'RuleExplanation',
+  'ConsoleHandoffEntry',
+  'ConsoleHandoffDetail',
+  'ConsoleDisputeEntry',
+  'ConsoleCardBlockEntry',
 ]
 const SCHEMAS = new URL('../../docs/contracts/', import.meta.url)
 const OUT = new URL('../src/api/contracts.gen.ts', import.meta.url)

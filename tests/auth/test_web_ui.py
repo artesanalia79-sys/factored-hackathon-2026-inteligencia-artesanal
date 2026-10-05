@@ -87,6 +87,21 @@ def test_comparison_route_serves_the_app_with_strict_csp(
     assert client.get("/compare/unknown").status_code == 404
 
 
+@pytest.mark.parametrize("path", ["/console", "/console/"])
+def test_console_route_serves_the_app_with_strict_csp(
+    service: AuthService, dist: Path, path: str
+) -> None:
+    client = _client(service, dist)
+    response = client.get(path)
+    assert response.status_code == 200
+    assert "<title>UI</title>" in response.text
+    assert (
+        response.headers["Content-Security-Policy"]
+        == WEB_SECURITY_HEADERS["Content-Security-Policy"]
+    )
+    assert client.get("/console/unknown").status_code == 404
+
+
 @pytest.mark.parametrize(
     ("method", "path", "allowed"),
     [

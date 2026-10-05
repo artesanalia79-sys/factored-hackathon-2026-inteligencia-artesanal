@@ -358,6 +358,7 @@ export function LoginScreen({
         <p>
           {copy.demoNotice}. {copy.credit}
           {" · "}<a href="/compare">Comparar agentes</a>
+          {" · "}<a href="/console">Lado del banco</a>
         </p>
       </footer>
     </div>

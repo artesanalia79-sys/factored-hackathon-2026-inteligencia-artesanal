@@ -51,5 +51,10 @@ JSON Schemas use Pydantic *validation* mode (what producers must send).
 | [`ChatTurnRequest`](ChatTurnRequest.schema.json) | `api` |
 | [`ChatTurnResponse`](ChatTurnResponse.schema.json) | `api` |
 | [`ConfirmationView`](ConfirmationView.schema.json) | `api` |
+| [`RuleExplanation`](RuleExplanation.schema.json) | `console` |
+| [`ConsoleHandoffEntry`](ConsoleHandoffEntry.schema.json) | `console` |
+| [`ConsoleHandoffDetail`](ConsoleHandoffDetail.schema.json) | `console` |
+| [`ConsoleDisputeEntry`](ConsoleDisputeEntry.schema.json) | `console` |
+| [`ConsoleCardBlockEntry`](ConsoleCardBlockEntry.schema.json) | `console` |
 
 Serving DB contract v1.0.0: [`serving_tables.json`](serving_tables.json).

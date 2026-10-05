@@ -17,6 +17,14 @@ export interface ChatState {
   pending: boolean
   /** The write the last reply asks to confirm. Cleared as soon as anything is sent. */
   confirmation: ConfirmationView | null
+  /** Product ids of the cards the customer has seen verified as blocked, this session. Only a
+   * reply naming one (`reply.blocked_product_id`, set with a verified `block_card` claim) adds
+   * it, never an optimistic guess. A product id, not the card ending: two cards of one customer
+   * can end in the same four digits. */
+  blockedProducts: ReadonlySet<string>
+  /** Transaction ids the customer has seen verified as disputed, this session. The server names
+   * the id directly (`reply.disputed_transaction_id`, set with a verified `create_dispute`). */
+  disputedTransactions: ReadonlySet<string>
   /** The language the agent last replied in; the chrome follows it. */
   language: Language
   /**
@@ -39,6 +47,8 @@ export function initialChat(language: Language): ChatState {
     nextId: 1,
     pending: false,
     confirmation: null,
+    blockedProducts: new Set(),
+    disputedTransactions: new Set(),
     language,
     failed: null,
     expired: false,
@@ -69,6 +79,12 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         },
       ]
       if (reply.ended) items.push({ id: state.nextId + 1, kind: 'ended' })
+      const blockedProducts = reply.blocked_product_id
+        ? new Set(state.blockedProducts).add(reply.blocked_product_id)
+        : state.blockedProducts
+      const disputedTransactions = reply.disputed_transaction_id
+        ? new Set(state.disputedTransactions).add(reply.disputed_transaction_id)
+        : state.disputedTransactions
       return {
         ...state,
         items,
@@ -77,6 +93,8 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         // An ended conversation asks nothing: the next message starts a new one, where a "yes"
         // would answer no question.
         confirmation: reply.ended ? null : (reply.confirmation ?? null),
+        blockedProducts,
+        disputedTransactions,
         language: reply.language,
       }
     }

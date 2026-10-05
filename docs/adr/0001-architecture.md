@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-09-27
-- Deciders: Santiago, Victor, Jacobo, Juan José
+- Deciders: Santiago, Jacobo, Juan José
 
 ## Context
 
