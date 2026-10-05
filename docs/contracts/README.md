@@ -23,6 +23,7 @@ JSON Schemas use Pydantic *validation* mode (what producers must send).
 | [`ExecutionRecord`](ExecutionRecord.schema.json) | `records` |
 | [`EvalCase`](EvalCase.schema.json) | `evaluation` |
 | [`EvalResult`](EvalResult.schema.json) | `evaluation` |
+| [`ComparisonBundle`](ComparisonBundle.schema.json) | `comparison` |
 | [`ToolContext`](ToolContext.schema.json) | `tools` |
 | [`ListCardsArgs`](ListCardsArgs.schema.json) | `tools` |
 | [`ListCardsResult`](ListCardsResult.schema.json) | `tools` |

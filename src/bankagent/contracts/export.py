@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from bankagent.contracts import (
     api,
+    comparison,
     decisions,
     domain,
     errors,
@@ -60,6 +61,7 @@ EXPORTED_MODELS: tuple[type[BaseModel], ...] = (
     # evaluation
     evaluation.EvalCase,
     evaluation.EvalResult,
+    comparison.ComparisonBundle,
     # tools
     tools.ToolContext,
     tools.ListCardsArgs,
