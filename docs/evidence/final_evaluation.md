@@ -130,5 +130,7 @@ wrote CRLF on Windows); no other byte differs.
   cautious end of its tornado.
 - The side-by-side replay (`docs/comparison.md`) needs a recorded run of the dev cases on the real
   model: no replay of the sealed set exists, by design.
-- Freeze tag (T26): not created. The evaluated code is commit `30f5120`.
+- Freeze tag (T26): `v1.0.0`, on `9ac6067` (the merge of PR #76, which froze `main` after #75).
+  The evaluated code is the earlier commit `30f5120`; `docs/decision_ledger.md`'s review of #76
+  found the agent's decisions unchanged between the two (same outcomes on the dev cases).
 - Add the two weaknesses above to the "next steps" slide; they are in `docs/limitations.md`.
