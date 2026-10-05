@@ -15,7 +15,7 @@ test('the console refuses every read without the code, then opens with it', asyn
     })
   })
   // Named "Loading…" while its reads are in flight, so this waits for them to settle.
-  const idle = page.getByRole('button', { name: 'Update' })
+  const idle = page.getByRole('button', { name: 'Refresh' })
 
   await page.goto('/console')
   await expect(page.getByRole('alert')).toContainText('Incorrect or missing access code.')

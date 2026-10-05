@@ -152,8 +152,9 @@ export default function ConsoleScreen() {
           value={code}
           onChange={(event) => setCode(event.target.value)}
         />
-        <button type="submit" disabled={busy}>
-          {busy ? 'Loading…' : 'Update'}
+        {/* The browser's dark-mode button is 4.45:1, under WCAG AA; the shared style is not. */}
+        <button type="submit" className="button button--secondary" disabled={busy}>
+          {busy ? 'Loading…' : 'Refresh'}
         </button>
       </form>
       {error ? <p role="alert">{error}</p> : null}

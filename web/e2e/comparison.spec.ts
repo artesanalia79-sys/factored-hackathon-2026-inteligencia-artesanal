@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { AxeBuilder } from '@axe-core/playwright'
-import { expect, test } from './fixtures.ts'
+import { expect, ownText, SPANISH, test } from './fixtures.ts'
 
 const root = resolve(import.meta.dirname, '../..')
 let artifact: string
@@ -122,6 +122,87 @@ test('the bundled demo example loads with one click, no file needed', async ({ p
   ).toBeVisible()
   await expect(page.getByRole('region', { name: 'Naive agent' })).toContainText('failed')
   await expect(page.getByRole('region', { name: 'Controlled agent' })).toContainText('escalated')
+})
+
+test('the page is English; each replayed conversation keeps its own language', async ({
+  page,
+}) => {
+  await page.goto('/compare')
+  await expect(page.locator('main')).toHaveAttribute('lang', 'en')
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+  await expect(page).toHaveTitle('Side-by-side replay')
+  await expect(page.locator('.comparison__top .comparison__eyebrow')).toHaveText('Lab / T22')
+  expect(await ownText(page, '.comparison__message')).not.toMatch(SPANISH)
+  const messages = page
+    .getByRole('region', { name: 'Controlled agent' })
+    .locator('.comparison__message')
+  await page.getByRole('button', { name: 'Load demo example' }).click()
+  // The customer's words and the agent's reply.
+  await expect(messages).toHaveCount(2)
+  for (const message of await messages.all()) {
+    await expect(message).toHaveAttribute('lang', 'es-MX')
+  }
+  // Every label of both columns, so that none drifts back to Spanish unnoticed.
+  for (const name of ['Naive agent', 'Controlled agent']) {
+    const column = page.getByRole('region', { name })
+    await expect(column.locator('dt')).toHaveText([
+      'Final outcome',
+      'Total cost · USD',
+      'Total latency · ms',
+      'Turns',
+    ])
+    await expect(column.locator('.comparison__evidence strong')).toHaveText([
+      'Verified actions:',
+      'Unsafe events:',
+      'Safe automated resolution:',
+    ])
+    await expect(column.locator('.comparison__speaker')).toHaveText([
+      'Customer',
+      'Recorded reply · may contain unverified claims',
+    ])
+    await expect(column.locator('h3')).toHaveText(['Turn 1', 'Execution evidence'])
+  }
+  await expect(page.locator('.comparison__hash')).toHaveText(/^Case-set SHA-256: [0-9a-f]{64}$/)
+  // And no Spanish anywhere else in what the page says, the replayed conversation aside.
+  expect(await ownText(page, '.comparison__message')).not.toMatch(SPANISH)
+
+  const open = (contents: string) =>
+    page.getByLabel('Open comparison.json').setInputFiles({
+      name: 'comparison.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(contents),
+    })
+  await open(artifact)
+  const pick = page.getByLabel('Case', { exact: true })
+  await pick.selectOption('dev-normal-pt-br-001')
+  await expect(messages.first()).toHaveAttribute('lang', 'pt-BR')
+  await pick.selectOption('dev-injection-es-ar-001')
+  await expect(messages.first()).toHaveAttribute('lang', 'es-AR')
+
+  // An id that names no language: marked unknown, not left to the page's English.
+  const unnamed = JSON.parse(artifact)
+  const renamed = unnamed.runs[0].result.case_id
+  for (const run of unnamed.runs) {
+    if (run.result.case_id === renamed) run.result.case_id = 'smoke-unnamed-001'
+  }
+  await open(JSON.stringify(unnamed))
+  await pick.selectOption('smoke-unnamed-001')
+  await expect(messages.first()).toHaveAttribute('lang', '')
+})
+
+test('while its code loads, the page says so in English', async ({ page }) => {
+  // The page's own code arrives in a chunk of its own: hold it to see what shows meanwhile.
+  let release = () => {}
+  const held = new Promise<void>((resolve) => (release = resolve))
+  await page.route('**/assets/ComparisonScreen-*.js', async (route) => {
+    await held
+    await route.continue()
+  })
+  await page.goto('/compare', { waitUntil: 'commit' })
+  await expect(page.getByRole('status')).toHaveText('Loading the replay…')
+  await expect(page.getByRole('status')).toHaveAttribute('lang', 'en')
+  release()
+  await expect(page.getByRole('heading', { name: 'Open a run to start' })).toBeVisible()
 })
 
 for (const colorScheme of ['light', 'dark'] as const) {

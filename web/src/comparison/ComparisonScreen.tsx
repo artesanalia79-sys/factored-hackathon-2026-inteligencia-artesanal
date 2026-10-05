@@ -7,6 +7,15 @@ import './comparison.css'
 const SYSTEMS = ['baseline_llm_only', 'proposed'] as const
 const LABELS = { baseline_llm_only: 'Naive agent', proposed: 'Controlled agent' }
 
+// The page is English; the recorded conversation is in the case's Spanish or Portuguese, and a
+// screen reader needs to know which. The bundle does not say; a dev case id does
+// (`dev-<category>-<language>-<country>-<number>`, as every case in eval/dev), and only dev cases
+// are exported. Any other id is marked unknown (`lang=""`), never English.
+function dialogueLanguage(caseId: string): string {
+  const match = /-(es|pt)-([a-z]{2})-\d+$/.exec(caseId)
+  return match ? `${match[1]}-${match[2]!.toUpperCase()}` : ''
+}
+
 function RunPanel({
   run,
   turn,
@@ -20,6 +29,7 @@ function RunPanel({
   const result = run?.result
   const verified = result?.verified_actions ?? []
   const unsafe = result?.unsafe_events ?? []
+  const dialogue = result ? dialogueLanguage(result.case_id) : ''
   return (
     <section className="comparison__column" aria-label={LABELS[system]}>
       <header>
@@ -69,11 +79,13 @@ function RunPanel({
             <div className="comparison__turn">
               <h3>Turn {turn + 1}</h3>
               <p className="comparison__speaker">Customer</p>
-              <p className="comparison__message">{current.user_text}</p>
+              <p className="comparison__message" lang={dialogue}>{current.user_text}</p>
               <p className="comparison__speaker">
                 Recorded reply · may contain unverified claims
               </p>
-              <p className="comparison__message comparison__reply">{current.reply_text}</p>
+              <p className="comparison__message comparison__reply" lang={dialogue}>
+                {current.reply_text}
+              </p>
               <h3>Execution evidence</h3>
               {current.steps.length === 0 ? (
                 <p>No steps recorded.</p>

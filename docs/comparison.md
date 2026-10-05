@@ -6,7 +6,10 @@ to open the one bundled with the site (below). Either way it stays in browser me
 there is no upload, persistent browser storage, backend call or write action. Returning home
 or reloading clears the replay. The page's own chrome is English, a reviewer tool separate from
 customer chat; the recorded conversations it replays stay in the Spanish or Portuguese the
-customer and agent actually used.
+customer and agent actually used, and are marked with that language for screen readers. The
+bundle does not carry it, so the page reads it from the dev case id
+(`dev-<category>-<language>-<country>-<number>`, as every case in `eval/dev`); any other id is
+marked unknown, never English.
 
 ## The bundled demo example
 
