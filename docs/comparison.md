@@ -1,9 +1,24 @@
 # T22: side-by-side replay
 
 Open **Comparar agentes** on the sign-in screen, or navigate to `/compare`.
-Choose a `comparison.json` exported by the evaluation harness. It stays in browser memory;
+Choose a `comparison.json` exported by the evaluation harness, or click **Cargar ejemplo de
+demo** to open the one bundled with the site (below). Either way it stays in browser memory;
 there is no upload, persistent browser storage, backend call or write action. Returning home
 or reloading clears the replay. The page is a Spanish reviewer tool, separate from customer chat.
+
+## The bundled demo example
+
+The video is motion graphics, not a screen recording (organizers asked for something more
+creative than screen-and-narrate), so nobody records this page in action; a judge who opens the
+public site cold would otherwise have no file to pick, since generating one needs the harness and
+a clone of the repo. `web/public/demo-comparison.json` is served at `/demo-comparison.json` (Vite
+copies `public/` as-is; FastAPI serves it from `web/dist/` the same way it serves any other
+built asset) and is the **one deliberate, reviewed exception** to "never commit run artifacts"
+below. It is a single real case (`dev-toolfail-es-mx-001`, a simulated tool outage), one repeat,
+both systems, produced with `live-llm-check` (cost: $0.000986, logged in
+`docs/decision_ledger.md`), reviewed before committing and loaded through the exact same
+`parseComparison()` validation as a hand-picked file — it carries no more trust than the file
+input does. Regenerate it the same way if it ever needs to change; do not hand-edit it.
 
 ## Zero-cost walkthrough
 
@@ -54,7 +69,8 @@ supported.
   cannot be built never costs them.
 - Session identity, tool arguments, tool results and simulator ground truth are not exported.
   Dialogue passes through the existing redactor. Redaction is not a guarantee of anonymity;
-  inspect synthetic dev artifacts before sharing them. Never commit run artifacts.
+  inspect synthetic dev artifacts before sharing them. Never commit run artifacts, except the
+  one bundled demo example above, reviewed and committed on purpose.
 - Imported files are local reviewer evidence, not authenticated backend responses. Validation
   checks shape and consistency, not authenticity; the page makes no claim of a current action.
 - No aggregate performance claims or gates are computed in the UI. The canonical report and

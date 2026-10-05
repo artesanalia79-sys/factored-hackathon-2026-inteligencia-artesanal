@@ -132,15 +132,13 @@ export default function ComparisonScreen() {
   )
   const turns = Math.max(0, ...runs.map((run) => run?.turns.length ?? 0))
 
-  async function openFile(file: File | undefined) {
-    if (!file) return
+  async function loadText(text: string) {
     const request = ++generation.current
     setBusy(true)
     setError(false)
     setBundle(null)
     try {
-      if (file.size > MAX_FILE_BYTES) throw new Error('Too large')
-      const next = parseComparison(await file.text())
+      const next = parseComparison(text)
       if (request !== generation.current) return
       const first = next.runs[0]!
       setBundle(next)
@@ -151,6 +149,34 @@ export default function ComparisonScreen() {
       if (request === generation.current) setError(true)
     } finally {
       if (request === generation.current) setBusy(false)
+    }
+  }
+
+  async function openFile(file: File | undefined) {
+    if (!file) return
+    if (file.size > MAX_FILE_BYTES) {
+      setBundle(null)
+      setError(true)
+      setBusy(false)
+      return
+    }
+    await loadText(await file.text())
+  }
+
+  // One real recorded run (docs/comparison.md "Example on load"): the only `comparison.json`
+  // this repo commits, as a deliberate, reviewed exception to "never commit run artifacts" — so
+  // a judge opening the public site has something to click without running the harness
+  // themselves. Fetched from the same origin, through the same parseComparison() validation as
+  // a hand-picked file: this path carries no more trust than the file input does.
+  async function loadDemo() {
+    setBusy(true) // immediate feedback while the fetch itself is in flight
+    try {
+      const response = await fetch('/demo-comparison.json')
+      if (!response.ok) throw new Error('demo fetch failed')
+      await loadText(await response.text())
+    } catch {
+      setError(true)
+      setBusy(false)
     }
   }
 
@@ -175,15 +201,26 @@ export default function ComparisonScreen() {
       </p>
       <div className="comparison__loader">
         <label htmlFor="comparison-file">Abrir comparison.json · máximo 8 MB</label>
-        <input
-          id="comparison-file"
-          type="file"
-          accept=".json,application/json"
-          onChange={(event) => {
-            void openFile(event.target.files?.[0])
-            event.target.value = ''
-          }}
-        />
+        <div className="comparison__loader-row">
+          <input
+            id="comparison-file"
+            type="file"
+            accept=".json,application/json"
+            onChange={(event) => {
+              void openFile(event.target.files?.[0])
+              event.target.value = ''
+            }}
+          />
+          <span className="comparison__loader-or">o</span>
+          <button
+            type="button"
+            className="button button--secondary button--small"
+            disabled={busy}
+            onClick={() => void loadDemo()}
+          >
+            Cargar ejemplo de demo
+          </button>
+        </div>
         {busy ? <output>Leyendo archivo…</output> : null}
         {error ? (
           <p role="alert">
