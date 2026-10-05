@@ -209,5 +209,18 @@ def test_the_transcripts_hold_the_conversations_and_stay_out_of_the_report(
     assert first["turns"][0]["customer"] == case.turns[0].says
     assert first["turns"][0]["agent"] == case.turns[0].reply
     assert first["turns"][-1]["steps"] == list(case.turns[-1].steps)
+    # The marks a reply sends to the UI, so a recount can check them without the run.
+    marks = [
+        (turn["disputed_transaction_id"], turn["blocked_product_id"])
+        for line in lines
+        for turn in line["turns"]
+    ]
+    assert marks == [
+        (turn.disputed_transaction_id, turn.blocked_product_id)
+        for run in result.cases
+        for turn in run.turns
+    ]
+    assert any(disputed for disputed, _ in marks)
+    assert any(blocked for _, blocked in marks)
     # What the transcript holds is exactly what the report must not.
     assert leaks(path.read_text("utf-8"), result.cases) != []

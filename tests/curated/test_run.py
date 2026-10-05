@@ -381,9 +381,11 @@ def test_an_agent_that_takes_another_charge_of_the_amount_fails_the_run(
     failures = {case.case.expected.decision: case.failures for case in result.cases}
     # The older of two charges, which cannot be disputed: the agent offered a dispute instead.
     assert "turn 3: expected ineligible, got confirm_dispute" in failures[DecisionType.INELIGIBLE]
-    # Two charges that can both be disputed: the dispute went to the other one.
+    # Two charges that can both be disputed: the dispute went to the other one, and the reply
+    # tells the UI to mark that one.
     assert failures[DecisionType.PROCEED] == [
-        "no dispute is stored for the customer and the charge"
+        "turn 4: the reply marks another movement than the disputed",
+        "no dispute is stored for the customer and the charge",
     ]
 
 
@@ -718,6 +720,42 @@ def test_a_reply_never_shows_an_id_or_another_customers_charge(
     assert failures(foreign, "tarjeta terminada en 0000") == [
         "turn 1: the reply shows a card to another customer"
     ]
+
+
+def test_the_ui_marks_the_cases_own_charge_and_card_and_only_with_their_claim(
+    bank: Path, policy: PolicyConfig, as_of: date
+) -> None:
+    # T21 added the marks to every reply (`disputed_transaction_id`, `blocked_product_id`).
+    case, another = pick_cases(
+        bank, policy, as_of, per_scenario=2, seed="19", scenarios=[Scenario.DISPUTE_BLOCK_ACCEPTED]
+    )
+    charge, other = case.charge, another.charge
+    assert other.transaction_id != charge.transaction_id
+    assert other.product_id != charge.product_id
+    conversation = Conversation((Step("a", "a", Reply.BLOCKED),), case.expected)
+
+    def failures(claimed: tuple[str, ...], disputed: str | None, blocked: str | None) -> list[str]:
+        turn = replace(
+            Turn(1, "x", "x", "reply", Reply.BLOCKED, Reply.BLOCKED, claimed, True),
+            disputed_transaction_id=disputed,
+            blocked_product_id=blocked,
+        )
+        return check_replies(case, conversation, [turn])
+
+    movement = "turn 1: the reply marks another movement than the disputed"
+    card = "turn 1: the reply marks another card than the blocked one"
+    assert failures((), None, None) == []
+    assert failures(("create_dispute",), charge.transaction_id, None) == []
+    assert failures(("block_card",), None, charge.product_id) == []
+    # Another charge or card of the bank, a claim with no mark, a mark with no claim.
+    assert failures(("create_dispute",), other.transaction_id, None) == [movement]
+    assert failures(("block_card",), None, other.product_id) == [card]
+    assert failures(("create_dispute",), None, None) == [movement]
+    assert failures(("block_card",), None, None) == [card]
+    assert failures((), charge.transaction_id, None) == [movement]
+    assert failures((), None, charge.product_id) == [card]
+    # The card is marked by its own product id, never by a movement's id.
+    assert failures(("block_card",), None, charge.transaction_id) == [card]
 
 
 def test_a_refusal_must_give_the_reason_of_the_rule_that_failed(

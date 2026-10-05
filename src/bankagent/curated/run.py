@@ -307,6 +307,9 @@ class Turn:
     claimed: tuple[str, ...]
     ended: bool
     steps: tuple[str, ...] = ()  # the turn's execution records, as short labels
+    # What the reply tells the UI to mark in the list of movements (T21): row values.
+    disputed_transaction_id: str | None = None
+    blocked_product_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -355,7 +358,8 @@ def _label(record: ExecutionRecord) -> str:
 def check_replies(
     case: CuratedCase, conversation: Conversation, turns: Sequence[Turn]
 ) -> list[str]:
-    """What the replies of one session must never show, and the reason a refusal must give."""
+    """What the replies of one session must never show, what they tell the UI to mark, and the
+    reason a refusal must give."""
     failures: list[str] = []
     charge = case.charge
     hidden = {case.customer_id, charge.customer_id, charge.transaction_id, charge.product_id}
@@ -371,6 +375,13 @@ def check_replies(
             failures.append(f"turn {number}: the reply shows an internal id or a foreign fact")
         if foreign and "terminada en" in turn.reply:
             failures.append(f"turn {number}: the reply shows a card to another customer")
+        # The UI marks what the reply names: the case's own charge and card, with their claim.
+        disputed = charge.transaction_id if ActionType.CREATE_DISPUTE in turn.claimed else None
+        if turn.disputed_transaction_id != disputed:
+            failures.append(f"turn {number}: the reply marks another movement than the disputed")
+        blocked = charge.product_id if ActionType.BLOCK_CARD in turn.claimed else None
+        if turn.blocked_product_id != blocked:
+            failures.append(f"turn {number}: the reply marks another card than the blocked one")
     key = conversation.expected.explanation_key
     last = turns[-1] if turns else None
     if (
@@ -643,6 +654,8 @@ class CuratedRun:
                     expects=step.expects,
                     claimed=tuple(body["claimed_actions"]),
                     ended=bool(body["ended"]),
+                    disputed_transaction_id=body.get("disputed_transaction_id"),
+                    blocked_product_id=body.get("blocked_product_id"),
                 )
             )
             if body["language"] != SPANISH:

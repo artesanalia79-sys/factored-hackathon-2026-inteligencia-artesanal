@@ -280,6 +280,8 @@ def render_report(
         "the expected team and rule ids;",
         "- no reply shows a customer, transaction or card id, and nothing of another "
         "customer's charge;",
+        "- the movement and the card a reply tells the UI to mark are the case's own, and only "
+        "in the turn that claims the dispute or the block;",
         "- `GET /api/chat/transactions` returns the customer's own newest transactions, in "
         "order, and nothing else.",
         "",
@@ -372,6 +374,8 @@ def write_transcripts(result: RunResult, path: Path) -> None:
                                 "claimed": turn.claimed,
                                 "ended": turn.ended,
                                 "steps": turn.steps,
+                                "disputed_transaction_id": turn.disputed_transaction_id,
+                                "blocked_product_id": turn.blocked_product_id,
                             }
                             for turn in case.turns
                         ],
