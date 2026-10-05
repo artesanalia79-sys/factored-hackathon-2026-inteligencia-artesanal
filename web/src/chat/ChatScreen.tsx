@@ -4,7 +4,7 @@ import { ApiError, api } from '../api/client.ts'
 import type { Language } from '../api/contracts.gen.ts'
 import { BrandMark } from '../BrandMark.tsx'
 import { scenariosFor } from '../demo/scenarios.ts'
-import { clockTime, COPY, countryName } from '../i18n.ts'
+import { clockTime, COPY, countryName, PRODUCT_NAME } from '../i18n.ts'
 import type { ChatSession } from '../session.ts'
 import { Composer } from './Composer.tsx'
 import { ConfirmationPanel } from './ConfirmationPanel.tsx'
@@ -99,7 +99,8 @@ export function ChatScreen({ session, onLanguageChange, onSignedOut }: Props) {
       <header className="topbar">
         <div className="brand">
           <BrandMark />
-          <span className="brand__name">{copy.product}</span>
+          <span className="brand__name">{PRODUCT_NAME}</span>
+          <span className="brand__tagline">{copy.product}</span>
         </div>
         <div className="topbar__session">
           <span className="who">
@@ -117,7 +118,7 @@ export function ChatScreen({ session, onLanguageChange, onSignedOut }: Props) {
           </span>
           <button type="button" className="button button--ghost button--small" onClick={signOut}>
             <SignOut aria-hidden="true" />
-            {copy.signOut}
+            <span className="signout__label">{copy.signOut}</span>
           </button>
         </div>
       </header>

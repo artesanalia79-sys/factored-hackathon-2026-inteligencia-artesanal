@@ -53,7 +53,7 @@ test('replays paired evidence, selects repeats, navigates turns and returns home
   await page.getByLabel('Case', { exact: true }).selectOption('dev-injection-es-ar-001')
   await expect(page.getByRole('status')).toHaveText(/Turn 1 of/)
   expect(requests).toEqual([])
-  await page.getByRole('link', { name: 'Back to home' }).click()
+  await page.getByRole('link', { name: 'Verdict, back to home' }).click()
   await expect(page.getByRole('link', { name: 'Comparar agentes' })).toBeVisible()
 })
 
@@ -130,7 +130,8 @@ test('the page is English; each replayed conversation keeps its own language', a
   await page.goto('/compare')
   await expect(page.locator('main')).toHaveAttribute('lang', 'en')
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
-  await expect(page).toHaveTitle('Side-by-side replay')
+  await expect(page).toHaveTitle('Side-by-side replay · Verdict')
+  await expect(page.locator('.comparison__credit')).toHaveText(/^Verdict is a prototype by Inteligencia Artesanal/)
   await expect(page.locator('.comparison__top .comparison__eyebrow')).toHaveText('Lab / T22')
   expect(await ownText(page, '.comparison__message')).not.toMatch(SPANISH)
   const messages = page

@@ -7,6 +7,7 @@ import type {
   ConsoleHandoffEntry,
 } from '../api/contracts.gen.ts'
 import { BrandMark } from '../BrandMark.tsx'
+import { CREDIT_EN, PRODUCT_NAME } from '../i18n.ts'
 import './console.css'
 
 type Tab = 'handoffs' | 'disputes' | 'blocks'
@@ -120,9 +121,9 @@ export default function ConsoleScreen() {
   return (
     <main className="console" lang="en">
       <header className="console__top">
-        <a className="brand" href="/">
+        <a className="brand" href="/" aria-label={`${PRODUCT_NAME}, back to home`}>
           <BrandMark />
-          <span>Back to home</span>
+          <span className="brand__name">{PRODUCT_NAME}</span>
         </a>
         <span className="console__eyebrow">Bank side / T21</span>
       </header>
@@ -277,6 +278,7 @@ export default function ConsoleScreen() {
           )}
         </section>
       </div>
+      <p className="console__credit">{CREDIT_EN}</p>
     </main>
   )
 }
