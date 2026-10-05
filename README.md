@@ -16,7 +16,9 @@ write by reading it back.
   first request can take about a minute, and the demo state resets when it sleeps
   ([`docs/operations.md`](docs/operations.md)).
 - **Login:** pick one of the synthetic personas; the one-time code is shown on screen (there is no
-  SMS or email channel in the demo).
+  SMS or email channel in the demo). A charge can be disputed once until the demo resets, and a
+  persona's second dispute goes to a person (rule `DSP-ESC-02`), so a persona that another
+  visitor already used may answer differently: pick another one.
 - **Side-by-side replay** of the LLM-only baseline and the controlled agent on development cases:
   `/compare`; **Load demo example** opens one recorded case
   ([`docs/comparison.md`](docs/comparison.md)).
@@ -52,7 +54,7 @@ files: `aws configure --profile factored`.
 ## How it works
 
 ```
-AUTH → UNDERSTAND (router gate, then LLM) → IDENTIFY_TXN → RECOGNIZE → CHECK_POLICY
+AUTH → UNDERSTAND (keyword attack gate, then LLM) → IDENTIFY_TXN → RECOGNIZE → CHECK_POLICY
      → CONFIRM → ACT → VERIFY (read-back) → RESPOND        | CLARIFY | ABSTAIN | ESCALATE
 ```
 
