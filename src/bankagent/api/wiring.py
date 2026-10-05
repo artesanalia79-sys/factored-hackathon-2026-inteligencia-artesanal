@@ -11,13 +11,7 @@ from fastapi import FastAPI
 
 from bankagent.api.app import create_app
 from bankagent.api.console import ConsoleDeps
-from bankagent.auth.wiring import (
-    DEFAULT_OPS_DB,
-    DEFAULT_SERVING_DB,
-    ROOT,
-    create_auth_service,
-    utc_now,
-)
+from bankagent.auth.wiring import DEFAULT_OPS_DB, create_auth_service, utc_now
 from bankagent.contracts.llm import LLMProvider
 from bankagent.contracts.tools import SearchTransactionsArgs
 from bankagent.interpret.compat_provider import from_env as compat_from_env
@@ -29,7 +23,7 @@ from bankagent.orchestrator.wiring import build_confirmation_issuer, build_polic
 from bankagent.policy.schema import load_policy
 from bankagent.store.console import HandoffConsole
 from bankagent.store.ops import OpsStore
-from bankagent.store.serving import ServingDB
+from bankagent.store.selection import ROOT, open_serving_db
 from bankagent.tools import build_tools
 
 
@@ -74,9 +68,12 @@ def build_llm(env: Mapping[str, str]) -> LLMProvider:
     raise ValueError("LLM_PROVIDER must be 'stub', 'openai' or 'compat'")
 
 
-def create_default_app() -> FastAPI:
+def create_default_app(environ: Mapping[str, str] | None = None) -> FastAPI:
     """Build all components over one serving DB and one ops store.
 
+    ``environ`` defaults to the process environment (``poe serve`` and the image call this with
+    no argument). ``DATA_MODE`` picks the serving DB, which must hold that mode and fit the
+    serving contract before anything else is opened (``bankagent.store.selection``).
     The web UI is served from ``WEB_DIST_DIR`` (default ``web/dist``) once it is built
     (``npm --prefix web run build``); without a build the app serves the API only.
     """
@@ -84,11 +81,11 @@ def create_default_app() -> FastAPI:
     # writes it. uvicorn configures its loggers before it calls this factory and never replaces
     # the record factory, so its access and error logs are covered too.
     install_log_redaction()
-    env = os.environ
+    env = os.environ if environ is None else environ
     clock = utc_now
+    serving = open_serving_db(env)
     store = OpsStore(_configured_path(env, "OPS_DB_PATH", DEFAULT_OPS_DB))
-    serving = ServingDB(_configured_path(env, "SERVING_DB_PATH", DEFAULT_SERVING_DB))
-    auth = create_auth_service(env, clock=clock, store=store)
+    auth = create_auth_service(env, clock=clock, store=store, customers=serving)
     tools = build_tools(serving, store)
     policy = build_policy_evaluator(serving, store, clock=clock)
     issuer = build_confirmation_issuer(store)

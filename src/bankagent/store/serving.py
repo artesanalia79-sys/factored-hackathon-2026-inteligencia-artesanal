@@ -26,6 +26,7 @@ from pydantic import ValidationError
 
 from bankagent.contracts.domain import CardView, TransactionRiskSignals, TransactionView
 from bankagent.contracts.enums import Language
+from bankagent.contracts.serving import validate_serving_db
 from bankagent.contracts.tools import SearchTransactionsArgs
 
 UNKNOWN_DATA_MODE = "unknown"
@@ -207,6 +208,12 @@ class ServingDB:
             except duckdb.CatalogException:
                 return UNKNOWN_DATA_MODE
         return UNKNOWN_DATA_MODE if row is None else str(row[0])
+
+    def contract_problems(self) -> list[str]:
+        """Every way this file breaks the serving contract (``validate_serving_db``); empty when
+        it fits. Names tables and columns, never a value."""
+        with duckdb.connect(self._path, read_only=True) as con:
+            return validate_serving_db(con)
 
     def customer(self, customer_id: str) -> CustomerProfile | None:
         with duckdb.connect(self._path, read_only=True) as con:
