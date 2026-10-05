@@ -16,6 +16,7 @@ import pytest
 import yaml
 from pydantic import BaseModel
 
+from bankagent.contracts.comparison import ComparisonBundle
 from bankagent.contracts.evaluation import EvalCase
 from bankagent.contracts.llm import ChatMessage, LLMProvider, StructuredCompletion
 from bankagent.eval import final, heldout
@@ -36,13 +37,15 @@ FAKE_KEY = "test-key-not-real"
 APPROVED: dict[str, Any] = {"provider": "openai", "approved_by": "santiago"}
 
 
-def _sealed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+def _sealed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, split: str = "heldout"
+) -> tuple[Path, Path]:
     """A folder of four cases with ``split: heldout``, its manifest, and HELDOUT_DIR set to it."""
     directory = tmp_path / "sealed"
     directory.mkdir()
     for index, name in enumerate(DEV_CASES, start=1):
         raw = yaml.safe_load((DEV_DIR / f"{name}.yaml").read_text(encoding="utf-8"))
-        raw.update(case_id=f"heldout-test-{index:03d}", split="heldout")
+        raw.update(case_id=f"heldout-test-{index:03d}", split=split)
         body = yaml.safe_dump(raw, sort_keys=False, allow_unicode=True)
         (directory / f"{raw['case_id']}.yaml").write_bytes(body.encode("utf-8"))
     manifest = tmp_path / "manifest.sha256"
@@ -290,6 +293,35 @@ def test_the_heldout_run_writes_the_report_the_record_and_the_transcripts(
     assert "**Re-run.** The set was already opened 1 time(s)" in _report(second)
 
 
+@pytest.mark.parametrize("split", ["heldout", "dev"])
+def test_no_file_of_the_report_folder_quotes_a_sealed_conversation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, split: str
+) -> None:
+    # The replay of T22 quotes every conversation, and the report folder of the sealed set is
+    # committed. `poe heldout seal` refuses a case that calls itself a dev case, but this
+    # command knows the set by its manifest: a label inside a file must not decide it.
+    directory, manifest = _sealed(tmp_path, monkeypatch, split=split)
+
+    assert _run(tmp_path, directory, manifest, **APPROVED, provider_factory=stub_provider_for) == 0
+
+    (report_dir,) = (tmp_path / "reports").glob("*")
+    assert report_dir.name.startswith("heldout-1-")
+    assert sorted(path.name for path in report_dir.iterdir()) == [
+        "report.md",
+        "results.jsonl",
+        "run_record.json",
+        "unsafe_reasons.jsonl",
+    ]
+    openings = [
+        yaml.safe_load(path.read_text(encoding="utf-8"))["turns"][0]["text"]
+        for path in directory.glob("*.yaml")
+    ]
+    for written in report_dir.iterdir():
+        text = written.read_text(encoding="utf-8")
+        assert not any(opening in text for opening in openings), written.name
+    assert not list((tmp_path / "runs").rglob("comparison.json"))
+
+
 def test_the_code_is_read_before_the_run_writes_into_the_repository(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -332,6 +364,14 @@ def test_a_rehearsal_on_the_dev_cases_stays_out_of_the_reports(tmp_path: Path) -
     assert record["heldout_run_number"] is None
     assert record["systems"]["proposed"]["runs"] == len(list(DEV_DIR.glob("*.yaml")))
     assert record["systems"]["proposed"]["llm_fallback_steps"] == 0
+    # A rehearsal on the dev cases gets its replay, under the git-ignored runs folder.
+    replay = ComparisonBundle.model_validate_json(
+        (run_dir / "comparison.json").read_text(encoding="utf-8")
+    )
+    assert not replay.simulated
+    assert {run.result.case_id for run in replay.runs} == {
+        path.stem for path in DEV_DIR.glob("*.yaml")
+    }
 
 
 def test_a_rehearsal_may_lower_the_cap_but_runs_at_least_once(

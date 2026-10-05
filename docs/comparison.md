@@ -41,12 +41,17 @@ hard cap. T22's development and tests spend **0 USD**.
 The artifact includes suite ID, case-set hash, system names, cost assumptions, per-run scored
 results and allowlisted execution steps. It uses the generated `ComparisonBundle` contract;
 the browser validates its JSON Schema and rejects duplicate case/repeat/system keys and
-inconsistent verified-action or safe-resolution claims. Files are limited to 8 MiB, 500 runs,
-50 turns per run and 200 steps per turn. Missing counterpart runs are supported.
+inconsistent verified-action or safe-resolution claims, and a negative cost. Files are limited
+to 8 MiB, 500 runs, 50 turns per run and 200 steps per turn. Missing counterpart runs are
+supported.
 
 ## Boundaries
 
 - Only all-dev suites export replay files. Held-out, pilot and red-team suites are excluded.
+  The final evaluation (`uv run poe eval-full`) never writes one for the sealed set, whatever
+  a case file says about its split: it knows the set by its manifest, and its report folder is
+  committed. The report and the results are written before the replay, so a replay that
+  cannot be built never costs them.
 - Session identity, tool arguments, tool results and simulator ground truth are not exported.
   Dialogue passes through the existing redactor. Redaction is not a guarantee of anonymity;
   inspect synthetic dev artifacts before sharing them. Never commit run artifacts.

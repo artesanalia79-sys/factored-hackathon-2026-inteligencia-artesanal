@@ -264,7 +264,8 @@ not forgotten. Each line keeps its original task number. Nothing here blocks the
 | T19 | Agent on `DATA_MODE=curated` end to end, with evidence from a local run. |
 | T20 | Full fallback matrix (LLM timeout, malformed, unavailable), Langfuse export. One source for the redaction patterns (logs, prompts, `pii_leak`), redaction of the customer message before the model call, and the `bankagent.auth` login events in the service's output (`docs/limitations.md`). |
 | T21 | Agent console and evidence view per case. |
-| T22-T25 | Side-by-side UI, load test, promptfoo red team (plugins listed in T24), external pilot. |
+| T22 | Done as a replay at `/compare` (`docs/comparison.md`). Left: use it in the video with a recorded run of the real systems (on the keyword stub the LLM-only baseline cannot act, and the smoke run is a labelled simulation); a live parallel chat was traded for the replay. |
+| T23-T25 | Load test, promptfoo red team (plugins listed in T24), external pilot. |
 | T8 | Customer-local date parsing and a one-day search window (`docs/limitations.md`). |
 | T15 | Rate limiting per client behind the platform's proxy (the access code replaced it for the demo); a paid instance and an ops store outside the container; memory and latency measured on Render itself with the real model on. |
 
