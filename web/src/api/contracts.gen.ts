@@ -267,8 +267,13 @@ export interface RuleExplanation {
 }
 /**
  * One row of the handoff queue: escalated to a human, not resolved automatically.
+ *
+ * ``rule_explanations`` here is short by nature: ``HandoffPacket.trigger_rule_ids`` already
+ * names only the rule(s) that actually caused the escalation, not every rule the policy engine
+ * checked.
  */
 export interface ConsoleHandoffEntry {
+  customer_name?: string | null
   handoff: HandoffPacket
   rule_explanations?: RuleExplanation[]
 }
@@ -355,10 +360,19 @@ export interface ExecutionRecord {
 }
 /**
  * One dispute the agent resolved on its own, with the customer id its own contract omits.
+ *
+ * ``DisputeCase.rule_ids`` is every rule the policy engine checked, not only the ones that
+ * changed anything: for a proceed decision that is most of the rulebook, checked and passed.
+ * ``rule_explanations`` keeps only the decisive one (today, only ``card_blockable`` can still
+ * read differently from "proceed": whether this card qualifies for an offered block).
+ * ``checked_rule_ids`` lists the rest, by id only, so the full audit trail is still here without
+ * a wall of description text that explains nothing case-specific.
  */
 export interface ConsoleDisputeEntry {
   case: DisputeCase
+  checked_rule_ids?: string[]
   customer_id: string
+  customer_name?: string | null
   rule_explanations?: RuleExplanation[]
 }
 export interface DisputeCase {
@@ -379,6 +393,7 @@ export interface DisputeCase {
  */
 export interface ConsoleCardBlockEntry {
   customer_id: string
+  customer_name?: string | null
   event: CardBlockEvent
 }
 export interface CardBlockEvent {

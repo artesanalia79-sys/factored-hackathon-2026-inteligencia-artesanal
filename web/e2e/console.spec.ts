@@ -26,7 +26,10 @@ test('a handoff a customer caused shows up on the bank side, with its trace and 
   await expect(page.getByRole('heading', { name: /Lo que ve el banco/ })).toBeVisible()
   const handoffsTab = page.getByRole('button', { name: /^Escalados/ })
   await expect(handoffsTab).toBeVisible()
-  await expect(page.getByText('CUST-FX-006').first()).toBeVisible()
+  // The customer's name is shown next to their id, and the case has a date/time. chat.spec.ts
+  // gives Carlos an escalation too, in the same shared server, so more than one row can match.
+  await expect(page.getByText('Carlos · CUST-FX-006').first()).toBeVisible()
+  await expect(page.getByText(/\d{4}.*\d{2}:\d{2}.*UTC/).first()).toBeVisible()
 
   await page.getByRole('button', { name: new RegExp(`CUST-FX-006`) }).first().click()
   await expect(page.getByRole('heading', { name: new RegExp(handoffId!) })).toBeVisible()

@@ -26,9 +26,15 @@ class RuleExplanation(Contract):
 
 
 class ConsoleHandoffEntry(Contract):
-    """One row of the handoff queue: escalated to a human, not resolved automatically."""
+    """One row of the handoff queue: escalated to a human, not resolved automatically.
+
+    ``rule_explanations`` here is short by nature: ``HandoffPacket.trigger_rule_ids`` already
+    names only the rule(s) that actually caused the escalation, not every rule the policy engine
+    checked.
+    """
 
     handoff: HandoffPacket
+    customer_name: str | None = None
     rule_explanations: tuple[RuleExplanation, ...] = ()
 
 
@@ -40,15 +46,26 @@ class ConsoleHandoffDetail(Contract):
 
 
 class ConsoleDisputeEntry(Contract):
-    """One dispute the agent resolved on its own, with the customer id its own contract omits."""
+    """One dispute the agent resolved on its own, with the customer id its own contract omits.
+
+    ``DisputeCase.rule_ids`` is every rule the policy engine checked, not only the ones that
+    changed anything: for a proceed decision that is most of the rulebook, checked and passed.
+    ``rule_explanations`` keeps only the decisive one (today, only ``card_blockable`` can still
+    read differently from "proceed": whether this card qualifies for an offered block).
+    ``checked_rule_ids`` lists the rest, by id only, so the full audit trail is still here without
+    a wall of description text that explains nothing case-specific.
+    """
 
     customer_id: Identifier
+    customer_name: str | None = None
     case: DisputeCase
     rule_explanations: tuple[RuleExplanation, ...] = ()
+    checked_rule_ids: tuple[str, ...] = ()
 
 
 class ConsoleCardBlockEntry(Contract):
     """One card block the agent carried out, with the customer id its own contract omits."""
 
     customer_id: Identifier
+    customer_name: str | None = None
     event: CardBlockEvent

@@ -42,8 +42,20 @@
     },
     "ConsoleHandoffEntry": {
       "additionalProperties": false,
-      "description": "One row of the handoff queue: escalated to a human, not resolved automatically.",
+      "description": "One row of the handoff queue: escalated to a human, not resolved automatically.\n\n``rule_explanations`` here is short by nature: ``HandoffPacket.trigger_rule_ids`` already\nnames only the rule(s) that actually caused the escalation, not every rule the policy engine\nchecked.",
       "properties": {
+        "customer_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Name"
+        },
         "handoff": {
           "$ref": "#/$defs/HandoffPacket"
         },

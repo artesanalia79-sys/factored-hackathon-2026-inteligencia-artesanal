@@ -51,9 +51,14 @@ def settings(secret: str) -> AuthSettings:
     return AuthSettings(secret=Secret(secret), expose_mock_otp=True, access_code=Secret(CODE))
 
 
-def _seed(store: OpsStore) -> None:
+# A real persona of the shared `directory` fixture (tests/auth/conftest.py), so customer_name
+# resolution has something real to find; "CUST-A" stays unknown to it on purpose (below).
+MARIANA_ID = "CUST-T7-001"
+
+
+def _seed(store: OpsStore, customer_id: str = MARIANA_ID) -> None:
     store.insert_dispute(
-        "CUST-A",
+        customer_id,
         DisputeCase(
             dispute_id="dsp-1",
             transaction_id="txn-1",
@@ -64,11 +69,13 @@ def _seed(store: OpsStore) -> None:
             currency="MXN",
             idempotency_key="idem-1",
             policy_version="dispute-v1.1",
-            rule_ids=(),
+            # DSP-ACT-01 (card_blockable, an action rule) is the decisive one; DSP-ELIG-01
+            # (approved_status, eligibility) was checked and passed, nothing case-specific.
+            rule_ids=("DSP-ACT-01", "DSP-ELIG-01"),
         ),
     )
     store.insert_card_block(
-        "CUST-A",
+        customer_id,
         CardBlockEvent(
             block_id="blk-1",
             product_id="prod-1",
@@ -89,7 +96,7 @@ def _seed(store: OpsStore) -> None:
         ),
     )
     packet = HandoffPacket(
-        **draft.model_dump(), handoff_id="hof-1", created_at=NOW, customer_id="CUST-A"
+        **draft.model_dump(), handoff_id="hof-1", created_at=NOW, customer_id=customer_id
     )
     store.insert_handoff(packet, "idem-3")
     store.append_records(
@@ -111,8 +118,16 @@ def _seed(store: OpsStore) -> None:
     )
 
 
+def _name_lookup(directory: Directory) -> Callable[[str], str | None]:
+    def lookup(customer_id: str) -> str | None:
+        profile = directory.customer(customer_id)
+        return None if profile is None else profile.first_name
+
+    return lookup
+
+
 @pytest.fixture
-def client(service: AuthService, store: OpsStore) -> TestClient:
+def client(service: AuthService, store: OpsStore, directory: Directory) -> TestClient:
     _seed(store)
     console = HandoffConsole(store.database)
     deps = ConsoleDeps(
@@ -121,6 +136,7 @@ def client(service: AuthService, store: OpsStore) -> TestClient:
         list_disputes=console.list_disputes,
         list_card_blocks=console.list_card_blocks,
         list_records=console.list_records,
+        customer_name=_name_lookup(directory),
         policy=load_policy(),
     )
     app = create_app(auth=service, agent_factory=_NoAgent, console=deps)
@@ -140,7 +156,8 @@ def test_the_right_code_opens_every_console_read(client: TestClient) -> None:
     assert handoffs.status_code == 200
     body = handoffs.json()
     assert len(body) == 1
-    assert body[0]["handoff"]["customer_id"] == "CUST-A"
+    assert body[0]["handoff"]["customer_id"] == MARIANA_ID
+    assert body[0]["customer_name"] == "Mariana"
 
     detail = client.get("/api/console/handoffs/hof-1", headers=headers)
     assert detail.status_code == 200
@@ -148,12 +165,41 @@ def test_the_right_code_opens_every_console_read(client: TestClient) -> None:
 
     disputes = client.get("/api/console/disputes", headers=headers)
     assert disputes.status_code == 200
-    assert disputes.json()[0]["customer_id"] == "CUST-A"
-    assert disputes.json()[0]["case"]["dispute_id"] == "dsp-1"
+    dispute = disputes.json()[0]
+    assert dispute["customer_id"] == MARIANA_ID
+    assert dispute["customer_name"] == "Mariana"
+    assert dispute["case"]["dispute_id"] == "dsp-1"
+    # Only the decisive (action-kind) rule is explained in full; the rest is just an id.
+    assert [r["rule_id"] for r in dispute["rule_explanations"]] == ["DSP-ACT-01"]
+    assert dispute["checked_rule_ids"] == ["DSP-ELIG-01"]
 
     blocks = client.get("/api/console/card-blocks", headers=headers)
     assert blocks.status_code == 200
+    assert blocks.json()[0]["customer_name"] == "Mariana"
     assert blocks.json()[0]["event"]["block_id"] == "blk-1"
+
+
+def test_an_id_outside_the_directory_gets_no_name_not_an_error(
+    service: AuthService, store: OpsStore, directory: Directory
+) -> None:
+    _seed(store, customer_id="CUST-UNKNOWN-TO-DIRECTORY")
+    console = HandoffConsole(store.database)
+    app = create_app(
+        auth=service,
+        agent_factory=_NoAgent,
+        console=ConsoleDeps(
+            list_handoffs=console.list_handoffs,
+            get_handoff=console.get_handoff,
+            list_disputes=console.list_disputes,
+            list_card_blocks=console.list_card_blocks,
+            list_records=console.list_records,
+            customer_name=_name_lookup(directory),
+            policy=load_policy(),
+        ),
+    )
+    response = TestClient(app).get("/api/console/handoffs", headers={"X-Console-Access-Code": CODE})
+    assert response.status_code == 200
+    assert response.json()[0]["customer_name"] is None
 
 
 def test_an_unknown_handoff_is_a_404_not_a_500(client: TestClient) -> None:
@@ -195,6 +241,7 @@ def test_no_code_configured_means_no_gate(
             list_disputes=console.list_disputes,
             list_card_blocks=console.list_card_blocks,
             list_records=console.list_records,
+            customer_name=_name_lookup(directory),
             policy=load_policy(),
         ),
     )

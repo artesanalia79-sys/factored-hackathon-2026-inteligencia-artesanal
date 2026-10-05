@@ -114,6 +114,9 @@ def create_default_app() -> FastAPI:
             list_disputes=console_reads.list_disputes,
             list_card_blocks=console_reads.list_card_blocks,
             list_records=console_reads.list_records,
+            customer_name=lambda customer_id: (
+                profile.first_name if (profile := serving.customer(customer_id)) else None
+            ),
             policy=load_policy(),
         ),
     )

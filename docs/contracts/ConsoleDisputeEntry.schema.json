@@ -132,16 +132,36 @@
     }
   },
   "additionalProperties": false,
-  "description": "One dispute the agent resolved on its own, with the customer id its own contract omits.",
+  "description": "One dispute the agent resolved on its own, with the customer id its own contract omits.\n\n``DisputeCase.rule_ids`` is every rule the policy engine checked, not only the ones that\nchanged anything: for a proceed decision that is most of the rulebook, checked and passed.\n``rule_explanations`` keeps only the decisive one (today, only ``card_blockable`` can still\nread differently from \"proceed\": whether this card qualifies for an offered block).\n``checked_rule_ids`` lists the rest, by id only, so the full audit trail is still here without\na wall of description text that explains nothing case-specific.",
   "properties": {
     "case": {
       "$ref": "#/$defs/DisputeCase"
+    },
+    "checked_rule_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Checked Rule Ids",
+      "type": "array"
     },
     "customer_id": {
       "maxLength": 64,
       "minLength": 1,
       "title": "Customer Id",
       "type": "string"
+    },
+    "customer_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Customer Name"
     },
     "rule_explanations": {
       "default": [],

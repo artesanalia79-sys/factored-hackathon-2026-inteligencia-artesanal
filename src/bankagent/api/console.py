@@ -32,7 +32,7 @@ from bankagent.contracts.console import (
 from bankagent.contracts.domain import CardBlockEvent, DisputeCase
 from bankagent.contracts.handoff import HandoffPacket
 from bankagent.contracts.records import ExecutionRecord
-from bankagent.policy.schema import PolicyConfig
+from bankagent.policy.schema import ACTION_KINDS, PolicyConfig
 
 DEFAULT_LIMIT = 50
 
@@ -46,18 +46,31 @@ class ConsoleDeps:
     list_disputes: Callable[[int], Sequence[tuple[str, DisputeCase]]]
     list_card_blocks: Callable[[int], Sequence[tuple[str, CardBlockEvent]]]
     list_records: Callable[[str], Sequence[ExecutionRecord]]
+    # A customer's first name for display, or None (an id outside the serving DB, or a test
+    # double that does not track names). Never the source of truth for identity.
+    customer_name: Callable[[str], str | None]
     policy: PolicyConfig
 
 
 def build_console_router(*, auth: AuthService, deps: ConsoleDeps) -> APIRouter:
     router = APIRouter(prefix="/api/console", tags=["console"], route_class=SafeValidationRoute)
     descriptions = {rule.rule_id: rule.description for rule in deps.policy.rules}
+    kinds = {rule.rule_id: rule.kind for rule in deps.policy.rules}
 
     def explanations(rule_ids: Sequence[str]) -> tuple[RuleExplanation, ...]:
         return tuple(
             RuleExplanation(rule_id=rule_id, description=descriptions.get(rule_id, rule_id))
             for rule_id in rule_ids
         )
+
+    def split_checked_rules(
+        rule_ids: Sequence[str],
+    ) -> tuple[tuple[RuleExplanation, ...], tuple[str, ...]]:
+        """Every rule a dispute's policy decision checked: the decisive one(s) explained in
+        full, the rest (checked, passed, changed nothing case-specific) as bare ids."""
+        decisive = [rule_id for rule_id in rule_ids if kinds.get(rule_id) in ACTION_KINDS]
+        passed = [rule_id for rule_id in rule_ids if kinds.get(rule_id) not in ACTION_KINDS]
+        return explanations(decisive), tuple(passed)
 
     def require_access(
         x_console_access_code: Annotated[str | None, Header()] = None,
@@ -70,14 +83,16 @@ def build_console_router(*, auth: AuthService, deps: ConsoleDeps) -> APIRouter:
                 detail={"error": AccessCodeRequired.code},
             ) from None
 
+    def handoff_entry(handoff: HandoffPacket) -> ConsoleHandoffEntry:
+        return ConsoleHandoffEntry(
+            handoff=handoff,
+            customer_name=deps.customer_name(handoff.customer_id),
+            rule_explanations=explanations(handoff.trigger_rule_ids),
+        )
+
     @router.get("/handoffs", dependencies=[Depends(require_access)])
     def handoffs(limit: int = DEFAULT_LIMIT) -> list[ConsoleHandoffEntry]:
-        return [
-            ConsoleHandoffEntry(
-                handoff=handoff, rule_explanations=explanations(handoff.trigger_rule_ids)
-            )
-            for handoff in deps.list_handoffs(limit)
-        ]
+        return [handoff_entry(handoff) for handoff in deps.list_handoffs(limit)]
 
     @router.get("/handoffs/{handoff_id}", dependencies=[Depends(require_access)])
     def handoff_detail(handoff_id: str) -> ConsoleHandoffDetail:
@@ -87,27 +102,33 @@ def build_console_router(*, auth: AuthService, deps: ConsoleDeps) -> APIRouter:
                 status_code=status.HTTP_404_NOT_FOUND, detail={"error": "not_found"}
             )
         return ConsoleHandoffDetail(
-            entry=ConsoleHandoffEntry(
-                handoff=handoff, rule_explanations=explanations(handoff.trigger_rule_ids)
-            ),
-            records=tuple(deps.list_records(handoff.trace_id)),
+            entry=handoff_entry(handoff), records=tuple(deps.list_records(handoff.trace_id))
         )
 
     @router.get("/disputes", dependencies=[Depends(require_access)])
     def disputes(limit: int = DEFAULT_LIMIT) -> list[ConsoleDisputeEntry]:
-        return [
-            ConsoleDisputeEntry(
-                customer_id=customer_id,
-                case=case,
-                rule_explanations=explanations(case.rule_ids),
+        result: list[ConsoleDisputeEntry] = []
+        for customer_id, case in deps.list_disputes(limit):
+            decisive, checked = split_checked_rules(case.rule_ids)
+            result.append(
+                ConsoleDisputeEntry(
+                    customer_id=customer_id,
+                    customer_name=deps.customer_name(customer_id),
+                    case=case,
+                    rule_explanations=decisive,
+                    checked_rule_ids=checked,
+                )
             )
-            for customer_id, case in deps.list_disputes(limit)
-        ]
+        return result
 
     @router.get("/card-blocks", dependencies=[Depends(require_access)])
     def card_blocks(limit: int = DEFAULT_LIMIT) -> list[ConsoleCardBlockEntry]:
         return [
-            ConsoleCardBlockEntry(customer_id=customer_id, event=event)
+            ConsoleCardBlockEntry(
+                customer_id=customer_id,
+                customer_name=deps.customer_name(customer_id),
+                event=event,
+            )
             for customer_id, event in deps.list_card_blocks(limit)
         ]
 

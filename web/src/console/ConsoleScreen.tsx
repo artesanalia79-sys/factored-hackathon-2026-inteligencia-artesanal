@@ -11,6 +11,27 @@ import './console.css'
 
 type Tab = 'handoffs' | 'disputes' | 'blocks'
 
+// `dateStyle`/`timeStyle` cannot mix with explicit field options (the spec throws), and a plain
+// `timeStyle: 'short'` renders an unpadded, AM/PM-less hour in some locales ("2:48", ambiguous).
+// Every field named explicitly instead, with a fixed 24-hour clock.
+const DATE_TIME = new Intl.DateTimeFormat('es', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+  timeZone: 'UTC',
+})
+
+function when(iso: string): string {
+  return `${DATE_TIME.format(new Date(iso))} UTC`
+}
+
+function who(customerId: string, customerName: string | null | undefined): string {
+  return customerName ? `${customerName} · ${customerId}` : customerId
+}
+
 function RuleList({ rules }: { rules: { rule_id: string; description: string }[] | undefined }) {
   if (!rules || rules.length === 0) return <p className="console__empty">Ninguna regla.</p>
   return (
@@ -21,6 +42,13 @@ function RuleList({ rules }: { rules: { rule_id: string; description: string }[]
         </p>
       ))}
     </>
+  )
+}
+
+function CheckedRules({ ruleIds }: { ruleIds: string[] | undefined }) {
+  if (!ruleIds || ruleIds.length === 0) return null
+  return (
+    <p className="console__meta">Otras reglas evaluadas, sin cambiar nada: {ruleIds.join(', ')}</p>
   )
 }
 
@@ -154,9 +182,10 @@ export default function ConsoleScreen() {
                 className="console__row console__row--pick"
                 onClick={() => openHandoff(entry.handoff.handoff_id)}
               >
-                <strong>{entry.handoff.customer_id}</strong>
+                <strong>{who(entry.handoff.customer_id, entry.customer_name)}</strong>
                 <span>
-                  {entry.handoff.routing.specialty} · {entry.handoff.routing.priority}
+                  {entry.handoff.routing.specialty} · {entry.handoff.routing.priority} ·{' '}
+                  {when(entry.handoff.created_at)}
                 </span>
                 <span className="console__meta">{entry.handoff.request}</span>
               </button>
@@ -169,15 +198,16 @@ export default function ConsoleScreen() {
           {tab === 'disputes' &&
             (disputes ?? []).map((entry) => (
               <article key={entry.case.dispute_id} className="console__row">
-                <strong>{entry.customer_id}</strong>
+                <strong>{who(entry.customer_id, entry.customer_name)}</strong>
                 <span>
                   {entry.case.reason} · {entry.case.status} · {entry.case.amount}{' '}
-                  {entry.case.currency}
+                  {entry.case.currency} · {when(entry.case.created_at)}
                 </span>
                 {entry.case.sla_due_date ? (
                   <span className="console__meta">Plazo SLA: {entry.case.sla_due_date}</span>
                 ) : null}
                 <RuleList rules={entry.rule_explanations} />
+                <CheckedRules ruleIds={entry.checked_rule_ids} />
               </article>
             ))}
           {tab === 'disputes' && sectionErrors.disputes ? (
@@ -188,9 +218,10 @@ export default function ConsoleScreen() {
           {tab === 'blocks' &&
             (blocks ?? []).map((entry) => (
               <article key={entry.event.block_id} className="console__row">
-                <strong>{entry.customer_id}</strong>
+                <strong>{who(entry.customer_id, entry.customer_name)}</strong>
                 <span>
-                  Tarjeta •••• {entry.event.card_last4} · {entry.event.reason}
+                  Tarjeta •••• {entry.event.card_last4} · {entry.event.reason} ·{' '}
+                  {when(entry.event.blocked_at)}
                 </span>
               </article>
             ))}
@@ -210,6 +241,10 @@ export default function ConsoleScreen() {
           ) : detail ? (
             <>
               <h2>Caso {detail.entry.handoff.handoff_id}</h2>
+              <p className="console__meta">
+                {who(detail.entry.handoff.customer_id, detail.entry.customer_name)} ·{' '}
+                {when(detail.entry.handoff.created_at)}
+              </p>
               <p>{detail.entry.handoff.request}</p>
               <h3>Reglas que dispararon el caso</h3>
               <RuleList rules={detail.entry.rule_explanations} />
