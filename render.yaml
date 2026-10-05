@@ -12,8 +12,9 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /ready
-    # Frozen at T26 (2026-10-05): no later merge to main may restart or change the demo.
-    # docs/operations.md, "At the freeze (Task 26)".
+    # Frozen at T26 (2026-10-05): a merge to main no longer deploys, but a push that changes a
+    # setting in this file still redeploys (Blueprint sync). docs/operations.md, "At the freeze
+    # (Task 26)".
     autoDeployTrigger: "off"
     envVars:
       - key: APP_SECRET_KEY # signs session tokens; nobody needs to know it
