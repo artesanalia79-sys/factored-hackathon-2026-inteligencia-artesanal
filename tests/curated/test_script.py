@@ -168,9 +168,9 @@ def test_a_customer_of_another_country_writes_like_the_default(policy: PolicyCon
 
 
 def test_a_merchant_the_keyword_rules_know_is_read_with_the_amount(policy: PolicyConfig) -> None:
-    case = _case(Scenario.RECOGNIZED, Expected(None), merchant_name="Uber", country="MX")
+    case = _case(Scenario.RECOGNIZED, Expected(None), merchant_name="Cinépolis", country="MX")
     read = interpret_text(script(case, policy, AS_OF)[0].steps[0].says)
-    assert read.slots.merchant_query == "UBER"
+    assert read.slots.merchant_query == "CINEPOLIS"
     assert read.slots.amount == Decimal("85900.50")
 
 

@@ -214,7 +214,7 @@ def write_bank(path: Path, *, data_mode: str = "curated") -> dict[str, str]:
 
         # Plain eligible charges, one customer each; several kinds of text and currency.
         who["plain_mx"] = bank.customer("MX")
-        bank.charge(who["plain_mx"], "1234.56", merchant="Uber")
+        bank.charge(who["plain_mx"], "1234.56", merchant="Cinépolis")
         who["plain_co"] = bank.customer("CO")
         bank.charge(who["plain_co"], "499000.00", kind="Withdrawal", merchant=None)
         who["plain_ar"] = bank.customer("AR")
