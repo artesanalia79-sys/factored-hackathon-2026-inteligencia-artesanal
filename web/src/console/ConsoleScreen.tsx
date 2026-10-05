@@ -14,7 +14,7 @@ type Tab = 'handoffs' | 'disputes' | 'blocks'
 // `dateStyle`/`timeStyle` cannot mix with explicit field options (the spec throws), and a plain
 // `timeStyle: 'short'` renders an unpadded, AM/PM-less hour in some locales ("2:48", ambiguous).
 // Every field named explicitly instead, with a fixed 24-hour clock.
-const DATE_TIME = new Intl.DateTimeFormat('es', {
+const DATE_TIME = new Intl.DateTimeFormat('en-GB', {
   year: 'numeric',
   month: 'short',
   day: 'numeric',
@@ -42,7 +42,7 @@ interface RuleRow {
 // thoroughly we checked", not just "here is the one reason". The decisive one (or ones) is
 // highlighted, so "why did this happen" is still a glance, not a read of the whole rulebook.
 function RuleList({ rules }: { rules: RuleRow[] | undefined }) {
-  if (!rules || rules.length === 0) return <p className="console__empty">Ninguna regla.</p>
+  if (!rules || rules.length === 0) return <p className="console__empty">No rules.</p>
   return (
     <>
       {rules.map((rule) => (
@@ -51,7 +51,7 @@ function RuleList({ rules }: { rules: RuleRow[] | undefined }) {
           className={rule.decisive ? 'console__rule console__rule--decisive' : 'console__rule'}
         >
           <code>{rule.rule_id}</code>
-          {rule.decisive ? <span className="console__rule-tag">Aplicada en este caso</span> : null}{' '}
+          {rule.decisive ? <span className="console__rule-tag">Applied in this case</span> : null}{' '}
           {rule.description}
         </p>
       ))}
@@ -95,7 +95,7 @@ export default function ConsoleScreen() {
           result.reason instanceof ApiError &&
           result.reason.code === 'access_code_required',
       )
-      setError(deniedAccess ? 'Código de acceso incorrecto o faltante.' : null)
+      setError(deniedAccess ? 'Incorrect or missing access code.' : null)
       setHandoffs(handoffResult.status === 'fulfilled' ? handoffResult.value : null)
       setDisputes(disputeResult.status === 'fulfilled' ? disputeResult.value : null)
       setBlocks(blockResult.status === 'fulfilled' ? blockResult.value : null)
@@ -118,22 +118,22 @@ export default function ConsoleScreen() {
   }
 
   return (
-    <main className="console" lang="es">
+    <main className="console" lang="en">
       <header className="console__top">
         <a className="brand" href="/">
           <BrandMark />
-          <span>Volver al inicio</span>
+          <span>Back to home</span>
         </a>
-        <span className="console__eyebrow">Lado del banco / T21</span>
+        <span className="console__eyebrow">Bank side / T21</span>
       </header>
       <h1>
-        Lo que ve el banco,
+        What the bank sees,
         <br />
-        no solo el cliente.
+        not only the customer.
       </h1>
       <p className="lead">
-        Casos escalados a una persona, disputas y bloqueos que el agente resolvió solo — cada uno
-        con las reglas que lo dispararon y, para lo escalado, el rastro de ejecución verificado.
+        Cases escalated to a person, disputes and blocks the agent resolved on its own — each
+        with the rules that triggered it and, for escalated cases, the verified execution trace.
       </p>
       <form
         className="console__loader"
@@ -144,7 +144,7 @@ export default function ConsoleScreen() {
           setRequest((current) => current + 1)
         }}
       >
-        <label htmlFor="console-code">Código de acceso (solo si el servidor lo pide)</label>
+        <label htmlFor="console-code">Access code (only if the server asks for it)</label>
         <input
           id="console-code"
           type="password"
@@ -152,17 +152,18 @@ export default function ConsoleScreen() {
           value={code}
           onChange={(event) => setCode(event.target.value)}
         />
-        <button type="submit" disabled={busy}>
-          {busy ? 'Cargando…' : 'Actualizar'}
+        {/* The browser's dark-mode button is 4.45:1, under WCAG AA; the shared style is not. */}
+        <button type="submit" className="button button--secondary" disabled={busy}>
+          {busy ? 'Loading…' : 'Refresh'}
         </button>
       </form>
       {error ? <p role="alert">{error}</p> : null}
-      <nav className="console__tabs" aria-label="Secciones">
+      <nav className="console__tabs" aria-label="Sections">
         {(
           [
-            ['handoffs', `Escalados (${handoffs?.length ?? 0})`],
-            ['disputes', `Disputas (${disputes?.length ?? 0})`],
-            ['blocks', `Tarjetas bloqueadas (${blocks?.length ?? 0})`],
+            ['handoffs', `Escalated (${handoffs?.length ?? 0})`],
+            ['disputes', `Disputes (${disputes?.length ?? 0})`],
+            ['blocks', `Blocked cards (${blocks?.length ?? 0})`],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -180,7 +181,7 @@ export default function ConsoleScreen() {
         ))}
       </nav>
       <div className="console__grid">
-        <section className="console__list" aria-label="Lista">
+        <section className="console__list" aria-label="List">
           {tab === 'handoffs' &&
             (handoffs ?? []).map((entry) => (
               <button
@@ -198,9 +199,9 @@ export default function ConsoleScreen() {
               </button>
             ))}
           {tab === 'handoffs' && sectionErrors.handoffs ? (
-            <p role="alert">No se pudo cargar lo escalado.</p>
+            <p role="alert">Could not load escalated cases.</p>
           ) : tab === 'handoffs' && handoffs?.length === 0 ? (
-            <p className="console__empty">Ningún caso escalado todavía.</p>
+            <p className="console__empty">No escalated cases yet.</p>
           ) : null}
           {tab === 'disputes' &&
             (disputes ?? []).map((entry) => (
@@ -211,50 +212,50 @@ export default function ConsoleScreen() {
                   {entry.case.currency} · {when(entry.case.created_at)}
                 </span>
                 {entry.case.sla_due_date ? (
-                  <span className="console__meta">Plazo SLA: {entry.case.sla_due_date}</span>
+                  <span className="console__meta">SLA due date: {entry.case.sla_due_date}</span>
                 ) : null}
                 <RuleList rules={entry.rule_explanations} />
               </article>
             ))}
           {tab === 'disputes' && sectionErrors.disputes ? (
-            <p role="alert">No se pudo cargar las disputas.</p>
+            <p role="alert">Could not load disputes.</p>
           ) : tab === 'disputes' && disputes?.length === 0 ? (
-            <p className="console__empty">Ninguna disputa todavía.</p>
+            <p className="console__empty">No disputes yet.</p>
           ) : null}
           {tab === 'blocks' &&
             (blocks ?? []).map((entry) => (
               <article key={entry.event.block_id} className="console__row">
                 <strong>{who(entry.customer_id, entry.customer_name)}</strong>
                 <span>
-                  Tarjeta •••• {entry.event.card_last4} · {entry.event.reason} ·{' '}
+                  Card •••• {entry.event.card_last4} · {entry.event.reason} ·{' '}
                   {when(entry.event.blocked_at)}
                 </span>
               </article>
             ))}
           {tab === 'blocks' && sectionErrors.blocks ? (
-            <p role="alert">No se pudieron cargar las tarjetas bloqueadas.</p>
+            <p role="alert">Could not load blocked cards.</p>
           ) : tab === 'blocks' && blocks?.length === 0 ? (
-            <p className="console__empty">Ninguna tarjeta bloqueada todavía.</p>
+            <p className="console__empty">No blocked cards yet.</p>
           ) : null}
         </section>
-        <section className="console__detail" aria-label="Detalle">
+        <section className="console__detail" aria-label="Detail">
           {tab !== 'handoffs' ? (
             <p className="console__empty">
-              El rastro de ejecución solo existe para lo escalado a una persona.
+              The execution trace only exists for cases escalated to a person.
             </p>
           ) : detailError ? (
-            <p role="alert">No se pudo abrir ese caso.</p>
+            <p role="alert">Could not open that case.</p>
           ) : detail ? (
             <>
-              <h2>Caso {detail.entry.handoff.handoff_id}</h2>
+              <h2>Case {detail.entry.handoff.handoff_id}</h2>
               <p className="console__meta">
                 {who(detail.entry.handoff.customer_id, detail.entry.customer_name)} ·{' '}
                 {when(detail.entry.handoff.created_at)}
               </p>
               <p>{detail.entry.handoff.request}</p>
-              <h3>Reglas que dispararon el caso</h3>
+              <h3>Rules that triggered the case</h3>
               <RuleList rules={detail.entry.rule_explanations} />
-              <h3>Rastro de ejecución</h3>
+              <h3>Execution trace</h3>
               {detail.records && detail.records.length > 0 ? (
                 <ol className="console__steps">
                   {detail.records.map((record) => (
@@ -263,16 +264,16 @@ export default function ConsoleScreen() {
                       <span>
                         {record.state} · {record.outcome}
                       </span>
-                      <span>{record.verified ? 'Verificado' : 'Sin verificación'}</span>
+                      <span>{record.verified ? 'Verified' : 'Not verified'}</span>
                     </li>
                   ))}
                 </ol>
               ) : (
-                <p>Sin pasos registrados.</p>
+                <p>No steps recorded.</p>
               )}
             </>
           ) : (
-            <p className="console__empty">Elige un caso escalado para ver su rastro.</p>
+            <p className="console__empty">Pick an escalated case to see its trace.</p>
           )}
         </section>
       </div>

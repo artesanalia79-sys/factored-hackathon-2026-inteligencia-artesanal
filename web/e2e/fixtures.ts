@@ -86,3 +86,18 @@ export async function say(page: Page, text: string) {
 export function fact(page: Page, label: string) {
   return confirmation(page).locator('.fact').filter({ hasText: label }).locator('dd')
 }
+
+/**
+ * Spanish in a sentence: an accent or a common Spanish word. The reviewer pages are English
+ * (docs/submission/checklist.md); their one-word labels are checked one by one in the specs.
+ */
+export const SPANISH = /[áéíóúñ¿¡]|\b(?:de|del|el|la|los|las|una?|con|sin|por|para|que|caso)\b/i
+
+/** What a page says itself: its `main` without the data that `data` selects. */
+export function ownText(page: Page, data: string) {
+  return page.locator('main').evaluate((main, selector) => {
+    const copy = main.cloneNode(true) as HTMLElement
+    for (const node of copy.querySelectorAll(selector)) node.remove()
+    return copy.textContent ?? ''
+  }, data)
+}

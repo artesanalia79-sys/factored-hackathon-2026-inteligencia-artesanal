@@ -6,8 +6,8 @@ movements, the chat, and a confirmation panel for every write. React 19 + Vite 8
 
 The production build (`web/dist/`, gitignored) is served by FastAPI at `/` on the same origin as
 the API, with a strict Content Security Policy (`bankagent.api.app.WEB_SECURITY_HEADERS`); the
-container image (T15) builds it in its `web` stage (`docs/operations.md`). Later
-views: agent console and evidence view (T21). The T22 replay viewer is available at `/compare`.
+container image (T15) builds it in its `web` stage (`docs/operations.md`). Two reviewer pages sit
+beside the chat: the bank-side console (T21) at `/console` and the T22 replay viewer at `/compare`.
 
 ## Run it
 
@@ -92,7 +92,9 @@ in the `web` job.
 - **Language.** Agent text comes from the backend templates. The chrome (labels, buttons) is in
   `src/i18n.ts` in Spanish and Portuguese. The chosen login language carries through the chat;
   every UI turn sends that preference to the agent. API clients that omit it keep automatic
-  language detection.
+  language detection. The two reviewer pages, `/compare` and `/console`, are in English instead,
+  like every deliverable except the customer's own conversation; the conversations `/compare`
+  replays keep their Spanish or Portuguese, marked as such for screen readers.
 - **Demo scenarios.** `src/demo/scenarios.json` offers first messages per demo persona; picking
   one fills the composer. Openings have Spanish and Portuguese variants.
   `tests/orchestrator/test_api_acceptance.py` checks that each still reaches the question it

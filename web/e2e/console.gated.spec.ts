@@ -14,18 +14,18 @@ test('the console refuses every read without the code, then opens with it', asyn
       status: response.status(),
     })
   })
-  // Named "Cargando…" while its reads are in flight, so this waits for them to settle.
-  const idle = page.getByRole('button', { name: 'Actualizar' })
+  // Named "Loading…" while its reads are in flight, so this waits for them to settle.
+  const idle = page.getByRole('button', { name: 'Refresh' })
 
   await page.goto('/console')
-  await expect(page.getByRole('alert')).toContainText('Código de acceso incorrecto o faltante.')
+  await expect(page.getByRole('alert')).toContainText('Incorrect or missing access code.')
   await expect(idle).toBeEnabled()
 
-  const field = page.getByLabel('Código de acceso (solo si el servidor lo pide)')
+  const field = page.getByLabel('Access code (only if the server asks for it)')
   await field.fill('not-the-demo-code')
   await idle.click()
   await expect(idle).toBeEnabled()
-  await expect(page.getByRole('alert')).toContainText('Código de acceso incorrecto o faltante.')
+  await expect(page.getByRole('alert')).toContainText('Incorrect or missing access code.')
 
   await field.fill(code)
   await idle.click()
