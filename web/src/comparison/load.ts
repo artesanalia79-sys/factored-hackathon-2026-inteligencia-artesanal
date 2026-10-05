@@ -13,7 +13,9 @@ export function parseComparison(text: string): ComparisonBundle {
     if (keys.has(key) || run.turns.length > 50) throw new Error('Invalid runs')
     keys.add(key)
     if (result.turns_used !== run.turns.length) throw new Error('Inconsistent turns')
-    if (!Number.isFinite(Number(result.cost_usd_total ?? 0))) throw new Error('Invalid cost')
+    // The schema reads a cost as a decimal string, sign included; the contract allows none.
+    const cost = Number(result.cost_usd_total ?? 0)
+    if (!Number.isFinite(cost) || cost < 0) throw new Error('Invalid cost')
     if (
       (result.verified_actions ?? []).some(
         (action) => !(result.actions_taken ?? []).includes(action),

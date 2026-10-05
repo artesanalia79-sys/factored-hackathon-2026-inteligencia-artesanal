@@ -6,6 +6,15 @@ import { expect, test } from './fixtures.ts'
 
 const root = resolve(import.meta.dirname, '../..')
 let artifact: string
+const STEP = {
+  step: 'render',
+  state: 'respond',
+  tool: null,
+  outcome: 'success',
+  verified: false,
+  rule_ids: [],
+  model: null,
+}
 
 test.beforeAll(() => {
   execFileSync('uv', ['run', 'poe', 'eval-smoke'], { cwd: root, stdio: 'pipe' })
@@ -56,11 +65,26 @@ test('rejects malformed and duplicate files; handles missing counterparts and re
   const inconsistent = JSON.parse(artifact)
   inconsistent.runs[0].result.verified_actions = ['block_card']
   inconsistent.runs[0].result.actions_taken = []
+  // One broken rule per file, each on the artifact the harness wrote.
+  const broken = (change: (run: any) => void) => {
+    const bundle = JSON.parse(artifact)
+    change(bundle.runs[0])
+    return JSON.stringify(bundle)
+  }
   for (const contents of [
     '{',
     '{}',
     JSON.stringify({ ...JSON.parse(artifact), schema_version: 2 }),
     JSON.stringify(inconsistent),
+    broken((run) => (run.result.cost_usd_total = '-5')),
+    broken((run) => (run.result.turns_used += 1)),
+    broken((run) => {
+      run.result.safe_automated_resolution = true
+      run.result.correct = false
+    }),
+    broken((run) => (run.result.customer_id = 'CUST-FX-001')),
+    broken((run) => (run.turns[0].steps = [{ ...STEP, verified: true, outcome: 'failure' }])),
+    broken((run) => (run.turns[0].steps = Array.from({ length: 201 }, () => STEP))),
     ' '.repeat(8 * 1024 * 1024 + 1),
     JSON.stringify({
       ...JSON.parse(artifact),
