@@ -19,7 +19,7 @@ The repository map and commands are in `AGENTS.md`. These are the coding convent
 
 ## Tests
 
-- pytest under `tests/`, mirroring `src/bankagent/` (`tests/tools/test_create_dispute.py`).
+- pytest under `tests/`, mirroring `src/bankagent/` (`tests/tools/test_writes.py`).
 - Tests use the synthetic fixture bank and the `StubProvider`; no network, no paid APIs, no
   organizer data. Name tests after behavior: `test_other_customers_transaction_is_not_found`.
 

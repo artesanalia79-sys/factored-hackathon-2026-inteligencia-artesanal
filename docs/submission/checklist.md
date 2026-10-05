@@ -57,9 +57,10 @@ Making it public publishes the whole git history, not only the current files.
 
 The organizers take the team from the repository's contributors, so the list must show it.
 
-- [ ] Every member named in `README.md` has at least one commit of their own on `main`. A
+- [x] Every member named in `README.md` has at least one commit of their own on `main`. A
       `Co-authored-by` line is not enough: GitHub's contributor list counts authored commits.
-      Check with `gh api repos/<owner>/<repo>/contributors --jq '.[].login'`.
+      Check with `gh api repos/<owner>/<repo>/contributors --jq '.[].login'`. Checked on
+      2026-10-05: `santig005`, `jjresher` and `jacobozj`, plus `claude` and `artesanalia79-sys`.
 - [ ] A member who cannot push yet is added as a collaborator by the owner account first.
 - [ ] The list also shows two accounts that are not people: the team's shared account, which
       owns the repository and made its initial commit, and the AI coding assistant, which
@@ -102,7 +103,8 @@ The organizers take the team from the repository's contributors, so the list mus
 - [x] Final evaluation report with both systems and the deviations from the pre-registration
       (Task 27), linked from the README: `docs/evidence/final_evaluation.md`.
 - [x] `docs/limitations.md` is current (the final evaluation and what it found, 2026-10-05).
-- [ ] `docs/operations.md` has the measured image size and memory and the staging record.
+- [x] `docs/operations.md` has the measured image size and memory and the staging record
+      (sections "Measured" and "Staging record"; checked on 2026-10-05).
 
 ## The email
 

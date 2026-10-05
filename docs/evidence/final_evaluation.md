@@ -122,9 +122,12 @@ wrote CRLF on Windows); no other byte differs.
 
 - Put the gate table and the comparison table in the README and the slides, with G2 and G3b as
   failures and the caveats above.
-- The ROI of `docs/evidence/roi.md` still uses provisional escalation and LLM cost. Regenerate it
-  with `uv run poe analysis --eval-results eval/reports/heldout-2-20261005T020410Z/results.jsonl`
-  (`docs/evidence/README.md`) and check what changes before quoting it.
+- The ROI of `docs/evidence/roi.md` keeps its provisional escalation and LLM cost, on purpose
+  (`docs/decision_ledger.md`, 2026-10-05): this set's mix is fixed by quotas, so its escalation
+  share is not a traffic rate. `roi.md` now says what this run measured instead: 10 of the 32
+  automatable cases did not end in a safe automated resolution (31%, Wilson 95% 18-49%), more than
+  the 20% central escalation share, so quote the ROI's central saving as optimistic, next to the
+  cautious end of its tornado.
 - The side-by-side replay (`docs/comparison.md`) needs a recorded run of the dev cases on the real
   model: no replay of the sealed set exists, by design.
 - Freeze tag (T26): not created. The evaluated code is commit `30f5120`.

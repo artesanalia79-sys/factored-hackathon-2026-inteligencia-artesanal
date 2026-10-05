@@ -10,8 +10,10 @@ gold baselines), feeds the measured inputs and `config/roi_assumptions.yaml` int
 
 `--eval-results eval/runs/<suite>/results.jsonl --eval-cases <case dir>` (after T27) replaces the
 provisional escalation share and LLM cost with the proposed system's measurements on dispute
-traffic only. Refuses to run unless the warehouse comes from a full silver build whose manifest
-matches `data/bronze/_manifest.json` (when present).
+traffic only. Without it, `roi.md` keeps the provisional values and says what the final evaluation
+measured and why its escalation share is not substituted (`provisional_note`). Refuses to run
+unless the warehouse comes from a full silver build whose manifest matches
+`data/bronze/_manifest.json` (when present).
 
 Owner: Juan José (Task 16).
 """
@@ -234,6 +236,37 @@ def wilson(successes: int, n: int, z: float = 1.959964) -> tuple[float, float]:
     centre = (p + z * z / (2 * n)) / denom
     half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
     return max(0.0, centre - half), min(1.0, centre + half)
+
+
+# What the final evaluation (T27, `eval/reports/heldout-2-20261005T020410Z/report.md`) measured
+# that bears on the provisional inputs. Its held-out set has a mix fixed by quotas (34 of its 90
+# cases were written to need a person, 10 are attacks), so its escalation share describes the test
+# design, not dispute traffic, and the default run does not substitute it. The closest figure is
+# G3b: of the cases where automation is acceptable, how many did not end in a safe automated
+# resolution. The LLM cost is the proposed agent's cost per case run over all 270 runs.
+T27_AUTOMATABLE_CASES = 32
+T27_AUTOMATABLE_NOT_RESOLVED = 10
+T27_LLM_COST_PER_CASE_USD = 0.00026
+
+
+def provisional_note(swing_map: Mapping[str, Swing]) -> str:
+    """The `evaluation inputs` line of `roi.md` when no `--eval-results` is given."""
+    low, high = wilson(T27_AUTOMATABLE_NOT_RESOLVED, T27_AUTOMATABLE_CASES)
+    escalation = swing_map["escalation_share"]
+    llm = swing_map["llm_cost_per_case_usd"]
+    return (
+        "provisional (`pending_eval`), on purpose. The final evaluation (T27) ran on a held-out "
+        "set whose mix was fixed by quotas (34 of its 90 cases were written to need a person), so "
+        "its escalation share describes the test design, not dispute traffic, and is not "
+        f"substituted. Its closest figure: of the {T27_AUTOMATABLE_CASES} cases where automation "
+        f"is acceptable, {T27_AUTOMATABLE_NOT_RESOLVED} did not end in a safe automated resolution "
+        f"({T27_AUTOMATABLE_NOT_RESOLVED / T27_AUTOMATABLE_CASES:.0%}, Wilson 95% "
+        f"{low:.0%}-{high:.0%}), more than the {escalation.central:.0%} central escalation share "
+        "used here: read the central saving as optimistic and the "
+        f"{escalation.high:.0%} end of the tornado as the cautious one. Its LLM cost per case, "
+        f"${T27_LLM_COST_PER_CASE_USD:.5f}, is below the {show(llm.name, llm.low)} low value used "
+        "here (`docs/evidence/final_evaluation.md`)."
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -600,7 +633,8 @@ def roi_report(
         "**Provenance labels.** `measured`: offline measurement on the organizer data. `market`: "
         "public LATAM salary, labour-law and FX data. `industry`: published dispute-operations "
         "studies (US/EU; no public LATAM figures were found). `team`: team estimate. "
-        "`pending_eval`: provisional until the final evaluation (T27) measures it. "
+        "`pending_eval`: provisional, an input the evaluation harness can measure "
+        "(`--eval-results`). "
         "`offline_eval`: measured by the evaluation harness on the held-out case mix. "
         "`projection`: a computed scenario, **not** a measured production result. Nothing in "
         "this document is a measured production saving.",
@@ -938,10 +972,14 @@ def roi_report(
         "## Reproduce",
         "",
         "```",
-        "uv run poe analysis                                   # provisional evaluation inputs",
-        "uv run poe analysis --eval-results eval/runs/<suite>/results.jsonl \\",
-        "                    --eval-cases <evaluated case dir>        # after T27 only",
+        "uv run poe analysis                                   # this file: provisional inputs",
+        "uv run poe analysis --eval-results eval/reports/<suite>/results.jsonl \\",
+        "                    --eval-cases <evaluated case dir>   # measured inputs instead",
         "```",
+        "",
+        "The final evaluation's cases are the sealed held-out set: only a person passes "
+        '`--eval-cases "$HELDOUT_DIR" --allow-heldout`, never a coding agent '
+        "(`AGENTS.md`, rule 3).",
     ]
     svg = tornado_svg(
         bars,
@@ -967,7 +1005,7 @@ def generate(
     tables = run_analyses(con)
     measured = measured_inputs(tables)
     swing_map = swings(assumptions, measured, prices)
-    eval_note = "provisional (`pending_eval`); the final evaluation (T27) has not run"
+    eval_note = provisional_note(swing_map)
     if eval_results is not None:
         inputs = eval_overrides(eval_results, eval_cases, swing_map)
         swing_map = {**swing_map, **inputs.overrides}

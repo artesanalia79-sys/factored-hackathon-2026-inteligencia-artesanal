@@ -46,3 +46,22 @@ Guardrails:
 
 Dev-set intent accuracy of luna is clearly below sol on the same cases (report both on a small
 sample), or spend per full evaluation run exceeds 10 USD.
+
+## Update (2026-10-05, after the final evaluation)
+
+The decision is unchanged; this note records where the repository differs from the text above,
+so a reader can check one against the other.
+
+- Spend: the final evaluation (both systems, 90 held-out cases x 3 repeats, `gpt-6-luna`) cost
+  0.42 USD against the 10 USD bar above; prices were re-checked on 2026-10-04, unchanged
+  (`docs/evidence/final_evaluation.md`, `docs/decision_ledger.md`).
+- The held-out set has 90 cases, not 200 or more (scope reduction of 2026-10-02,
+  `docs/plan/implementation_plan.md`).
+- Not built: the ONNX embeddings (the learned router of Task 18 uses TF-IDF character n-grams and
+  is offline, `docs/models/router.md`) and the cassettes (the real provider is tested offline
+  against synthetic structured outputs and a fake client, `tests/interpret/`; no recorded model
+  response is replayed). No run with `gpt-6-sol` is recorded, so the luna-against-sol comparison
+  was not done and the first condition above was never checked. No judge sample was needed: the
+  evaluation scores with deterministic detectors, not with a model (`eval/preregistration.md`,
+  section 5). The embeddings, the cassettes and the comparison are Task 29
+  (`docs/plan/implementation_plan.md`).

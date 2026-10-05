@@ -224,6 +224,29 @@ def test_generates_all_evidence_aggregate_only(tmp_path: Path, manifest: Path) -
     assert out["roi_tornado.svg"].startswith("<svg")
 
 
+def test_without_eval_results_the_note_says_what_the_final_evaluation_measured(
+    tmp_path: Path, manifest: Path
+) -> None:
+    # Regression: after T27 ran, `roi.md` still said "the final evaluation (T27) has not run".
+    roi = _generate(_warehouse(tmp_path, _sha(manifest)), manifest)["roi.md"]
+    line = next(row for row in roi.splitlines() if row.startswith("- evaluation inputs:"))
+    assert "has not run" not in line
+    assert "The final evaluation (T27) ran" in line
+    # G3b's complement with its Wilson interval, against the assumption values it is compared to.
+    assert "10 did not end in a safe automated resolution (31%, Wilson 95% 18%-49%)" in line
+    assert "more than the 20% central escalation share" in line
+    assert "the 40% end of the tornado" in line
+    assert "$0.00026, is below the $0.0012 low value" in line
+    assert "docs/evidence/final_evaluation.md" in line
+    # The command that would substitute it reads the sealed set: only a person may run it.
+    reproduce = roi.split("## Reproduce", 1)[1]
+    assert "--eval-cases <evaluated case dir>" in reproduce
+    assert (
+        "the sealed held-out set: only a person passes "
+        '`--eval-cases "$HELDOUT_DIR" --allow-heldout`, never a coding agent'
+    ) in reproduce
+
+
 def test_main_writes_files(tmp_path: Path, manifest: Path) -> None:
     warehouse = _warehouse(tmp_path, _sha(manifest))
     out_dir = tmp_path / "evidence"
