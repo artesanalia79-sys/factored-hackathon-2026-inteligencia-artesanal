@@ -108,8 +108,13 @@
     },
     "RuleExplanation": {
       "additionalProperties": false,
-      "description": "A policy rule id next to the human-readable text from ``dispute_policy_v1.yaml``.",
+      "description": "A policy rule id next to the human-readable text from ``dispute_policy_v1.yaml``.\n\n``decisive`` marks a rule that actually decided something case-specific, as opposed to one\nthat was checked and simply passed. For a handoff this is always true: ``trigger_rule_ids``\nis already curated to the rule(s) that caused the escalation. For a dispute it separates the\none rule a `proceed` decision can still vary on (today, only ``card_blockable``: whether this\ncard qualifies for an offered block) from the rest of the rulebook, which this case also\nchecked and passed — shown in full too, so the whole evaluation stays visible, just not all\nweighted the same.",
       "properties": {
+        "decisive": {
+          "default": true,
+          "title": "Decisive",
+          "type": "boolean"
+        },
         "description": {
           "maxLength": 2000,
           "minLength": 1,
@@ -132,18 +137,10 @@
     }
   },
   "additionalProperties": false,
-  "description": "One dispute the agent resolved on its own, with the customer id its own contract omits.\n\n``DisputeCase.rule_ids`` is every rule the policy engine checked, not only the ones that\nchanged anything: for a proceed decision that is most of the rulebook, checked and passed.\n``rule_explanations`` keeps only the decisive one (today, only ``card_blockable`` can still\nread differently from \"proceed\": whether this card qualifies for an offered block).\n``checked_rule_ids`` lists the rest, by id only, so the full audit trail is still here without\na wall of description text that explains nothing case-specific.",
+  "description": "One dispute the agent resolved on its own, with the customer id its own contract omits.",
   "properties": {
     "case": {
       "$ref": "#/$defs/DisputeCase"
-    },
-    "checked_rule_ids": {
-      "default": [],
-      "items": {
-        "type": "string"
-      },
-      "title": "Checked Rule Ids",
-      "type": "array"
     },
     "customer_id": {
       "maxLength": 64,

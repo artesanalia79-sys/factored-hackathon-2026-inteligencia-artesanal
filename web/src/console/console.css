@@ -104,11 +104,29 @@
 }
 .console__rule {
   font-size: 0.85rem;
-  margin: 4px 0 0;
+  margin: 8px 0 0;
+  padding: 8px;
+  border-radius: var(--r-control);
 }
 .console__rule code {
   font-family: var(--mono);
   margin-right: 4px;
+}
+.console__rule--decisive {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-ink);
+}
+.console__rule-tag {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-ink);
+  color: var(--surface);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 .console__steps {
   padding-left: 24px;

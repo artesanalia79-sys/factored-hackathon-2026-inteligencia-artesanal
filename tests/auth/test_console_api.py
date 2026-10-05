@@ -169,9 +169,13 @@ def test_the_right_code_opens_every_console_read(client: TestClient) -> None:
     assert dispute["customer_id"] == MARIANA_ID
     assert dispute["customer_name"] == "Mariana"
     assert dispute["case"]["dispute_id"] == "dsp-1"
-    # Only the decisive (action-kind) rule is explained in full; the rest is just an id.
-    assert [r["rule_id"] for r in dispute["rule_explanations"]] == ["DSP-ACT-01"]
-    assert dispute["checked_rule_ids"] == ["DSP-ELIG-01"]
+    # Every checked rule is explained in full, decisive (action-kind) ones sorted first.
+    rules = dispute["rule_explanations"]
+    assert [(r["rule_id"], r["decisive"]) for r in rules] == [
+        ("DSP-ACT-01", True),
+        ("DSP-ELIG-01", False),
+    ]
+    assert all(r["description"] for r in rules)
 
     blocks = client.get("/api/console/card-blocks", headers=headers)
     assert blocks.status_code == 200

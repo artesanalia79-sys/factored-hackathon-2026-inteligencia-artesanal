@@ -57,20 +57,23 @@ def build_console_router(*, auth: AuthService, deps: ConsoleDeps) -> APIRouter:
     descriptions = {rule.rule_id: rule.description for rule in deps.policy.rules}
     kinds = {rule.rule_id: rule.kind for rule in deps.policy.rules}
 
-    def explanations(rule_ids: Sequence[str]) -> tuple[RuleExplanation, ...]:
-        return tuple(
-            RuleExplanation(rule_id=rule_id, description=descriptions.get(rule_id, rule_id))
+    def explanations(
+        rule_ids: Sequence[str], *, decisive_kinds: Sequence[str] | None = None
+    ) -> tuple[RuleExplanation, ...]:
+        """Every rule by id, in full, decisive ones first. ``decisive_kinds=None`` means every
+        rule given is already curated as decisive (``HandoffPacket.trigger_rule_ids``);
+        otherwise only a rule of one of these kinds is (disputes: ``ACTION_KINDS``, the one a
+        `proceed` decision can still vary on)."""
+        rows = [
+            RuleExplanation(
+                rule_id=rule_id,
+                description=descriptions.get(rule_id, rule_id),
+                decisive=True if decisive_kinds is None else kinds.get(rule_id) in decisive_kinds,
+            )
             for rule_id in rule_ids
-        )
-
-    def split_checked_rules(
-        rule_ids: Sequence[str],
-    ) -> tuple[tuple[RuleExplanation, ...], tuple[str, ...]]:
-        """Every rule a dispute's policy decision checked: the decisive one(s) explained in
-        full, the rest (checked, passed, changed nothing case-specific) as bare ids."""
-        decisive = [rule_id for rule_id in rule_ids if kinds.get(rule_id) in ACTION_KINDS]
-        passed = [rule_id for rule_id in rule_ids if kinds.get(rule_id) not in ACTION_KINDS]
-        return explanations(decisive), tuple(passed)
+        ]
+        rows.sort(key=lambda row: not row.decisive)
+        return tuple(rows)
 
     def require_access(
         x_console_access_code: Annotated[str | None, Header()] = None,
@@ -107,19 +110,15 @@ def build_console_router(*, auth: AuthService, deps: ConsoleDeps) -> APIRouter:
 
     @router.get("/disputes", dependencies=[Depends(require_access)])
     def disputes(limit: int = DEFAULT_LIMIT) -> list[ConsoleDisputeEntry]:
-        result: list[ConsoleDisputeEntry] = []
-        for customer_id, case in deps.list_disputes(limit):
-            decisive, checked = split_checked_rules(case.rule_ids)
-            result.append(
-                ConsoleDisputeEntry(
-                    customer_id=customer_id,
-                    customer_name=deps.customer_name(customer_id),
-                    case=case,
-                    rule_explanations=decisive,
-                    checked_rule_ids=checked,
-                )
+        return [
+            ConsoleDisputeEntry(
+                customer_id=customer_id,
+                customer_name=deps.customer_name(customer_id),
+                case=case,
+                rule_explanations=explanations(case.rule_ids, decisive_kinds=ACTION_KINDS),
             )
-        return result
+            for customer_id, case in deps.list_disputes(limit)
+        ]
 
     @router.get("/card-blocks", dependencies=[Depends(require_access)])
     def card_blocks(limit: int = DEFAULT_LIMIT) -> list[ConsoleCardBlockEntry]:

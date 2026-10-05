@@ -260,17 +260,22 @@ export interface ComparisonStep {
 }
 /**
  * A policy rule id next to the human-readable text from ``dispute_policy_v1.yaml``.
+ *
+ * ``decisive`` marks a rule that actually decided something case-specific, as opposed to one
+ * that was checked and simply passed. For a handoff this is always true: ``trigger_rule_ids``
+ * is already curated to the rule(s) that caused the escalation. For a dispute it separates the
+ * one rule a `proceed` decision can still vary on (today, only ``card_blockable``: whether this
+ * card qualifies for an offered block) from the rest of the rulebook, which this case also
+ * checked and passed — shown in full too, so the whole evaluation stays visible, just not all
+ * weighted the same.
  */
 export interface RuleExplanation {
+  decisive?: boolean
   description: string
   rule_id: string
 }
 /**
  * One row of the handoff queue: escalated to a human, not resolved automatically.
- *
- * ``rule_explanations`` here is short by nature: ``HandoffPacket.trigger_rule_ids`` already
- * names only the rule(s) that actually caused the escalation, not every rule the policy engine
- * checked.
  */
 export interface ConsoleHandoffEntry {
   customer_name?: string | null
@@ -360,17 +365,9 @@ export interface ExecutionRecord {
 }
 /**
  * One dispute the agent resolved on its own, with the customer id its own contract omits.
- *
- * ``DisputeCase.rule_ids`` is every rule the policy engine checked, not only the ones that
- * changed anything: for a proceed decision that is most of the rulebook, checked and passed.
- * ``rule_explanations`` keeps only the decisive one (today, only ``card_blockable`` can still
- * read differently from "proceed": whether this card qualifies for an offered block).
- * ``checked_rule_ids`` lists the rest, by id only, so the full audit trail is still here without
- * a wall of description text that explains nothing case-specific.
  */
 export interface ConsoleDisputeEntry {
   case: DisputeCase
-  checked_rule_ids?: string[]
   customer_id: string
   customer_name?: string | null
   rule_explanations?: RuleExplanation[]

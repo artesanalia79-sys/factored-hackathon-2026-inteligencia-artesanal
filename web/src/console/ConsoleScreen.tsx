@@ -32,23 +32,30 @@ function who(customerId: string, customerName: string | null | undefined): strin
   return customerName ? `${customerName} · ${customerId}` : customerId
 }
 
-function RuleList({ rules }: { rules: { rule_id: string; description: string }[] | undefined }) {
+interface RuleRow {
+  rule_id: string
+  description: string
+  decisive?: boolean
+}
+
+// Every rule the policy engine checked is shown, in full: it is meant to read as "this is how
+// thoroughly we checked", not just "here is the one reason". The decisive one (or ones) is
+// highlighted, so "why did this happen" is still a glance, not a read of the whole rulebook.
+function RuleList({ rules }: { rules: RuleRow[] | undefined }) {
   if (!rules || rules.length === 0) return <p className="console__empty">Ninguna regla.</p>
   return (
     <>
       {rules.map((rule) => (
-        <p key={rule.rule_id} className="console__rule">
-          <code>{rule.rule_id}</code> {rule.description}
+        <p
+          key={rule.rule_id}
+          className={rule.decisive ? 'console__rule console__rule--decisive' : 'console__rule'}
+        >
+          <code>{rule.rule_id}</code>
+          {rule.decisive ? <span className="console__rule-tag">Aplicada en este caso</span> : null}{' '}
+          {rule.description}
         </p>
       ))}
     </>
-  )
-}
-
-function CheckedRules({ ruleIds }: { ruleIds: string[] | undefined }) {
-  if (!ruleIds || ruleIds.length === 0) return null
-  return (
-    <p className="console__meta">Otras reglas evaluadas, sin cambiar nada: {ruleIds.join(', ')}</p>
   )
 }
 
@@ -207,7 +214,6 @@ export default function ConsoleScreen() {
                   <span className="console__meta">Plazo SLA: {entry.case.sla_due_date}</span>
                 ) : null}
                 <RuleList rules={entry.rule_explanations} />
-                <CheckedRules ruleIds={entry.checked_rule_ids} />
               </article>
             ))}
           {tab === 'disputes' && sectionErrors.disputes ? (
