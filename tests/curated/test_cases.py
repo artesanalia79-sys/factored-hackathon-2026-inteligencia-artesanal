@@ -26,6 +26,7 @@ from bankagent.curated.cases import (
     expect,
     pick_cases,
     pool,
+    tells_apart,
 )
 from bankagent.orchestrator.agent import FRAUD_TRIGGER
 from bankagent.policy import build_inputs, evaluate
@@ -245,7 +246,12 @@ def test_each_scenario_picks_the_customers_written_for_it(
     }
     assert set(picked[Scenario.ESCALATE_REPEAT]) == {"repeat", "repeat_on_limit"}
     assert picked[Scenario.ESCALATE_DATA] == ["flagged"]
-    assert set(picked[Scenario.CHOOSE_AMONG_MATCHES]) == {"twins", "triplets"}
+    assert len(picked[Scenario.CHOOSE_AMONG_MATCHES]) == 2
+    assert set(picked[Scenario.CHOOSE_AMONG_MATCHES]) <= {
+        "twins",
+        "triplets",
+        "one_disputable_twin",
+    }
     assert picked[Scenario.DISPUTE_CARD_NOT_ACTIVE] == ["card_blocked"]
     assert set(picked[Scenario.INELIGIBLE_WINDOW]) == {"old", "very_old"}
     assert set(picked[Scenario.INELIGIBLE_STATUS]) <= {"pending", "declined", "reversed"}
@@ -425,3 +431,115 @@ def test_position_is_the_place_in_the_list_the_agent_shows(
         )
         assert len(listed) == case.charge.same_amount
         assert listed[case.charge.position - 1].transaction_id == case.charge.transaction_id
+
+
+# --- charges of one amount: the customer's pick must show ----------------------------------
+
+
+def _twin(transaction_id: str, position: int, **changes: object) -> Charge:
+    """One of two charges of the same amount; position 1 is the newer."""
+    return _charge(transaction_id=transaction_id, same_amount=2, position=position, **changes)
+
+
+def _both(policy: PolicyConfig, newer: Charge, older: Charge) -> tuple[bool, bool]:
+    """``tells_apart`` for each charge of a pair, the other being its twin."""
+    return (
+        tells_apart(newer, [older], policy, AS_OF),
+        tells_apart(older, [newer], policy, AS_OF),
+    )
+
+
+def test_a_pair_that_reaches_a_dispute_or_a_handoff_shows_the_pick_either_way(
+    policy: PolicyConfig,
+) -> None:
+    newer = _twin("TRX-1", 1)
+    older = _twin("TRX-2", 2, transaction_ts=_days_ago(150))
+    # The older one is out of the window: a wrong pick turns a dispute into a refusal, or back.
+    assert _both(policy, newer, older) == (True, True)
+    # Both can be disputed: the stored dispute names the charge it was filed on.
+    assert _both(policy, newer, _twin("TRX-2", 2, transaction_ts=_days_ago(5))) == (True, True)
+    # An escalation names its charge in the handoff, next to a dispute or a refusal.
+    flagged = _twin("TRX-1", 1, fraud_score=45.0)
+    assert _both(policy, newer, replace(flagged, transaction_id="TRX-2", position=2)) == (
+        True,
+        True,
+    )
+    assert _both(policy, flagged, older) == (True, True)
+    # Both escalate the same way (the bank dbt builds in `tests/gold` has such a group).
+    assert _both(policy, flagged, _twin("TRX-2", 2, fraud_score=50.0)) == (True, True)
+    # Even when another charge of the amount would escalate the same way.
+    group = [
+        _charge(transaction_id=f"TRX-{n}", same_amount=3, position=n, fraud_score=score)
+        for n, score in ((1, 4.5), (2, 45.0), (3, 50.0))
+    ]
+    assert expect(group[1], policy, AS_OF) == expect(group[2], policy, AS_OF)
+    assert tells_apart(group[1], [group[0], group[2]], policy, AS_OF)
+
+
+def test_a_pair_where_a_wrong_pick_would_not_show_is_left_alone(policy: PolicyConfig) -> None:
+    older = _twin("TRX-2", 2, transaction_ts=_days_ago(200))
+    # Both out of the window: the same refusal whichever one the agent takes.
+    assert _both(policy, _twin("TRX-1", 1, transaction_ts=_days_ago(120)), older) == (
+        False,
+        False,
+    )
+    # Refused for different reasons: no pick reaches a step that names the charge.
+    assert _both(policy, _twin("TRX-1", 1, status="Pending"), older) == (False, False)
+
+
+def test_a_group_the_pool_does_not_hold_whole_is_left_alone(policy: PolicyConfig) -> None:
+    newer, older, oldest = (
+        _charge(transaction_id=f"TRX-{n}", same_amount=3, position=n, transaction_ts=_days_ago(d))
+        for n, d in ((1, 5), (2, 150), (3, 200))
+    )
+    assert not tells_apart(newer, [older], policy, AS_OF)
+    assert not tells_apart(older, [newer], policy, AS_OF)
+    # More twins than the group has is not the group either.
+    stranger = _charge(transaction_id="TRX-9", same_amount=3, transaction_ts=_days_ago(300))
+    assert not tells_apart(newer, [older, oldest, stranger], policy, AS_OF)
+    assert tells_apart(newer, [older, oldest], policy, AS_OF)
+    # The two old charges get the same refusal: a pick between them would not show.
+    assert not tells_apart(older, [newer, oldest], policy, AS_OF)
+
+
+def test_choosing_among_matches_picks_only_customers_whose_pick_shows(
+    bank: Path, policy: PolicyConfig, as_of: date, people: dict[str, str]
+) -> None:
+    picked = _picked(
+        bank, policy, as_of, people, per_scenario=10, scenarios=[Scenario.CHOOSE_AMONG_MATCHES]
+    )
+    assert set(picked[Scenario.CHOOSE_AMONG_MATCHES]) == {
+        "twins",
+        "triplets",
+        "one_disputable_twin",
+    }
+    # Either charge of the split pair can be the one picked, and the older one ends refused.
+    with duckdb.connect(str(bank), read_only=True) as con:
+        twins = pool(con, policy, as_of, "twins", seed="19", limit=100)
+    split = sorted(
+        (c for c in twins if c.customer_id == people["one_disputable_twin"]),
+        key=lambda c: c.position,
+    )
+    assert [expect(c, policy, as_of).decision for c in split] == [
+        DecisionType.PROCEED,
+        DecisionType.INELIGIBLE,
+    ]
+    assert tells_apart(split[0], [split[1]], policy, as_of)
+    assert tells_apart(split[1], [split[0]], policy, as_of)
+    # The seed decides which of the two a run takes; across seeds both are taken.
+    taken = set()
+    for seed in map(str, range(40)):
+        (case,) = [
+            case
+            for case in pick_cases(
+                bank,
+                policy,
+                as_of,
+                per_scenario=10,
+                seed=seed,
+                scenarios=[Scenario.CHOOSE_AMONG_MATCHES],
+            )
+            if case.customer_id == people["one_disputable_twin"]
+        ]
+        taken.add(case.charge.position)
+    assert taken == {1, 2}

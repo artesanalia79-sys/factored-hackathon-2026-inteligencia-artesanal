@@ -64,10 +64,10 @@ def test_the_report_says_what_ran_and_how_it_ended(result: RunResult) -> None:
     assert "Service checks: all held." in text
     assert "`data_mode=curated`, `as_of_date=2026-06-17`" in text
     assert "`validate_serving_db()`: 0 problems" in text
-    assert "32 transactions" in text
-    assert "30 cards" in text
+    assert "40 transactions" in text
+    assert "33 cards" in text
     assert "run on 2026-10-04: seed `19`, 2 cases per scenario" in text
-    assert "| `transactions_enriched` | 32 |" in text
+    assert "| `transactions_enriched` | 40 |" in text
     assert "### Failures" not in text
     for scenario, (title, _) in SCENARIOS.items():
         assert f"### {title} (`{scenario.value}`)" in text

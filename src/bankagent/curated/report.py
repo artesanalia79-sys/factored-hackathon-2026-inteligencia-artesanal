@@ -38,8 +38,10 @@ SCENARIOS: dict[Scenario, tuple[str, str]] = {
     ),
     Scenario.CHOOSE_AMONG_MATCHES: (
         "Two charges of the same amount",
-        "The agent lists them, the customer picks one by its position, and the policy decides "
-        "on that one.",
+        "The agent lists them and the customer picks one by its position. At least one of them "
+        "would end in a dispute or a handoff, and taking the wrong one would end differently: "
+        "the dispute or the handoff must name the charge picked, and a refusal must be the one "
+        "that charge gets.",
     ),
     Scenario.DISPUTE_CARD_NOT_ACTIVE: (
         "Dispute, card not active",

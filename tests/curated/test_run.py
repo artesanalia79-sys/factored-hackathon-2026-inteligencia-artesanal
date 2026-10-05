@@ -46,6 +46,7 @@ from bankagent.curated.run import (
     run_cases,
 )
 from bankagent.interpret.keywords import MODEL_NAME
+from bankagent.orchestrator import agent as agent_module
 from bankagent.orchestrator.agent import Agent
 from bankagent.policy import engine
 from bankagent.policy.schema import PolicyConfig
@@ -83,7 +84,7 @@ def test_every_scenario_passes_and_the_ops_store_holds_exactly_what_was_confirme
     assert result.row_check.problems == ()
     assert result.passed
     assert result.metadata["data_mode"] == "curated"
-    assert result.rows["transactions_enriched"] == 32
+    assert result.rows["transactions_enriched"] == 40
 
     kinds = {case.case.case_id: [turn.kind for turn in case.turns] for case in result.cases}
     assert kinds["dispute_card_not_active-01"] == [
@@ -96,6 +97,17 @@ def test_every_scenario_passes_and_the_ops_store_holds_exactly_what_was_confirme
     # Three charges of one amount: the list, the position, then the chosen charge's own path.
     choose = next(case for case in result.cases if case.case.charge.same_amount == 3)
     assert [turn.kind for turn in choose.turns][:2] == [Reply.CHOOSE, Reply.RECOGNIZE]
+    # Of two charges where only the newer can be disputed, the older one is picked: refused for
+    # the window. Had the agent taken the newer one, it would have asked to confirm a dispute.
+    older = next(
+        case
+        for case in result.cases
+        if case.case.scenario == Scenario.CHOOSE_AMONG_MATCHES
+        and case.case.expected.decision == DecisionType.INELIGIBLE
+    )
+    assert older.case.charge.position == 2
+    assert [turn.kind for turn in older.turns] == [Reply.CHOOSE, Reply.RECOGNIZE, Reply.INELIGIBLE]
+    assert older.turns[-1].steps[-1] == "policy blocked DSP-WIN-01"
 
     def count(kind: Reply) -> int:
         return sum(turn.kind == kind for case in result.cases for turn in case.turns)
@@ -106,7 +118,7 @@ def test_every_scenario_passes_and_the_ops_store_holds_exactly_what_was_confirme
         assert store.count("card_blocks") == count(Reply.BLOCKED) == 2
         assert store.count("handoffs") == count(Reply.ESCALATED) == 5
         assert store.count("confirmation_tokens") == disputes + 2
-    assert disputes == 9  # 2 + 2 + 2 dispute scenarios, 1 blocked card, 2 chosen among matches
+    assert disputes == 8  # 2 + 2 + 2 dispute scenarios, 1 blocked card, 1 chosen among matches
 
 
 def test_the_steps_of_each_turn_are_recorded_for_the_report(
@@ -349,6 +361,30 @@ def test_a_fraud_escalation_sent_to_the_wrong_team_fails_the_run(
     monkeypatch.setattr("bankagent.orchestrator.agent.FRAUD_TRIGGER", "no-such-trigger")
     result = _run(bank, tmp_path, policy, _one(bank, policy, as_of, Scenario.ESCALATE_FRAUD))
     assert result.failures == ["the stored handoff is not the one the decision asks for"]
+
+
+def test_an_agent_that_takes_another_charge_of_the_amount_fails_the_run(
+    bank: Path, tmp_path: Path, policy: PolicyConfig, as_of: date, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Follow-up of the PR #70 review: whatever position the customer names, this agent takes
+    # the newest charge of the amount. Every case of the scenario must catch it.
+    named = agent_module._position  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(
+        "bankagent.orchestrator.agent._position",
+        lambda text, count: None if named(text, count) is None else 0,
+    )
+    cases = pick_cases(
+        bank, policy, as_of, per_scenario=2, seed="19", scenarios=[Scenario.CHOOSE_AMONG_MATCHES]
+    )
+    assert [case.charge.position for case in cases] == [2, 2]
+    result = run_cases(bank, tmp_path / "run", policy, cases)
+    failures = {case.case.expected.decision: case.failures for case in result.cases}
+    # The older of two charges, which cannot be disputed: the agent offered a dispute instead.
+    assert "turn 3: expected ineligible, got confirm_dispute" in failures[DecisionType.INELIGIBLE]
+    # Two charges that can both be disputed: the dispute went to the other one.
+    assert failures[DecisionType.PROCEED] == [
+        "no dispute is stored for the customer and the charge"
+    ]
 
 
 @pytest.mark.parametrize(

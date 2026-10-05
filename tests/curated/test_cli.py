@@ -38,7 +38,7 @@ def test_the_whole_run_passes_and_writes_the_report_and_the_transcripts(
     assert _run(bank, tmp_path, "--per-scenario", "1") == cli.OK
     out = capsys.readouterr().out
     assert "validate_serving_db: 0 problems" in out
-    assert "32 transactions" in out
+    assert "40 transactions" in out
     assert "12 of 12 cases passed" in out
     assert "service checks: all held" in out
     for scenario in Scenario:
@@ -239,8 +239,8 @@ def test_check_passes_on_a_curated_file_and_runs_nothing(
     assert _run(bank, tmp_path, "--check") == cli.OK
     out = capsys.readouterr().out
     assert "data_mode=curated, as_of_date=2026-06-17, validate_serving_db: 0 problems" in out
-    assert "rows against the runtime's views: 32 transactions" in out
-    assert "30 cards (30): 0 problems" in out
+    assert "rows against the runtime's views: 40 transactions" in out
+    assert "33 cards (33): 0 problems" in out
     assert not (tmp_path / "work").exists()
     assert not (tmp_path / "report.md").exists()
 

@@ -295,9 +295,30 @@ def _fits(scenario: Scenario, expected: Expected, policy: PolicyConfig) -> bool:
         Scenario.ALREADY_DISPUTED,
     }:
         return decision == DecisionType.PROCEED and expected.block_offered
-    # Choosing among matches follows whatever the policy decides for the chosen charge; a
-    # recognized charge and another customer's charge never reach the policy.
+    # Choosing among matches is checked against the other charges of the amount (`tells_apart`);
+    # a recognized charge and another customer's charge never reach the policy.
     return True
+
+
+def tells_apart(charge: Charge, twins: Sequence[Charge], policy: PolicyConfig, as_of: date) -> bool:
+    """Whether a ``choose_among_matches`` case on ``charge`` shows which charge the agent took.
+
+    ``twins`` are the customer's other charges of the same amount. At least one charge of the
+    amount must not be refused, so the scenario reaches a step that names a charge: a dispute
+    or a handoff, whose charge the run checks. Taking the wrong one must then end differently:
+    a dispute or a handoff names the charge it was made for, and a refusal must differ from
+    the outcome of every twin. ``False`` when ``twins`` is not exactly the rest of the group
+    (``same_amount``): a twin that is not looked at cannot be compared.
+    """
+    if len(twins) != charge.same_amount - 1:
+        return False
+    mine = expect(charge, policy, as_of)
+    theirs = [expect(twin, policy, as_of) for twin in twins]
+    if all(outcome.decision == DecisionType.INELIGIBLE for outcome in (mine, *theirs)):
+        return False
+    if mine.decision in {DecisionType.PROCEED, DecisionType.ESCALATE}:
+        return True
+    return mine not in theirs
 
 
 def _charge(row: tuple[Any, ...]) -> Charge:
@@ -398,6 +419,16 @@ class _Picker:
         ).fetchone()
         return bool(row and row[0])
 
+    def twins_of(self, charge: Charge) -> list[Charge]:
+        """The customer's other charges of the amount, as far as the twins pool holds them."""
+        return [
+            other
+            for other in self.charges(_FAMILY[Scenario.CHOOSE_AMONG_MATCHES])
+            if other.customer_id == charge.customer_id
+            and other.amount == charge.amount
+            and other.transaction_id != charge.transaction_id
+        ]
+
     def pick(self, scenario: Scenario, count: int) -> list[CuratedCase]:
         picked: list[CuratedCase] = []
         candidates = self.charges(_FAMILY[scenario])
@@ -408,6 +439,10 @@ class _Picker:
                 continue
             expected = expect(charge, self.policy, self.as_of)
             if not _fits(scenario, expected, self.policy):
+                continue
+            if scenario == Scenario.CHOOSE_AMONG_MATCHES and not tells_apart(
+                charge, self.twins_of(charge), self.policy, self.as_of
+            ):
                 continue
             customer, language = charge.customer_id, charge.language
             if scenario == Scenario.OTHER_CUSTOMERS_CHARGE:

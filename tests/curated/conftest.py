@@ -274,6 +274,25 @@ def write_bank(path: Path, *, data_mode: str = "curated") -> dict[str, str]:
             who["closed_complaint"], days_ago=200, category="Fees", status="Resolved", about=settled
         )
 
+        # Charges of one amount where only the newer can be disputed, so either pick shows
+        # which one the agent took. The pairs after it must be left alone: a wrong pick would
+        # end the same way (both out of the window), or no pick reaches a write (both refused,
+        # for different reasons). Added last, so the rows above keep their ids.
+        who["one_disputable_twin"] = bank.customer("CO")
+        bank.charge(who["one_disputable_twin"], "23450.80", days_ago=8, merchant="Panadería Luna")
+        bank.charge(who["one_disputable_twin"], "23450.80", days_ago=150, merchant="Librería Sol")
+        # The same amount as the pair above: a charge's twins are its own customer's only.
+        who["old_twins"] = bank.customer("MX")
+        for days_ago in (120, 200):
+            bank.charge(who["old_twins"], "23450.80", days_ago=days_ago)
+        who["refused_twins"] = bank.customer("AR")
+        bank.charge(who["refused_twins"], "4410.70", days_ago=6, status="Pending")
+        bank.charge(who["refused_twins"], "4410.70", days_ago=130)
+        # A second amount the "twins" customer paid twice: its charges are not twins of the
+        # first pair.
+        for days_ago in (100, 300):
+            bank.charge(who["twins"], "3100.40", days_ago=days_ago)
+
         for agent_id, specialty in (
             ("AGT-1", "fraud"),
             ("AGT-2", "disputes"),

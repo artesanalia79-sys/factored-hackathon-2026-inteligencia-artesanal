@@ -27,10 +27,10 @@ def _altered(bank: Path, tmp_path: Path, statement: str, *params: object) -> Pat
 def test_every_row_of_the_bank_fits_its_view(bank: Path) -> None:
     check = check_rows(bank)
     assert check.problems == ()
-    assert (check.transactions, check.cards) == (32, 30)
+    assert (check.transactions, check.cards) == (40, 33)
     # Far fewer shapes than rows is the point: each shape is parsed once.
     assert 1 <= check.transaction_shapes < check.transactions
-    assert check.card_shapes == 30  # every card has its own ending
+    assert check.card_shapes == 33  # every card has its own ending
 
 
 @pytest.mark.parametrize(
