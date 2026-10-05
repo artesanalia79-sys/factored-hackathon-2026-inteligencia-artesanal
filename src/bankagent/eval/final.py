@@ -422,6 +422,9 @@ def run_final(
             workload=f"sealed held-out set (manifest sha256 {manifest_sha[:16]})"
             if manifest_sha
             else None,
+            # The report folder of the sealed set goes into the repository: no replay of its
+            # conversations is written there, even if a sealed case called itself a dev case.
+            replay=not heldout,
         )
         if traces
         else []

@@ -71,6 +71,22 @@ def test_api_routes_keep_precedence_over_the_ui(service: AuthService, dist: Path
     assert "Content-Security-Policy" not in docs.headers
 
 
+@pytest.mark.parametrize("path", ["/compare", "/compare/"])
+def test_comparison_route_serves_the_app_with_strict_csp(
+    service: AuthService, dist: Path, path: str
+) -> None:
+    client = _client(service, dist)
+    response = client.get(path)
+    assert response.status_code == 200
+    assert "<title>UI</title>" in response.text
+    assert response.headers["Cache-Control"] == "no-cache"
+    assert (
+        response.headers["Content-Security-Policy"]
+        == WEB_SECURITY_HEADERS["Content-Security-Policy"]
+    )
+    assert client.get("/compare/unknown").status_code == 404
+
+
 @pytest.mark.parametrize(
     ("method", "path", "allowed"),
     [

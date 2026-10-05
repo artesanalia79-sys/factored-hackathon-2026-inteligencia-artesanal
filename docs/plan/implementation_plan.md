@@ -226,6 +226,10 @@ Handoff queue view, evidence view per case, dbt docs published at `/lineage`.
 
 **T22. Side-by-side naive vs. controlled** [P1] (Jacobo)
 
+Implemented as a dev-only replay at `/compare`: paired case/repeat dialogue, scorer results,
+verified actions and execution steps. Explicit simulation labels and local file loading;
+no live parallel writes. See [`docs/comparison.md`](../comparison.md).
+
 **T23. Load test (k6 or locust)** [P1] (Santiago)
 
 **T24. promptfoo red team** [P1] (Santiago + Jacobo)
@@ -261,7 +265,8 @@ not forgotten. Each line keeps its original task number. Nothing here blocks the
 | T19 | Done on 2026-10-04: `uv run poe curated-e2e` runs the agent end to end on the curated serving DB, with the evidence in `docs/evidence/curated_e2e.md`. Left: the organizers' answer on organizer data in the demo (issue #19), a run with the real model, reading `TRX-…` references and `CLI-…` ids, and `accepted_values` tests on the gold enum columns (`docs/limitations.md`, "Curated mode"). |
 | T20 | Full fallback matrix (LLM timeout, malformed, unavailable), Langfuse export. One source for the redaction patterns (logs, prompts, `pii_leak`), redaction of the customer message before the model call, and the `bankagent.auth` login events in the service's output (`docs/limitations.md`). |
 | T21 | Agent console and evidence view per case. |
-| T22-T25 | Side-by-side UI, load test, promptfoo red team (plugins listed in T24), external pilot. |
+| T22 | Done as a replay at `/compare` (`docs/comparison.md`). Left: use it in the video with a recorded run of the real systems (on the keyword stub the LLM-only baseline cannot act, and the smoke run is a labelled simulation); a live parallel chat was traded for the replay. |
+| T23-T25 | Load test, promptfoo red team (plugins listed in T24), external pilot. |
 | T8 | Customer-local date parsing and a one-day search window (`docs/limitations.md`). |
 | T15 | Rate limiting per client behind the platform's proxy (the access code replaced it for the demo); a paid instance and an ops store outside the container; memory and latency measured on Render itself with the real model on. |
 

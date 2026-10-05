@@ -1,0 +1,396 @@
+{
+  "$defs": {
+    "ActionType": {
+      "enum": [
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    },
+    "ComparisonRun": {
+      "additionalProperties": false,
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/EvalResult"
+        },
+        "system_name": {
+          "title": "System Name",
+          "type": "string"
+        },
+        "turns": {
+          "items": {
+            "$ref": "#/$defs/ComparisonTurn"
+          },
+          "title": "Turns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "system_name",
+        "result",
+        "turns"
+      ],
+      "title": "ComparisonRun",
+      "type": "object"
+    },
+    "ComparisonStep": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model"
+        },
+        "outcome": {
+          "$ref": "#/$defs/StepOutcome"
+        },
+        "rule_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        },
+        "state": {
+          "$ref": "#/$defs/ConversationState"
+        },
+        "step": {
+          "$ref": "#/$defs/StepKind"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolName"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verified": {
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "step",
+        "state",
+        "tool",
+        "outcome",
+        "verified",
+        "rule_ids",
+        "model"
+      ],
+      "title": "ComparisonStep",
+      "type": "object"
+    },
+    "ComparisonTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "reply_text": {
+          "title": "Reply Text",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/ComparisonStep"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "user_text": {
+          "title": "User Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_text",
+        "reply_text",
+        "steps"
+      ],
+      "title": "ComparisonTurn",
+      "type": "object"
+    },
+    "ConversationState": {
+      "enum": [
+        "auth",
+        "understand",
+        "identify_txn",
+        "recognize",
+        "check_policy",
+        "confirm",
+        "act",
+        "verify",
+        "respond",
+        "clarify",
+        "abstain",
+        "escalate",
+        "done"
+      ],
+      "title": "ConversationState",
+      "type": "string"
+    },
+    "EvalResult": {
+      "additionalProperties": false,
+      "description": "Score of one system on one case in one repeat, computed from ExecutionRecords.",
+      "properties": {
+        "actions_taken": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ActionType"
+          },
+          "title": "Actions Taken",
+          "type": "array"
+        },
+        "automation_attempted": {
+          "title": "Automation Attempted",
+          "type": "boolean"
+        },
+        "case_id": {
+          "pattern": "^[a-z0-9][a-z0-9-]{2,79}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "correct": {
+          "title": "Correct",
+          "type": "boolean"
+        },
+        "cost_usd_total": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Cost Usd Total"
+        },
+        "escalated": {
+          "title": "Escalated",
+          "type": "boolean"
+        },
+        "final_outcome": {
+          "$ref": "#/$defs/Outcome"
+        },
+        "handoff_complete": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Handoff Complete"
+        },
+        "latencies_ms": {
+          "default": [],
+          "items": {
+            "type": "number"
+          },
+          "title": "Latencies Ms",
+          "type": "array"
+        },
+        "repeat_index": {
+          "minimum": 0,
+          "title": "Repeat Index",
+          "type": "integer"
+        },
+        "run_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "safe_automated_resolution": {
+          "title": "Safe Automated Resolution",
+          "type": "boolean"
+        },
+        "system": {
+          "$ref": "#/$defs/SystemVariant"
+        },
+        "trace_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Trace Ids",
+          "type": "array"
+        },
+        "turns_used": {
+          "minimum": 0,
+          "title": "Turns Used",
+          "type": "integer"
+        },
+        "unsafe_events": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/UnsafeEvent"
+          },
+          "title": "Unsafe Events",
+          "type": "array"
+        },
+        "verified_actions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ActionType"
+          },
+          "title": "Verified Actions",
+          "type": "array"
+        },
+        "versions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Versions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "case_id",
+        "system",
+        "run_id",
+        "repeat_index",
+        "final_outcome",
+        "escalated",
+        "turns_used",
+        "correct",
+        "safe_automated_resolution",
+        "automation_attempted"
+      ],
+      "title": "EvalResult",
+      "type": "object"
+    },
+    "Outcome": {
+      "enum": [
+        "automated_resolution",
+        "deflected_recognized",
+        "abstained",
+        "escalated",
+        "denied",
+        "reauth_required",
+        "incomplete",
+        "failed"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "StepKind": {
+      "description": "What an ExecutionRecord step did.",
+      "enum": [
+        "authenticate",
+        "route",
+        "interpret",
+        "tool_call",
+        "policy",
+        "confirmation",
+        "verify",
+        "render",
+        "handoff"
+      ],
+      "title": "StepKind",
+      "type": "string"
+    },
+    "StepOutcome": {
+      "enum": [
+        "success",
+        "failure",
+        "blocked",
+        "fallback"
+      ],
+      "title": "StepOutcome",
+      "type": "string"
+    },
+    "SystemVariant": {
+      "enum": [
+        "baseline_llm_only",
+        "proposed"
+      ],
+      "title": "SystemVariant",
+      "type": "string"
+    },
+    "ToolName": {
+      "enum": [
+        "list_cards",
+        "search_transactions",
+        "get_transaction",
+        "get_dispute",
+        "create_dispute",
+        "block_card",
+        "create_handoff"
+      ],
+      "title": "ToolName",
+      "type": "string"
+    },
+    "UnsafeEvent": {
+      "enum": [
+        "cross_customer_disclosure",
+        "unauthorized_action",
+        "action_without_confirmation",
+        "unverified_claim",
+        "action_on_attack",
+        "pii_leak",
+        "policy_violation",
+        "materially_incorrect_outcome"
+      ],
+      "title": "UnsafeEvent",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "case_set_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Case Set Sha256",
+      "type": "string"
+    },
+    "cost_assumptions": {
+      "title": "Cost Assumptions",
+      "type": "string"
+    },
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/ComparisonRun"
+      },
+      "minItems": 1,
+      "title": "Runs",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "simulated": {
+      "title": "Simulated",
+      "type": "boolean"
+    },
+    "suite_id": {
+      "title": "Suite Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "suite_id",
+    "case_set_sha256",
+    "simulated",
+    "cost_assumptions",
+    "runs"
+  ],
+  "title": "ComparisonBundle",
+  "type": "object"
+}

@@ -25,13 +25,14 @@ from decimal import Decimal
 from pathlib import Path
 from typing import NamedTuple
 
-from bankagent.contracts.enums import SystemVariant, UnsafeEvent
+from bankagent.contracts.enums import EvalSplit, SystemVariant, UnsafeEvent
 from bankagent.contracts.evaluation import EvalCase
 from bankagent.contracts.llm import LLMProvider
 from bankagent.eval.adapters import baseline_llm_only_system, proposed_system
 from bankagent.eval.backend import FixtureBackendFactory
 from bankagent.eval.bank import BankIndex, load_bank
 from bankagent.eval.cases import DEV_DIR, ROOT, case_set_sha256, load_cases, reference_problems
+from bankagent.eval.comparison import build_comparison
 from bankagent.eval.fake import Behavior, ScriptedFakeSystem
 from bankagent.eval.gates import GATES_FILE, evaluate, load_gates
 from bankagent.eval.metrics import system_metrics
@@ -89,11 +90,15 @@ def write_outputs(
     simulated: bool,
     cost_assumptions: str,
     workload: str | None = None,
+    replay: bool = True,
 ) -> list[ScoredRun]:
     """Score the traces, evaluate the gates and write report.md, results and unsafe reasons.
 
     ``workload`` replaces the folder in the report: a sealed set is named by its manifest,
-    not by a path on someone's machine.
+    not by a path on someone's machine. A suite of dev cases only also gets ``comparison.json``,
+    the replay that quotes its conversations (T22). ``replay=False`` never writes it, whatever
+    the cases say about themselves: the Task 27 command passes it for the sealed set, which it
+    recognizes by its manifest and not by a label inside a file.
     """
     runs = [score(trace, bank) for trace in traces]
     metrics = {
@@ -125,6 +130,9 @@ def write_outputs(
         gate_results,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
+    # First: a reused output directory must not keep the replay of an earlier suite next to
+    # this report, also when this suite gets none or its replay cannot be built.
+    (out_dir / "comparison.json").unlink(missing_ok=True)
     (out_dir / "report.md").write_text(report, encoding="utf-8")
     with (out_dir / "results.jsonl").open("w", encoding="utf-8") as handle:
         for run in runs:
@@ -139,6 +147,18 @@ def write_outputs(
                     "reasons": {e.value: list(v) for e, v in run.unsafe_reasons.items()},
                 }
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    # Last: the report and the results never wait for the replay.
+    if replay and runs and all(run.trace.case.split == EvalSplit.DEV for run in runs):
+        comparison = build_comparison(
+            runs,
+            suite_id=suite_id,
+            case_set_sha256=case_set_sha256(cases),
+            simulated=simulated,
+            cost_assumptions=cost_assumptions,
+        )
+        (out_dir / "comparison.json").write_text(
+            comparison.model_dump_json(indent=2) + "\n", encoding="utf-8"
+        )
     for variant, m in metrics.items():
         print(
             f"{variant.value:<18} cases={m.n_cases} runs={m.n_runs} "
