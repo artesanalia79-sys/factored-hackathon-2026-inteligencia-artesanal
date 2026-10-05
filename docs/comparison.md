@@ -1,10 +1,12 @@
 # T22: side-by-side replay
 
 Open **Comparar agentes** on the sign-in screen, or navigate to `/compare`.
-Choose a `comparison.json` exported by the evaluation harness, or click **Cargar ejemplo de
-demo** to open the one bundled with the site (below). Either way it stays in browser memory;
+Choose a `comparison.json` exported by the evaluation harness, or click **Load demo example**
+to open the one bundled with the site (below). Either way it stays in browser memory;
 there is no upload, persistent browser storage, backend call or write action. Returning home
-or reloading clears the replay. The page is a Spanish reviewer tool, separate from customer chat.
+or reloading clears the replay. The page's own chrome is English, a reviewer tool separate from
+customer chat; the recorded conversations it replays stay in the Spanish or Portuguese the
+customer and agent actually used.
 
 ## The bundled demo example
 
@@ -32,7 +34,7 @@ uv run poe serve
 ```
 
 Open `/compare` and choose `eval/runs/smoke/comparison.json`. The smoke run uses the **scripted
-naive and ideal fakes**, not the actual baseline and controlled agent. The visible SIMULATION
+naive and ideal fakes**, not the actual baseline and controlled agent. The visible "SIMULATION"
 banner explains this. These are harness checks, not evidence of model quality.
 
 Select a case and repeat, then use Previous / Next to inspect the conversation. Columns stay

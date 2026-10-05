@@ -26,34 +26,34 @@ test('replays paired evidence, selects repeats, navigates turns and returns home
 }) => {
   await page.goto('/')
   await page.getByRole('link', { name: 'Comparar agentes' }).click()
-  await expect(page.getByRole('heading', { name: 'Abre una ejecución para empezar' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Open a run to start' })).toBeVisible()
   const requests: string[] = []
   page.on('request', (request) => {
     if (request.method() !== 'GET') requests.push(request.url())
   })
   await page
-    .getByLabel('Abrir comparison.json')
+    .getByLabel('Open comparison.json')
     .setInputFiles({
       name: 'comparison.json',
       mimeType: 'application/json',
       buffer: Buffer.from(artifact),
     })
-  await expect(page.getByText('SIMULACIÓN · agentes con guion, no resultados reales')).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Agente ingenuo' })).toContainText(
-    'Eventos inseguros:',
+  await expect(page.getByText('SIMULATION · scripted agents, not real results')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Naive agent' })).toContainText(
+    'Unsafe events:',
   )
-  await expect(page.getByRole('region', { name: 'Agente controlado' })).toContainText(
-    'Ninguno detectado',
+  await expect(page.getByRole('region', { name: 'Controlled agent' })).toContainText(
+    'None detected',
   )
-  await page.getByLabel('Repetición', { exact: true }).selectOption('1')
-  await page.getByRole('button', { name: 'Siguiente', exact: true }).click()
-  await expect(page.getByRole('status')).toHaveText(/Turno 2 de/)
-  await page.getByRole('button', { name: 'Anterior', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Anterior', exact: true })).toBeDisabled()
-  await page.getByLabel('Caso', { exact: true }).selectOption('dev-injection-es-ar-001')
-  await expect(page.getByRole('status')).toHaveText(/Turno 1 de/)
+  await page.getByLabel('Repeat', { exact: true }).selectOption('1')
+  await page.getByRole('button', { name: 'Next', exact: true }).click()
+  await expect(page.getByRole('status')).toHaveText(/Turn 2 of/)
+  await page.getByRole('button', { name: 'Previous', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled()
+  await page.getByLabel('Case', { exact: true }).selectOption('dev-injection-es-ar-001')
+  await expect(page.getByRole('status')).toHaveText(/Turn 1 of/)
   expect(requests).toEqual([])
-  await page.getByRole('link', { name: 'Volver al inicio' }).click()
+  await page.getByRole('link', { name: 'Back to home' }).click()
   await expect(page.getByRole('link', { name: 'Comparar agentes' })).toBeVisible()
 })
 
@@ -61,7 +61,7 @@ test('rejects malformed and duplicate files; handles missing counterparts and re
   page,
 }) => {
   await page.goto('/compare')
-  const input = page.getByLabel('Abrir comparison.json')
+  const input = page.getByLabel('Open comparison.json')
   const inconsistent = JSON.parse(artifact)
   inconsistent.runs[0].result.verified_actions = ['block_card']
   inconsistent.runs[0].result.actions_taken = []
@@ -96,7 +96,7 @@ test('rejects malformed and duplicate files; handles missing counterparts and re
       mimeType: 'application/json',
       buffer: Buffer.from(contents),
     })
-    await expect(page.getByRole('alert')).toContainText('No se pudo abrir')
+    await expect(page.getByRole('alert')).toContainText('Could not open')
   }
   const partial = JSON.parse(artifact)
   partial.simulated = false
@@ -108,20 +108,20 @@ test('rejects malformed and duplicate files; handles missing counterparts and re
     buffer: Buffer.from(JSON.stringify(partial)),
   })
   await expect(page.getByRole('alert')).toHaveCount(0)
-  await expect(page.getByText('EJECUCIÓN REGISTRADA · consulta el proveedor y modelo')).toBeVisible()
-  await expect(page.getByText('Sin ejecución para este caso y repetición')).toBeVisible()
+  await expect(page.getByText('RECORDED RUN · check the provider and model')).toBeVisible()
+  await expect(page.getByText('No run for this case and repeat')).toBeVisible()
   await expect(page.getByText('<img src=x onerror=alert(1)>', { exact: true })).toBeVisible()
   await expect(page.locator('.comparison img')).toHaveCount(0)
 })
 
 test('the bundled demo example loads with one click, no file needed', async ({ page }) => {
   await page.goto('/compare')
-  await page.getByRole('button', { name: 'Cargar ejemplo de demo' }).click()
+  await page.getByRole('button', { name: 'Load demo example' }).click()
   await expect(
-    page.getByText('EJECUCIÓN REGISTRADA · consulta el proveedor y modelo'),
+    page.getByText('RECORDED RUN · check the provider and model'),
   ).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Agente ingenuo' })).toContainText('failed')
-  await expect(page.getByRole('region', { name: 'Agente controlado' })).toContainText('escalated')
+  await expect(page.getByRole('region', { name: 'Naive agent' })).toContainText('failed')
+  await expect(page.getByRole('region', { name: 'Controlled agent' })).toContainText('escalated')
 })
 
 for (const colorScheme of ['light', 'dark'] as const) {
@@ -130,13 +130,13 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme })
     await page.goto('/compare')
     await page
-      .getByLabel('Abrir comparison.json')
+      .getByLabel('Open comparison.json')
       .setInputFiles({
         name: 'comparison.json',
         mimeType: 'application/json',
         buffer: Buffer.from(artifact),
       })
-    await expect(page.getByRole('region', { name: 'Agente controlado' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Controlled agent' })).toBeVisible()
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
