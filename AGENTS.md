@@ -96,7 +96,7 @@ Python is managed by uv (Python 3.12). Tasks run through poethepoet: `uv run poe
 | `uv run poe image-smoke` | build and check the container image (needs Docker; CI job `image` runs it) |
 | `uv run poe web-install` / `web-build` | install the web UI's locked npm deps / build `web/dist` (served by `poe serve` at `/`) |
 | `uv run poe web-check` / `web-e2e` | web UI: types vs contracts, strict TS, lint / Playwright against the real API |
-| `uv run poe` | list every task (placeholders exit 2 until their task lands) |
+| `uv run poe` | list every task |
 
 ## Definition of Done (every change)
 

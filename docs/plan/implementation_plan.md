@@ -271,6 +271,8 @@ not forgotten. Each line keeps its original task number. Nothing here blocks the
 | T23-T25 | Load test, promptfoo red team (plugins listed in T24), external pilot. |
 | T8 | Customer-local date parsing and a one-day search window (`docs/limitations.md`). |
 | T15 | Rate limiting per client behind the platform's proxy (the access code replaced it for the demo); a paid instance and an ops store outside the container; memory and latency measured on Render itself with the real model on. |
+| T10 | Recorded model responses (cassettes) for the provider's tests, and the `gpt-6-luna` against `gpt-6-sol` comparison on a dev sample that ADR 0002 names as its check; neither was done (ADR 0002, "Update"). |
+| T27 | The two causes of the missed gates (`docs/evidence/final_evaluation.md`, "Why the two gates failed"): fall back to an amount-only search when the merchant-and-amount search is empty and drop a clue that found nothing (from T13 and T8); give the interpreter the question it is reading an answer to (from T13). The human check of a transcript sample (`eval/preregistration.md`, section 12) and the second annotation with Cohen's kappa (deviation D3). |
 
 ## P2 backlog
 
