@@ -43,11 +43,13 @@ Owners marked "T28" are not assigned yet: Santiago assigns them when T28 starts.
 
 Making it public publishes the whole git history, not only the current files.
 
-- [ ] `gitleaks` on the full history is green on `main` (CI job `secrets`).
+- [x] `gitleaks` on the full history is green on `main` (CI job `secrets`). Checked on
+      2026-10-05 at `f32243c`; check again on the freeze commit.
 - [ ] `uv run poe secrets-scan` passes on a fresh clone.
-- [ ] No file under `private/`, `data/` or `eval/heldout/` was ever committed:
+- [x] No file under `private/`, `data/` or `eval/heldout/` was ever committed (2026-10-05):
       `git log --all --diff-filter=A --name-only -- private data eval/heldout` prints nothing.
-- [ ] The held-out set is represented only by its sha256 manifest.
+- [x] The held-out set is represented only by its sha256 manifest (and the reports of its runs,
+      which hold case ids, outcomes and reasons, no conversation).
 - [ ] The access code of the public service is in no committed file (the pre-commit hook
       compares staged files with the local `.env` value of `DEMO_ACCESS_CODE`).
 
@@ -91,11 +93,11 @@ The organizers take the team from the repository's contributors, so the list mus
 
 ## Evidence the judges can check
 
-- [ ] `README.md` quick start works on a fresh clone (`uv sync`, `uv run poe fixtures`,
+- [ ] `README.md` quick start works on a fresh clone (`uv sync --group data`, `uv run poe fixtures`,
       `uv run poe check`).
-- [ ] Final evaluation report with both systems and the deviations from the pre-registration
-      (Task 27), linked from the README.
-- [ ] `docs/limitations.md` is current.
+- [x] Final evaluation report with both systems and the deviations from the pre-registration
+      (Task 27), linked from the README: `docs/evidence/final_evaluation.md`.
+- [x] `docs/limitations.md` is current (the final evaluation and what it found, 2026-10-05).
 - [ ] `docs/operations.md` has the measured image size and memory and the staging record.
 
 ## The email

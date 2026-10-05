@@ -79,7 +79,7 @@ Python is managed by uv (Python 3.12). Tasks run through poethepoet: `uv run poe
 
 | Command | Purpose |
 |---|---|
-| `uv sync` | create/update `.venv` from `uv.lock` |
+| `uv sync --group data` | create/update `.venv` from `uv.lock` (`poe check` needs the `data` group for its type check) |
 | `uv run poe init-env` | create `.env` from `.env.example` (prints key names only) |
 | `uv run poe hooks` | install the git pre-commit hooks (once per clone) |
 | `uv run poe check` | **Definition-of-Done gate**: ruff lint + format check + pyright + pytest |
