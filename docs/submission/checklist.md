@@ -63,7 +63,7 @@ The organizers take the team from the repository's contributors, so the list mus
 - [ ] A member who cannot push yet is added as a collaborator by the owner account first.
 - [ ] The list also shows two accounts that are not people: the team's shared account, which
       owns the repository and made its initial commit, and the AI coding assistant, which
-      authored one commit. The email names them so nobody counts six members.
+      authored three commits (2026-10-05). The email names them so nobody counts five members.
 - [ ] The freeze commit is tagged (Task 26); the tag is what the email and the slides cite.
 
 ## Open decision: the data behind the evaluation

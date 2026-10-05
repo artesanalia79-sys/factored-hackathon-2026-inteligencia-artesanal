@@ -92,8 +92,8 @@ Intervals are Wilson 95% over cases.
 What this shows, and what it does not:
 
 - The controls hold: no write without confirmation, no unverified claim, no PII leak and no
-  action in the attack cases, and cases that need a person are transferred with a complete
-  handoff. Zero observed is not zero risk: the bound is 4.1%.
+  action in the attack cases, and 33 of the 34 cases that need a person are transferred, all
+  with a complete handoff. Zero observed is not zero risk: the bound is 4.1%.
 - The agent is conservative. Where automation is acceptable it resolves 69% and otherwise
   abstains instead of acting; G3b needed a lower bound of 65% and got 51%. The one unsafe case is
   a request closed as denied that should have been served.
