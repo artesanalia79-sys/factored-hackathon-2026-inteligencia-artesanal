@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic import AwareDatetime, Field, model_validator
 
-from bankagent.contracts.base import Contract, Last4
+from bankagent.contracts.base import Contract, Identifier, Last4
 from bankagent.contracts.enums import CONFIRMED_WRITE_ACTIONS, ActionType, Language
 
 # --- authentication --------------------------------------------------------------------------
@@ -114,7 +114,11 @@ class ChatTurnResponse(Contract):
     when the reply asks the customer to confirm a write; the customer answers in the chat ("Sí"
     or "No"), and the token for the write is issued at that yes, server side. ``language`` is the
     language the agent replied in, which follows the requested preference when provided, or the
-    customer's message otherwise.
+    customer's message otherwise. ``disputed_transaction_id`` is set exactly when
+    ``claimed_actions`` includes ``create_dispute``: the disputed transaction's own id, already
+    shown to the customer as "Ref. <id>" in the Transactions panel, so the UI can mark it there.
+    Unlike ``ConfirmationView`` (the question's own facts, nothing more), this field is about a
+    write already verified, not about what a question says.
     """
 
     reply_text: str
@@ -122,3 +126,4 @@ class ChatTurnResponse(Contract):
     claimed_actions: tuple[ActionType, ...]
     language: Language
     confirmation: ConfirmationView | None = None
+    disputed_transaction_id: Identifier | None = None

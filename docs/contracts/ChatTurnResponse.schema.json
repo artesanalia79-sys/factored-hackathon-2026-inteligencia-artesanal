@@ -104,7 +104,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "One agent reply.\n\n``claimed_actions`` lists only writes verified by read-back. ``confirmation`` is set exactly\nwhen the reply asks the customer to confirm a write; the customer answers in the chat (\"Sí\"\nor \"No\"), and the token for the write is issued at that yes, server side. ``language`` is the\nlanguage the agent replied in, which follows the requested preference when provided, or the\ncustomer's message otherwise.",
+  "description": "One agent reply.\n\n``claimed_actions`` lists only writes verified by read-back. ``confirmation`` is set exactly\nwhen the reply asks the customer to confirm a write; the customer answers in the chat (\"Sí\"\nor \"No\"), and the token for the write is issued at that yes, server side. ``language`` is the\nlanguage the agent replied in, which follows the requested preference when provided, or the\ncustomer's message otherwise. ``disputed_transaction_id`` is set exactly when\n``claimed_actions`` includes ``create_dispute``: the disputed transaction's own id, already\nshown to the customer as \"Ref. <id>\" in the Transactions panel, so the UI can mark it there.\nUnlike ``ConfirmationView`` (the question's own facts, nothing more), this field is about a\nwrite already verified, not about what a question says.",
   "properties": {
     "claimed_actions": {
       "items": {
@@ -123,6 +123,20 @@
         }
       ],
       "default": null
+    },
+    "disputed_transaction_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Disputed Transaction Id"
     },
     "ended": {
       "title": "Ended",

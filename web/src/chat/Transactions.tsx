@@ -1,4 +1,4 @@
-import { ArrowClockwise, ArrowRight, ListBullets, LockKey } from '@phosphor-icons/react'
+import { ArrowClockwise, ArrowRight, Flag, ListBullets, LockKey } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { ApiError, api } from '../api/client.ts'
 import type { TransactionView } from '../api/contracts.gen.ts'
@@ -8,6 +8,7 @@ interface Props {
   token: string
   copy: Copy
   blockedCards: ReadonlySet<string>
+  disputedTransactions: ReadonlySet<string>
   onExpired: () => void
   onPick: (text: string) => void
 }
@@ -28,7 +29,14 @@ function dateOf(transaction: TransactionView, locale: string): string {
   }).format(new Date(transaction.transaction_ts))
 }
 
-export function Transactions({ token, copy, blockedCards, onExpired, onPick }: Props) {
+export function Transactions({
+  token,
+  copy,
+  blockedCards,
+  disputedTransactions,
+  onExpired,
+  onPick,
+}: Props) {
   const [transactions, setTransactions] = useState<TransactionView[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -95,6 +103,13 @@ export function Transactions({ token, copy, blockedCards, onExpired, onPick }: P
                     <span className="status status--blocked">
                       <LockKey weight="fill" aria-hidden="true" />
                       {copy.transactionsCardBlocked}
+                    </span>
+                  ) : null}
+                  {/* Only reply.disputed_transaction_id on a verified create_dispute adds one. */}
+                  {disputedTransactions.has(transaction.transaction_id) ? (
+                    <span className="status status--disputed">
+                      <Flag weight="fill" aria-hidden="true" />
+                      {copy.transactionsDisputed}
                     </span>
                   ) : null}
                 </div>

@@ -121,11 +121,14 @@ def test_fx001_unrecognized_charge_creates_verified_dispute(
     assert "¿Reconoces este movimiento?" in first["reply_text"]
     second = _turn(client, headers, "No fui yo")
     assert "¿Confirmas crear un reclamo" in second["reply_text"]
+    assert second["disputed_transaction_id"] is None  # not claimed yet, only asked
     assert store.count("disputes") == 0
     # No token exists while the question is on screen: it is issued at the customer's yes.
     assert store.count("confirmation_tokens") == 0
     third = _turn(client, headers, "Sí, confirmo")
     assert third["claimed_actions"] == ["create_dispute"]
+    # The UI tags this transaction as disputed in the Transactions panel from this id alone.
+    assert third["disputed_transaction_id"] == "TXN-FX-0101"
     assert store.count("confirmation_tokens") == 1
     dispute = store.get_dispute("CUST-FX-001", transaction_id="TXN-FX-0101")
     assert dispute is not None
@@ -138,6 +141,7 @@ def test_fx001_unrecognized_charge_creates_verified_dispute(
     declined = _turn(client, headers, "No, no la bloquees.")
     assert declined["ended"]
     assert declined["claimed_actions"] == []
+    assert declined["disputed_transaction_id"] is None  # nothing claimed this turn
     assert declined["reply_text"] == "Entendido, no bloquearé la tarjeta."
     assert store.count("card_blocks") == 0
     assert store.count("disputes") == 1
@@ -160,10 +164,13 @@ def test_fx004_accepted_block_offer_blocks_the_disputed_card(
     assert not created["ended"]
     assert created["reply_text"].startswith("Abri a contestação")
     assert created["reply_text"].endswith("Você confirma o bloqueio do cartão com final 2208?")
+    assert created["disputed_transaction_id"] is not None
+    assert created["disputed_transaction_id"].startswith("TXN-")
     assert store.get_card_block("CUST-FX-004", "CARD-FX-041") is None
     blocked = _turn(client, headers, "Sim, pode bloquear o cartão.")
     assert blocked["ended"]
     assert blocked["claimed_actions"] == ["block_card"]
+    assert blocked["disputed_transaction_id"] is None  # this turn claims block_card, not a dispute
     assert blocked["reply_text"] == "Bloqueei o cartão com final 2208."
     block = store.get_card_block("CUST-FX-004", "CARD-FX-041")
     assert block is not None

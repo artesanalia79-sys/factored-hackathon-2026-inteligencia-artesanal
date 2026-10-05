@@ -138,6 +138,7 @@ def create_app(
             claimed_actions=output.claimed_actions,
             language=output.language,
             confirmation=output.confirmation,
+            disputed_transaction_id=output.disputed_transaction_id,
         )
 
     if transaction_reader is not None:

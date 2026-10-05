@@ -25,6 +25,10 @@ export interface ChatState {
   /** Card endings the customer has seen verified as blocked, this conversation. Never cleared
    * optimistically: only a 'replied' event with `block_card` in `claimed_actions` adds one. */
   blockedCards: ReadonlySet<string>
+  /** Transaction ids the customer has seen verified as disputed, this conversation. The server
+   * names the id directly (`reply.disputed_transaction_id`), unlike `blockedCards`: no need to
+   * hold a pending confirmation to tell which write it belongs to. */
+  disputedTransactions: ReadonlySet<string>
   /** The language the agent last replied in; the chrome follows it. */
   language: Language
   /**
@@ -49,6 +53,7 @@ export function initialChat(language: Language): ChatState {
     confirmation: null,
     pendingConfirmation: null,
     blockedCards: new Set(),
+    disputedTransactions: new Set(),
     language,
     failed: null,
     expired: false,
@@ -87,6 +92,9 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         blocked?.action === 'block_card' && reply.claimed_actions.includes('block_card')
           ? new Set(state.blockedCards).add(blocked.card_last4)
           : state.blockedCards
+      const disputedTransactions = reply.disputed_transaction_id
+        ? new Set(state.disputedTransactions).add(reply.disputed_transaction_id)
+        : state.disputedTransactions
       return {
         ...state,
         items,
@@ -97,6 +105,7 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         confirmation: reply.ended ? null : (reply.confirmation ?? null),
         pendingConfirmation: null,
         blockedCards,
+        disputedTransactions,
         language: reply.language,
       }
     }

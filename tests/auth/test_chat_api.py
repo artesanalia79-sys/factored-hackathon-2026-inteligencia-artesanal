@@ -53,6 +53,7 @@ def test_chat_turn_requires_authentication_and_reuses_agent_until_done(
         "claimed_actions": [],
         "language": "es",
         "confirmation": None,
+        "disputed_transaction_id": None,
     }
     assert second.json() == {
         "reply_text": "turno 2",
@@ -60,6 +61,7 @@ def test_chat_turn_requires_authentication_and_reuses_agent_until_done(
         "claimed_actions": [],
         "language": "es",
         "confirmation": None,
+        "disputed_transaction_id": None,
     }
     assert third.json()["reply_text"] == "turno 1"
     assert len(instances) == 2

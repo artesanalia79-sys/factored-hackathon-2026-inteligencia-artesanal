@@ -46,6 +46,11 @@ test('happy path: a dispute is created only after confirming its exact facts', a
   await confirmation(page).getByRole('button', { name: 'Confirmar' }).click()
   await expect(log(page)).toContainText(/Creé el reclamo DSP-/)
   await expect(page.getByText('Reclamo registrado y verificado')).toBeVisible()
+  // Tagged in the Transactions panel from the server's own disputed_transaction_id, not parsed
+  // out of the reply text.
+  await expect(
+    page.getByRole('region', { name: 'Tus movimientos recientes' }).getByText('Reclamo en curso'),
+  ).toBeVisible()
   await expect(confirmation(page)).toContainText('Bloquear la tarjeta')
   // The click came while the question was not yet taking answers: no "Sí" sent, nothing blocked.
   await expect(page.locator('body')).toHaveAttribute('data-second-click', 'true')

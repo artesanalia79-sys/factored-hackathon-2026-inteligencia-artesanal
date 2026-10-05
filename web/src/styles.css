@@ -1043,6 +1043,11 @@ svg {
   color: var(--negative);
 }
 
+.status--disputed {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
 .log__ended {
   display: flex;
   align-items: center;
