@@ -12,9 +12,10 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /ready
-    # Deploy a commit only after every CI check on it passed (the image job included).
-    # Switched to Off in the dashboard at the freeze tag: docs/operations.md.
-    autoDeployTrigger: checksPass
+    # Frozen at T26 (2026-10-05): a merge to main no longer deploys, but a push that changes a
+    # setting in this file still redeploys (Blueprint sync). docs/operations.md, "At the freeze
+    # (Task 26)".
+    autoDeployTrigger: "off"
     envVars:
       - key: APP_SECRET_KEY # signs session tokens; nobody needs to know it
         generateValue: true
