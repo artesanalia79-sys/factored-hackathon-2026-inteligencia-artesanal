@@ -5,7 +5,16 @@ import { MAX_FILE_BYTES, parseComparison } from './load.ts'
 import './comparison.css'
 
 const SYSTEMS = ['baseline_llm_only', 'proposed'] as const
-const LABELS = { baseline_llm_only: 'Agente ingenuo', proposed: 'Agente controlado' }
+const LABELS = { baseline_llm_only: 'Naive agent', proposed: 'Controlled agent' }
+
+// The page is English; the recorded conversation is in the case's Spanish or Portuguese, and a
+// screen reader needs to know which. The bundle does not say; a dev case id does
+// (`dev-<category>-<language>-<country>-<number>`, as every case in eval/dev), and only dev cases
+// are exported. Any other id is marked unknown (`lang=""`), never English.
+function dialogueLanguage(caseId: string): string {
+  const match = /-(es|pt)-([a-z]{2})-\d+$/.exec(caseId)
+  return match ? `${match[1]}-${match[2]!.toUpperCase()}` : ''
+}
 
 function RunPanel({
   run,
@@ -20,63 +29,66 @@ function RunPanel({
   const result = run?.result
   const verified = result?.verified_actions ?? []
   const unsafe = result?.unsafe_events ?? []
+  const dialogue = result ? dialogueLanguage(result.case_id) : ''
   return (
     <section className="comparison__column" aria-label={LABELS[system]}>
       <header>
         <p className="comparison__eyebrow">
-          {system === 'proposed' ? '02 / Con controles' : '01 / LLM solo'}
+          {system === 'proposed' ? '02 / With controls' : '01 / LLM only'}
         </p>
         <h2>{LABELS[system]}</h2>
         <p className="comparison__meta">
-          {run?.system_name ?? 'Sin ejecución para este caso y repetición'}
+          {run?.system_name ?? 'No run for this case and repeat'}
         </p>
       </header>
       {result ? (
         <>
           <dl className="comparison__metrics">
             <div>
-              <dt>Resultado final</dt>
+              <dt>Final outcome</dt>
               <dd>{result.final_outcome}</dd>
             </div>
             <div>
-              <dt>Costo total · USD</dt>
+              <dt>Total cost · USD</dt>
               <dd>{Number(result.cost_usd_total ?? 0).toFixed(6)}</dd>
             </div>
             <div>
-              <dt>Latencia total · ms</dt>
+              <dt>Total latency · ms</dt>
               <dd>{(result.latencies_ms ?? []).reduce((a, b) => a + b, 0).toFixed(1)}</dd>
             </div>
             <div>
-              <dt>Turnos</dt>
+              <dt>Turns</dt>
               <dd>{result.turns_used}</dd>
             </div>
           </dl>
           <div className="comparison__evidence">
             <p>
-              <strong>Acciones verificadas:</strong>{' '}
-              {verified.length ? verified.join(', ') : 'Ninguna'}
+              <strong>Verified actions:</strong>{' '}
+              {verified.length ? verified.join(', ') : 'None'}
             </p>
             <p className={unsafe.length ? 'comparison__unsafe' : ''}>
-              <strong>Eventos inseguros:</strong>{' '}
-              {unsafe.length ? unsafe.join(', ') : 'Ninguno detectado'}
+              <strong>Unsafe events:</strong>{' '}
+              {unsafe.length ? unsafe.join(', ') : 'None detected'}
             </p>
             <p>
-              <strong>Resolución automática segura:</strong>{' '}
-              {result.safe_automated_resolution ? 'Sí' : 'No'}
+              <strong>Safe automated resolution:</strong>{' '}
+              {result.safe_automated_resolution ? 'Yes' : 'No'}
             </p>
           </div>
           {current ? (
             <div className="comparison__turn">
-              <h3>Turno {turn + 1}</h3>
-              <p className="comparison__speaker">Cliente</p>
-              <p className="comparison__message">{current.user_text}</p>
+              <h3>Turn {turn + 1}</h3>
+              <p className="comparison__speaker">Customer</p>
+              <p className="comparison__message" lang={dialogue}>{current.user_text}</p>
               <p className="comparison__speaker">
-                Respuesta registrada · puede contener afirmaciones sin verificar
+                Recorded reply · may contain unverified claims
               </p>
-              <p className="comparison__message comparison__reply">{current.reply_text}</p>
-              <h3>Evidencia de ejecución</h3>
+              <p className="comparison__message comparison__reply" lang={dialogue}>
+                {current.reply_text}
+              </p>
+              <h3>Execution evidence</h3>
               {current.steps.length === 0 ? (
-                <p>Sin pasos registrados.</p>
+                <p>No steps recorded.</p>
               ) : (
                 <ol className="comparison__steps">
                   {current.steps.map((step, index) => (
@@ -85,22 +97,22 @@ function RunPanel({
                       <span>
                         {step.state} · {step.outcome}
                       </span>
-                      <span>{step.verified ? 'Verificado' : 'Sin verificación'}</span>
+                      <span>{step.verified ? 'Verified' : 'Not verified'}</span>
                       {step.rule_ids.length > 0 ? (
-                        <span>Reglas: {step.rule_ids.join(', ')}</span>
+                        <span>Rules: {step.rule_ids.join(', ')}</span>
                       ) : null}
-                      {step.model ? <span>Modelo: {step.model}</span> : null}
+                      {step.model ? <span>Model: {step.model}</span> : null}
                     </li>
                   ))}
                 </ol>
               )}
             </div>
           ) : (
-            <p className="comparison__empty">Esta ejecución no tiene un turno {turn + 1}.</p>
+            <p className="comparison__empty">This run has no turn {turn + 1}.</p>
           )}
         </>
       ) : (
-        <p className="comparison__empty">Carga un archivo con ambos sistemas para compararlos.</p>
+        <p className="comparison__empty">Load a file with both systems to compare them.</p>
       )}
     </section>
   )
@@ -181,26 +193,26 @@ export default function ComparisonScreen() {
   }
 
   return (
-    <main className="comparison" lang="es">
+    <main className="comparison" lang="en">
       <header className="comparison__top">
         <a className="brand" href="/">
           <BrandMark />
-          <span>Volver al inicio</span>
+          <span>Back to home</span>
         </a>
-        <span className="comparison__eyebrow">Laboratorio / T22</span>
+        <span className="comparison__eyebrow">Lab / T22</span>
       </header>
       <h1>
-        Una conversación.
+        One conversation.
         <br />
-        Dos formas de actuar.
+        Two ways to act.
       </h1>
-      <p className="lead">Compara las respuestas con la evidencia de lo que cada agente hizo.</p>
+      <p className="lead">Compare the replies with the evidence of what each agent did.</p>
       <p>
-        Replay de casos dev. El archivo se abre en este navegador; no se envía al servidor ni
-        ejecuta acciones.
+        Replay of dev cases. The file opens in this browser; it is not sent to the server and
+        triggers no actions.
       </p>
       <div className="comparison__loader">
-        <label htmlFor="comparison-file">Abrir comparison.json · máximo 8 MB</label>
+        <label htmlFor="comparison-file">Open comparison.json · 8 MB max</label>
         <div className="comparison__loader-row">
           <input
             id="comparison-file"
@@ -211,44 +223,44 @@ export default function ComparisonScreen() {
               event.target.value = ''
             }}
           />
-          <span className="comparison__loader-or">o</span>
+          <span className="comparison__loader-or">or</span>
           <button
             type="button"
             className="button button--secondary button--small"
             disabled={busy}
             onClick={() => void loadDemo()}
           >
-            Cargar ejemplo de demo
+            Load demo example
           </button>
         </div>
-        {busy ? <output>Leyendo archivo…</output> : null}
+        {busy ? <output>Reading file…</output> : null}
         {error ? (
           <p role="alert">
-            No se pudo abrir el archivo. Usa un comparison.json válido del harness (hasta 500
-            ejecuciones).
+            Could not open the file. Use a valid comparison.json from the harness (up to 500
+            runs).
           </p>
         ) : null}
       </div>
       {bundle ? (
         <>
-          <aside className="comparison__provenance" aria-label="Procedencia">
+          <aside className="comparison__provenance" aria-label="Provenance">
             <strong>
               {bundle.simulated
-                ? 'SIMULACIÓN · agentes con guion, no resultados reales'
-                : 'EJECUCIÓN REGISTRADA · consulta el proveedor y modelo'}
+                ? 'SIMULATION · scripted agents, not real results'
+                : 'RECORDED RUN · check the provider and model'}
             </strong>
             <p>
               {bundle.suite_id} · {bundle.cost_assumptions}
             </p>
-            <p className="comparison__hash">SHA-256 de casos: {bundle.case_set_sha256}</p>
+            <p className="comparison__hash">Case-set SHA-256: {bundle.case_set_sha256}</p>
             <p>
-              Datos del archivo local. Las métricas corresponden a toda la ejecución, no solo al
-              turno visible.
+              Data from the local file. Metrics correspond to the whole run, not only the
+              visible turn.
             </p>
           </aside>
           <div className="comparison__controls">
             <div className="comparison__field">
-              <label htmlFor="comparison-case">Caso</label>
+              <label htmlFor="comparison-case">Case</label>
               <select
                 id="comparison-case"
                 value={caseId}
@@ -271,7 +283,7 @@ export default function ComparisonScreen() {
               </select>
             </div>
             <div className="comparison__field">
-              <label htmlFor="comparison-repeat">Repetición</label>
+              <label htmlFor="comparison-repeat">Repeat</label>
               <select
                 id="comparison-repeat"
                 value={repeat}
@@ -293,23 +305,23 @@ export default function ComparisonScreen() {
                 disabled={turn === 0}
                 onClick={() => setTurn((value) => value - 1)}
               >
-                Anterior
+                Previous
               </button>
               <output aria-live="polite">
-                {turns ? `Turno ${turn + 1} de ${turns}` : 'Sin turnos'}
+                {turns ? `Turn ${turn + 1} of ${turns}` : 'No turns'}
               </output>
               <button
                 className="button button--secondary"
                 disabled={turn + 1 >= turns}
                 onClick={() => setTurn((value) => value + 1)}
               >
-                Siguiente
+                Next
               </button>
             </div>
           </div>
           <p>
-            Los agentes pueden hacer preguntas distintas. Se alinea el número de turno; cada columna
-            conserva la respuesta de su cliente simulado.
+            Agents may ask different questions. The turn number is aligned; each column keeps
+            its own simulated customer's reply.
           </p>
           <div className="comparison__grid">
             {SYSTEMS.map((system, index) => (
@@ -318,14 +330,14 @@ export default function ComparisonScreen() {
           </div>
         </>
       ) : (
-        <section className="comparison__empty" aria-label="Cómo empezar">
-          <h2>Abre una ejecución para empezar</h2>
+        <section className="comparison__empty" aria-label="How to start">
+          <h2>Open a run to start</h2>
           <p>
-            Genera una simulación gratuita con <code>uv run poe eval-smoke</code> y abre{' '}
+            Generate a free simulation with <code>uv run poe eval-smoke</code> and open{' '}
             <code>eval/runs/smoke/comparison.json</code>.
           </p>
           <p>
-            También puedes abrir el archivo dev exportado por el harness con los agentes reales.
+            You can also open the dev file exported by the harness with the real agents.
           </p>
         </section>
       )}

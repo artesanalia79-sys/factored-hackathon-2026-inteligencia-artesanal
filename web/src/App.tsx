@@ -10,6 +10,21 @@ const ICONS = { size: 20, weight: 'regular' } as const
 const ComparisonScreen = lazy(() => import('./comparison/ComparisonScreen.tsx'))
 const ConsoleScreen = lazy(() => import('./console/ConsoleScreen.tsx'))
 
+// The two reviewer pages are in English, like every deliverable but the customer's own
+// conversation (docs/submission/checklist.md): the tab title and the document language too, not
+// only what the page itself renders. The customer's screens follow the customer's language.
+type ReviewerPage = 'compare' | 'console'
+const REVIEWER_TITLE: Record<ReviewerPage, string> = {
+  compare: 'Side-by-side replay',
+  console: 'Bank-side console',
+}
+
+function reviewerPage(path: string): ReviewerPage | null {
+  if (path === '/compare' || path === '/compare/') return 'compare'
+  if (path === '/console' || path === '/console/') return 'console'
+  return null
+}
+
 export function App() {
   // Kept in memory only: a reload signs out, and nothing about the session reaches storage.
   const [session, setSession] = useState<ChatSession | null>(null)
@@ -19,23 +34,29 @@ export function App() {
   // The demo's shared access code, once the server asked for it: in memory only, so signing in
   // again after a session ends does not ask twice.
   const [accessCode, setAccessCode] = useState('')
+  const reviewer = reviewerPage(window.location.pathname)
 
   useEffect(() => {
+    if (reviewer !== null) {
+      document.documentElement.lang = 'en'
+      document.title = REVIEWER_TITLE[reviewer]
+      return
+    }
     document.documentElement.lang = COPY[language].locale
     document.title = COPY[language].product
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute('content', COPY[language].pageDescription)
-  }, [language])
+  }, [language, reviewer])
 
   return (
     <IconContext.Provider value={ICONS}>
-      {['/compare', '/compare/'].includes(window.location.pathname) ? (
-        <Suspense fallback={<output>Cargando comparación…</output>}>
+      {reviewer === 'compare' ? (
+        <Suspense fallback={<output lang="en">Loading the replay…</output>}>
           <ComparisonScreen />
         </Suspense>
-      ) : ['/console', '/console/'].includes(window.location.pathname) ? (
-        <Suspense fallback={<output>Cargando consola…</output>}>
+      ) : reviewer === 'console' ? (
+        <Suspense fallback={<output lang="en">Loading the console…</output>}>
           <ConsoleScreen />
         </Suspense>
       ) : session === null ? (
