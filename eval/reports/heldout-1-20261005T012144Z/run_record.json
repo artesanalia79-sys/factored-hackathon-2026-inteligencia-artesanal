@@ -1,0 +1,19 @@
+{
+  "suite_id": "heldout-1-20261005T012144Z",
+  "kind": "heldout",
+  "status": "running",
+  "heldout_run_number": 1,
+  "started_at": "2026-10-05T01:21:44+00:00",
+  "finished_at": null,
+  "git_commit": "4436f2efbaa8a626edd9f2810b72b76a01599345",
+  "git_dirty": false,
+  "manifest_sha256": "f730cf63bcc4b12fde951e78983f21f235ae8ebce50d2971c89d560a3d4eeaa8",
+  "case_set_sha256": "058c4cad1ba8fa45cb36f8e6fec3ad7f07ef9b88af31e3582d4bfd1f4e729cf0",
+  "n_cases": 90,
+  "repeats": 3,
+  "provider": "openai",
+  "model": "gpt-6-luna",
+  "approved_by": "Santiago",
+  "budget_usd_per_system": "5.0",
+  "systems": {}
+}
