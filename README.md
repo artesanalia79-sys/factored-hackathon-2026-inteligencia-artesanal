@@ -138,5 +138,6 @@ manifest is versioned. Known limitations: [`docs/limitations.md`](docs/limitatio
 
 ## Team
 
-Victor (backend), Jacobo (fullstack), Juan José (data engineering and analysis), Santiago (data
-engineering and automation).
+Jacobo (fullstack: interpreter, orchestrator, API, web UI), Juan José (data engineering, analysis
+and backend: auth, tools, policy), Santiago (data engineering and automation: harness, CI,
+evaluation, deploy).

@@ -4,7 +4,7 @@
   reviewed (the review is the team sign-off), before any held-out case was written or unsealed.
   From now on any change is a deviation listed in the final report (section 11). The changes made
   before the freeze, including the smaller held-out set, are listed in section 11 too.
-- Owner: Santiago (Task 12). Reviewers: Jacobo, Juan José (Victor is no longer active).
+- Owner: Santiago (Task 12). Reviewers: Jacobo, Juan José.
 - Implementation: `src/bankagent/eval/` (scorer, metrics, gates). Decision rows: `docs/decision_ledger.md`
   (2026-09-30, area `eval`).
 
