@@ -1,4 +1,4 @@
-import { ArrowClockwise, ArrowRight, ListBullets } from '@phosphor-icons/react'
+import { ArrowClockwise, ArrowRight, ListBullets, LockKey } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { ApiError, api } from '../api/client.ts'
 import type { TransactionView } from '../api/contracts.gen.ts'
@@ -7,6 +7,7 @@ import type { Copy } from '../i18n.ts'
 interface Props {
   token: string
   copy: Copy
+  blockedCards: ReadonlySet<string>
   onExpired: () => void
   onPick: (text: string) => void
 }
@@ -27,7 +28,7 @@ function dateOf(transaction: TransactionView, locale: string): string {
   }).format(new Date(transaction.transaction_ts))
 }
 
-export function Transactions({ token, copy, onExpired, onPick }: Props) {
+export function Transactions({ token, copy, blockedCards, onExpired, onPick }: Props) {
   const [transactions, setTransactions] = useState<TransactionView[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -89,6 +90,13 @@ export function Transactions({ token, copy, onExpired, onPick }: Props) {
                   <span className="transactions__reference">
                     {copy.transactionsReference(transaction.transaction_id)}
                   </span>
+                  {/* Only a verified block_card reaching state.blockedCards adds a card here. */}
+                  {transaction.card_last4 != null && blockedCards.has(transaction.card_last4) ? (
+                    <span className="status status--blocked">
+                      <LockKey weight="fill" aria-hidden="true" />
+                      {copy.transactionsCardBlocked}
+                    </span>
+                  ) : null}
                 </div>
                 <span className="transactions__amount">{amountOf(transaction, copy.locale)}</span>
                 <button

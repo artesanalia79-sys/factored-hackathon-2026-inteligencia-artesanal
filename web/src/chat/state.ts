@@ -17,6 +17,14 @@ export interface ChatState {
   pending: boolean
   /** The write the last reply asks to confirm. Cleared as soon as anything is sent. */
   confirmation: ConfirmationView | null
+  /**
+   * The confirmation a send answers, held past the `confirmation` clear on 'sent' so 'replied'
+   * can still tell which write a verified `block_card` belongs to. Cleared once read.
+   */
+  pendingConfirmation: ConfirmationView | null
+  /** Card endings the customer has seen verified as blocked, this conversation. Never cleared
+   * optimistically: only a 'replied' event with `block_card` in `claimed_actions` adds one. */
+  blockedCards: ReadonlySet<string>
   /** The language the agent last replied in; the chrome follows it. */
   language: Language
   /**
@@ -39,6 +47,8 @@ export function initialChat(language: Language): ChatState {
     nextId: 1,
     pending: false,
     confirmation: null,
+    pendingConfirmation: null,
+    blockedCards: new Set(),
     language,
     failed: null,
     expired: false,
@@ -54,6 +64,9 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         nextId: state.nextId + 1,
         pending: true,
         confirmation: null,
+        // Held past the clear above so 'replied' can still tell a verified block_card apart
+        // from any other write, once the reply names what it claims.
+        pendingConfirmation: state.confirmation,
         failed: null,
       }
     case 'replied': {
@@ -69,6 +82,11 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         },
       ]
       if (reply.ended) items.push({ id: state.nextId + 1, kind: 'ended' })
+      const blocked = state.pendingConfirmation
+      const blockedCards =
+        blocked?.action === 'block_card' && reply.claimed_actions.includes('block_card')
+          ? new Set(state.blockedCards).add(blocked.card_last4)
+          : state.blockedCards
       return {
         ...state,
         items,
@@ -77,6 +95,8 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         // An ended conversation asks nothing: the next message starts a new one, where a "yes"
         // would answer no question.
         confirmation: reply.ended ? null : (reply.confirmation ?? null),
+        pendingConfirmation: null,
+        blockedCards,
         language: reply.language,
       }
     }

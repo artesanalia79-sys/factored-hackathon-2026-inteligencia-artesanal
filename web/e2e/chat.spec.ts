@@ -119,6 +119,9 @@ test('keyboard only, in Portuguese: sign in, dispute and block the card', async 
   await page.keyboard.press('Enter')
   await expect(log(page)).toContainText('Bloqueei o cartão com final 2208.')
   await expect(page.getByText('Bloqueio do cartão verificado')).toBeVisible()
+  // The customer can see it, not just read it once in the log: every movement on that card is
+  // now tagged, for the rest of this conversation.
+  await expect(page.getByText('Cartão bloqueado').first()).toBeVisible()
   await expect(log(page)).toContainText('Conversa encerrada')
   await expect(composer(page)).toBeFocused()
 })
