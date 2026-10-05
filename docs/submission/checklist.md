@@ -45,7 +45,7 @@ Making it public publishes the whole git history, not only the current files.
 
 - [x] `gitleaks` on the full history is green on `main` (CI job `secrets`). Checked on
       2026-10-05 at `f32243c`; check again on the freeze commit.
-- [ ] `uv run poe secrets-scan` passes on a fresh clone.
+- [x] `uv run poe secrets-scan` passes on a fresh clone (2026-10-05, clone of `f32243c`).
 - [x] No file under `private/`, `data/` or `eval/heldout/` was ever committed (2026-10-05):
       `git log --all --diff-filter=A --name-only -- private data eval/heldout` prints nothing.
 - [x] The held-out set is represented only by its sha256 manifest (and the reports of its runs,
@@ -93,7 +93,7 @@ The organizers take the team from the repository's contributors, so the list mus
 
 ## Evidence the judges can check
 
-- [ ] `README.md` quick start works on a fresh clone (`uv sync --group data`, `uv run poe fixtures`,
+- [x] `README.md` quick start works on a fresh clone (`uv sync --group data`, `uv run poe fixtures`,
       `uv run poe check`).
 - [x] Final evaluation report with both systems and the deviations from the pre-registration
       (Task 27), linked from the README: `docs/evidence/final_evaluation.md`.
