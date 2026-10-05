@@ -75,9 +75,11 @@ The organizers take the team from the repository's contributors, so the list mus
 
 ## The deployed service (Task 15, Task 26)
 
-- [ ] The freeze tag is deployed and it is the commit the service reports
-      (`docs/operations.md`, "Which commit is live").
-- [ ] Auto-deploy is Off, so a later merge cannot restart or change the demo.
+- [ ] The freeze tag is deployed: the commit Render lists as live is the tagged one
+      (`docs/operations.md`, "Deploys"; the service itself does not report its commit).
+- [ ] Auto-deploy is Off in a way a later push cannot undo, so a later merge cannot restart
+      or change the demo: in `render.yaml` (set by the freeze commit), or in the dashboard
+      with the Blueprint's Auto Sync off too (`docs/operations.md`, "At the freeze").
 - [ ] `uv run poe smoke <public URL>` ends with `OK: verified dispute`, then the demo is reset
       (`docs/operations.md`, "Reset the demo") so the judges start from a clean state.
 - [ ] `DEMO_ACCESS_CODE` is set, and the code is in the email and on the slide with the URL,
