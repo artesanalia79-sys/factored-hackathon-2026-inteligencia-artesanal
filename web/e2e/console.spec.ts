@@ -23,8 +23,8 @@ test('a handoff a customer caused shows up on the bank side, with its trace and 
   expect(handoffId).toBeTruthy()
 
   await page.goto('/console')
-  await expect(page.getByRole('heading', { name: /Lo que ve el banco/ })).toBeVisible()
-  const handoffsTab = page.getByRole('button', { name: /^Escalados/ })
+  await expect(page.getByRole('heading', { name: /What the bank sees/ })).toBeVisible()
+  const handoffsTab = page.getByRole('button', { name: /^Escalated/ })
   await expect(handoffsTab).toBeVisible()
   // The customer's name is shown next to their id, and the case has a date/time. chat.spec.ts
   // gives Carlos an escalation too, in the same shared server, so more than one row can match.
@@ -33,16 +33,16 @@ test('a handoff a customer caused shows up on the bank side, with its trace and 
 
   await page.getByRole('button', { name: new RegExp(`CUST-FX-006`) }).first().click()
   await expect(page.getByRole('heading', { name: new RegExp(handoffId!) })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Reglas que dispararon el caso' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Rastro de ejecución' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Rules that triggered the case' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Execution trace' })).toBeVisible()
   await expect(page.locator('.console__steps li').first()).toBeVisible()
 
   // The other two tabs render without error, whatever other specs left behind.
-  await page.getByRole('button', { name: /^Disputas/ }).click()
+  await page.getByRole('button', { name: /^Disputes/ }).click()
   await expect(page.getByRole('alert')).toHaveCount(0)
-  await page.getByRole('button', { name: /^Tarjetas bloqueadas/ }).click()
+  await page.getByRole('button', { name: /^Blocked cards/ }).click()
   await expect(page.getByRole('alert')).toHaveCount(0)
-  await page.getByRole('link', { name: 'Volver al inicio' }).click()
+  await page.getByRole('link', { name: 'Back to home' }).click()
   await expect(page.getByRole('link', { name: 'Lado del banco' })).toBeVisible()
 })
 
@@ -57,6 +57,6 @@ test('a wrong or missing access code is refused, not a silent empty page', async
       body: JSON.stringify({ detail: { error: 'access_code_required' } }),
     }),
   )
-  await page.getByRole('button', { name: 'Actualizar' }).click()
-  await expect(page.getByRole('alert')).toContainText('Código de acceso incorrecto o faltante.')
+  await page.getByRole('button', { name: 'Update' }).click()
+  await expect(page.getByRole('alert')).toContainText('Incorrect or missing access code.')
 })
