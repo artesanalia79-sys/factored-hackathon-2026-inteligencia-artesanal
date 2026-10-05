@@ -113,6 +113,7 @@ Listed in `eval/preregistration.md`, section 11.
 | D2 | Scripted user: a case may word a yes or a no its own way. |
 | D3 | No second annotation of the held-out set; no Cohen's kappa. |
 | D4 | The set was opened twice: run 1 was killed from outside before it wrote any result; run 2 is the only run with results. |
+| D5 | Editorial, after the run: a note about a teammate who was no longer active is removed from the reviewers line of the pre-registration's header. No protocol change. |
 
 Also: `results.jsonl` and `unsafe_reasons.jsonl` are stored with LF line endings (the command
 wrote CRLF on Windows); no other byte differs.

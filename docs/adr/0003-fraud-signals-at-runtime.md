@@ -2,7 +2,7 @@
 
 - Status: accepted (threshold verified offline in Task 5, 2026-09-29)
 - Date: 2026-09-27
-- Deciders: Santiago, Victor, Juan José
+- Deciders: Santiago, Juan José
 
 ## Context
 
