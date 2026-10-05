@@ -18,7 +18,12 @@ write by reading it back.
 - **Login:** pick one of the synthetic personas; the one-time code is shown on screen (there is no
   SMS or email channel in the demo).
 - **Side-by-side replay** of the LLM-only baseline and the controlled agent on development cases:
-  `/compare` ([`docs/comparison.md`](docs/comparison.md)).
+  `/compare`; **Cargar ejemplo de demo** opens one recorded case
+  ([`docs/comparison.md`](docs/comparison.md)).
+- **Bank side:** `/console` ("Lado del banco" on the sign-in page), read-only: the handoff queue
+  with each case's execution trace, and the disputes and card blocks the agent resolved on its
+  own, with the policy rules it checked. It asks for the same access code
+  ([`docs/limitations.md`](docs/limitations.md)).
 
 ## Quick start
 

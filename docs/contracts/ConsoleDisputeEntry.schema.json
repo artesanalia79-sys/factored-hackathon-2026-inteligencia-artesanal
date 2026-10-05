@@ -1,0 +1,178 @@
+{
+  "$defs": {
+    "DisputeCase": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,13}|(?=[\\d.]{1,16}0*$)\\d{0,13}\\.\\d{0,2}0*$)",
+              "type": "string"
+            }
+          ],
+          "title": "Amount"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "dispute_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Dispute Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "policy_version": {
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/DisputeReason"
+        },
+        "rule_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Rule Ids",
+          "type": "array"
+        },
+        "sla_due_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sla Due Date"
+        },
+        "status": {
+          "$ref": "#/$defs/DisputeStatus"
+        },
+        "transaction_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Transaction Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dispute_id",
+        "transaction_id",
+        "reason",
+        "status",
+        "created_at",
+        "amount",
+        "currency",
+        "idempotency_key",
+        "policy_version"
+      ],
+      "title": "DisputeCase",
+      "type": "object"
+    },
+    "DisputeReason": {
+      "enum": [
+        "unrecognized",
+        "duplicate",
+        "not_received"
+      ],
+      "title": "DisputeReason",
+      "type": "string"
+    },
+    "DisputeStatus": {
+      "enum": [
+        "submitted",
+        "escalated_for_review"
+      ],
+      "title": "DisputeStatus",
+      "type": "string"
+    },
+    "RuleExplanation": {
+      "additionalProperties": false,
+      "description": "A policy rule id next to the human-readable text from ``dispute_policy_v1.yaml``.\n\n``decisive`` marks a rule that actually decided something case-specific, as opposed to one\nthat was checked and simply passed. For a handoff this is always true: ``trigger_rule_ids``\nis already curated to the rule(s) that caused the escalation. For a dispute it separates the\none rule a `proceed` decision can still vary on (today, only ``card_blockable``: whether this\ncard qualifies for an offered block) from the rest of the rulebook, which this case also\nchecked and passed — shown in full too, so the whole evaluation stays visible, just not all\nweighted the same.",
+      "properties": {
+        "decisive": {
+          "default": true,
+          "title": "Decisive",
+          "type": "boolean"
+        },
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "rule_id": {
+          "maxLength": 16,
+          "minLength": 1,
+          "title": "Rule Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "description"
+      ],
+      "title": "RuleExplanation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One dispute the agent resolved on its own, with the customer id its own contract omits.",
+  "properties": {
+    "case": {
+      "$ref": "#/$defs/DisputeCase"
+    },
+    "customer_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Customer Id",
+      "type": "string"
+    },
+    "customer_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Customer Name"
+    },
+    "rule_explanations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RuleExplanation"
+      },
+      "title": "Rule Explanations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "customer_id",
+    "case"
+  ],
+  "title": "ConsoleDisputeEntry",
+  "type": "object"
+}

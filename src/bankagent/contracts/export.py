@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from bankagent.contracts import (
     api,
     comparison,
+    console,
     decisions,
     domain,
     errors,
@@ -92,6 +93,12 @@ EXPORTED_MODELS: tuple[type[BaseModel], ...] = (
     api.ChatTurnRequest,
     api.ChatTurnResponse,
     api.ConfirmationView,
+    # console (human-agent console, T21; also web-generated)
+    console.RuleExplanation,
+    console.ConsoleHandoffEntry,
+    console.ConsoleHandoffDetail,
+    console.ConsoleDisputeEntry,
+    console.ConsoleCardBlockEntry,
 )
 
 

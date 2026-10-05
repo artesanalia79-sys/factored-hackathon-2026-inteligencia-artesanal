@@ -46,6 +46,11 @@ test('happy path: a dispute is created only after confirming its exact facts', a
   await confirmation(page).getByRole('button', { name: 'Confirmar' }).click()
   await expect(log(page)).toContainText(/Creé el reclamo DSP-/)
   await expect(page.getByText('Reclamo registrado y verificado')).toBeVisible()
+  // Tagged in the Transactions panel from the server's own disputed_transaction_id, not parsed
+  // out of the reply text.
+  await expect(
+    page.getByRole('region', { name: 'Tus movimientos recientes' }).getByText('Reclamo en curso'),
+  ).toBeVisible()
   await expect(confirmation(page)).toContainText('Bloquear la tarjeta')
   // The click came while the question was not yet taking answers: no "Sí" sent, nothing blocked.
   await expect(page.locator('body')).toHaveAttribute('data-second-click', 'true')
@@ -58,6 +63,10 @@ test('happy path: a dispute is created only after confirming its exact facts', a
   await expect(log(page)).toContainText('Conversación finalizada')
   await expect(confirmation(page)).toHaveCount(0)
   await expect(page.getByText('Bloqueo de tarjeta verificado')).toHaveCount(0)
+  // A declined block marks no card: only a verified block_card names one.
+  await expect(
+    page.getByRole('region', { name: 'Tus movimientos recientes' }).getByText('Tarjeta bloqueada'),
+  ).toHaveCount(0)
 })
 
 test('keyboard only, in Portuguese: sign in, dispute and block the card', async ({ page }) => {
@@ -119,6 +128,13 @@ test('keyboard only, in Portuguese: sign in, dispute and block the card', async 
   await page.keyboard.press('Enter')
   await expect(log(page)).toContainText('Bloqueei o cartão com final 2208.')
   await expect(page.getByText('Bloqueio do cartão verificado')).toBeVisible()
+  // The customer can see it, not just read it once in the log: every movement on that card is
+  // now tagged, and only those, for the rest of this session.
+  await expect(page.getByText('Cartão bloqueado').first()).toBeVisible()
+  const rows = page.locator('.transactions__row')
+  await expect(rows.filter({ hasText: 'Cartão bloqueado' })).toHaveCount(
+    await rows.filter({ hasText: 'final 2208' }).count(),
+  )
   await expect(log(page)).toContainText('Conversa encerrada')
   await expect(composer(page)).toBeFocused()
 })

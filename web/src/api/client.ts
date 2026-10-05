@@ -4,6 +4,10 @@
 import type {
   ChatTurnRequest,
   ChatTurnResponse,
+  ConsoleCardBlockEntry,
+  ConsoleDisputeEntry,
+  ConsoleHandoffDetail,
+  ConsoleHandoffEntry,
   LoginRequest,
   LoginResponse,
   PersonaResponse,
@@ -34,10 +38,14 @@ interface CallOptions {
   method?: 'GET' | 'POST'
   body?: unknown
   token?: string
+  headers?: Record<string, string>
 }
 
-async function call<T>(path: string, { method = 'GET', body, token }: CallOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json' }
+async function call<T>(
+  path: string,
+  { method = 'GET', body, token, headers: extra }: CallOptions = {},
+): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json', ...extra }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (token !== undefined) headers.Authorization = `Bearer ${token}`
   let response: Response
@@ -76,6 +84,12 @@ async function errorOf(response: Response): Promise<ApiError> {
   )
 }
 
+// The console is a bank-side reviewer tool (T21), gated by a shared code header, never by a
+// customer session token: there is no `token` here on purpose.
+function consoleHeaders(code: string | null): Record<string, string> {
+  return code ? { 'X-Console-Access-Code': code } : {}
+}
+
 export const api = {
   personas: () => call<PersonaResponse[]>('/api/auth/personas'),
   login: (body: LoginRequest) => call<LoginResponse>('/api/auth/login', { method: 'POST', body }),
@@ -86,4 +100,14 @@ export const api = {
     call<ChatTurnResponse>('/api/chat/turn', { method: 'POST', body, token }),
   transactions: (token: string) =>
     call<TransactionView[]>('/api/chat/transactions', { token }),
+  consoleHandoffs: (code: string | null) =>
+    call<ConsoleHandoffEntry[]>('/api/console/handoffs', { headers: consoleHeaders(code) }),
+  consoleHandoff: (code: string | null, handoffId: string) =>
+    call<ConsoleHandoffDetail>(`/api/console/handoffs/${encodeURIComponent(handoffId)}`, {
+      headers: consoleHeaders(code),
+    }),
+  consoleDisputes: (code: string | null) =>
+    call<ConsoleDisputeEntry[]>('/api/console/disputes', { headers: consoleHeaders(code) }),
+  consoleCardBlocks: (code: string | null) =>
+    call<ConsoleCardBlockEntry[]>('/api/console/card-blocks', { headers: consoleHeaders(code) }),
 }
