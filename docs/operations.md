@@ -69,16 +69,50 @@ The Render CLI (`https://render.com/docs/cli`) covers the rest of this file from
 
 ## Deploys
 
-- `autoDeployTrigger: checksPass`: Render deploys a commit of the linked branch only after
-  every CI check on it passed. The CI job `image` builds this image and runs a dispute against
-  it, so a commit that breaks the container is never deployed.
-- At the freeze tag (Task 26): set **Settings > Auto-Deploy** to **Off** and deploy the tagged
-  commit, so a later merge cannot restart or change the demo:
-  `render deploys create <service-id> --commit <sha> --wait`.
+- Until the freeze, `autoDeployTrigger: checksPass`: Render deploys a commit of the linked
+  branch only after every CI check on it passed. The CI job `image` builds this image and runs
+  a dispute against it, so a commit that breaks the container is never deployed.
 - Which commit is live: `render deploys list <service-id> -o json`, or the service's
-  **Events** page.
+  **Events** page. The service itself does not report it.
 - A changed environment variable applies from the next deploy or restart, and that restart
   also resets the demo.
+- `render.yaml` wins over the dashboard. Every push to `main` that edits `render.yaml` syncs
+  the Blueprint, unless **Auto Sync** is set to No on the Blueprint's settings page. The sync
+  overwrites any setting changed outside the file (dashboard, CLI) that conflicts with a field
+  the file declares, and it redeploys a service whose configuration it changed. A field of
+  `render.yaml` changed only in the dashboard therefore lasts until the next push that edits
+  the file. Variables marked `sync: false` are ignored by a sync, and `APP_SECRET_KEY` is
+  generated only when it does not exist yet.
+
+### At the freeze (Task 26)
+
+Auto-deploy goes off so that no later merge can restart or change the demo. It goes off in
+`render.yaml`, not only in the dashboard: the file declares `autoDeployTrigger: checksPass`, so
+the first push that edited it after the freeze would turn auto-deploy back on and deploy
+whatever `main` held then.
+
+1. Before the freeze commit reaches `main`, check that the dashboard agrees with every field
+   `render.yaml` declares (for example the plan, the region, the health check path,
+   `DATA_MODE`, `AUTH_EXPOSE_MOCK_OTP`), or change the file: the sync resets them to the
+   file's values.
+2. The freeze commit sets `autoDeployTrigger: "off"` in `render.yaml`, quoted (a YAML 1.1
+   parser reads a bare `off` as `false`), replaces the comment above it, and
+   `render blueprints validate` accepts the file.
+3. Once it is on `main`, the sync should apply it and deploy the service. In **Events**, the
+   live commit must be the freeze commit; if it is not, deploy that commit by hand (**Manual
+   Deploy > Deploy a specific commit**, or `render deploys create <service-id> --commit <sha>
+   --wait`). **Settings > Auto-Deploy** must read Off; if it does not, the Blueprint did not
+   sync (for example, its Auto Sync is off), so use the alternative below.
+4. Run "Verify a deployment", reset the demo, and only then tag the live commit.
+
+From then on a push to `main` leaves the service alone unless it changes `render.yaml`, and a
+later release is deployed by hand in the same way. If the freeze commit cannot edit `render.yaml`, the alternative is two
+dashboard settings, both of them: **Auto-Deploy** Off in the service's **Settings**, and **Auto
+Sync** No on the Blueprint's settings page. With only the first, the next edit of `render.yaml`
+undoes it.
+
+Source: Render's documentation on Blueprints, deploys, rollbacks and the Blueprint
+specification, read on 2026-10-04 (`docs/decision_ledger.md`, same date).
 
 ## Reset the demo
 
@@ -207,9 +241,11 @@ Not checked on Render itself: the test above runs locally and in CI, not against
 
 ## Roll back
 
-- Dashboard: **Deploys**, pick the last good deploy, **Rollback**. Render turns auto-deploy
-  off when you do this; turn it back on in **Settings** once `main` is fixed.
+- Dashboard: **Deploys**, pick the last good deploy, **Rollback**. Render reuses that deploy's
+  build (it keeps only recent ones) and turns auto-deploy off. Before the freeze, turn it back
+  on in **Settings** once `main` is fixed; after the freeze, leave it off.
 - Or deploy a known good commit: `render deploys create <service-id> --commit <sha> --wait`.
+  The CLI does not change the auto-deploy setting.
 - A bad environment variable: correct it in **Environment** and restart the service.
 
 A rollback restarts the service, so it also resets the demo.
