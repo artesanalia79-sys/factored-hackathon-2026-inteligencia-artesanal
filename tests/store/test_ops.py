@@ -278,6 +278,7 @@ def test_console_lists_disputes_and_card_blocks_across_customers(store: OpsStore
         ("CUST-A", "BLK-1"),
     ]
     assert [(c, e.block_id) for c, e in console.list_card_blocks(limit=1)] == [("CUST-B", "BLK-2")]
+    assert [(c, d.dispute_id) for c, d in console.list_disputes(limit=1)] == [("CUST-B", "DSP-2")]
 
 
 def test_console_lists_the_execution_trace_of_one_handoff(store: OpsStore) -> None:
@@ -298,9 +299,25 @@ def test_console_lists_the_execution_trace_of_one_handoff(store: OpsStore) -> No
             )
         ]
     )
+    later = [
+        ExecutionRecord(
+            record_id=f"rec-{turn}-{step}",
+            trace_id="trace-1",
+            turn_index=turn,
+            step_index=step,
+            step=StepKind.RENDER,
+            state=ConversationState.RESPOND,
+            outcome=StepOutcome.SUCCESS,
+            latency_ms=1.0,
+            created_at=NOW,
+        )
+        # Stored out of order on purpose: the trace reads in turn and step order.
+        for turn, step in ((1, 1), (1, 0), (0, 1))
+    ]
+    store.append_records(later)
     console = HandoffConsole(store.database)
     records = console.list_records("trace-1")
-    assert [r.record_id for r in records] == ["rec-1"]
+    assert [r.record_id for r in records] == ["rec-1", "rec-0-1", "rec-1-0", "rec-1-1"]
     assert console.list_records("trace-missing") == []
 
 

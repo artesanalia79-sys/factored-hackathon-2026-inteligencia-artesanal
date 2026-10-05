@@ -117,8 +117,11 @@ class ChatTurnResponse(Contract):
     customer's message otherwise. ``disputed_transaction_id`` is set exactly when
     ``claimed_actions`` includes ``create_dispute``: the disputed transaction's own id, already
     shown to the customer as "Ref. <id>" in the Transactions panel, so the UI can mark it there.
-    Unlike ``ConfirmationView`` (the question's own facts, nothing more), this field is about a
-    write already verified, not about what a question says.
+    ``blocked_product_id`` is the same for ``block_card``: the blocked card's product id, which
+    each of its movements carries in that panel (``TransactionView.product_id``); not the card
+    ending, which two cards of one customer can share. Unlike ``ConfirmationView`` (the
+    question's own facts, nothing more), these fields are about a write already verified, not
+    about what a question says, and neither may be set without its claim.
     """
 
     reply_text: str
@@ -127,3 +130,18 @@ class ChatTurnResponse(Contract):
     language: Language
     confirmation: ConfirmationView | None = None
     disputed_transaction_id: Identifier | None = None
+    blocked_product_id: Identifier | None = None
+
+    @model_validator(mode="after")
+    def _marks_only_a_claimed_write(self) -> ChatTurnResponse:
+        if (
+            self.disputed_transaction_id is not None
+            and ActionType.CREATE_DISPUTE not in self.claimed_actions
+        ):
+            raise ValueError("disputed_transaction_id needs a claimed create_dispute")
+        if (
+            self.blocked_product_id is not None
+            and ActionType.BLOCK_CARD not in self.claimed_actions
+        ):
+            raise ValueError("blocked_product_id needs a claimed block_card")
+        return self

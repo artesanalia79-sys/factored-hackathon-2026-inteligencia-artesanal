@@ -7,7 +7,7 @@ import type { Copy } from '../i18n.ts'
 interface Props {
   token: string
   copy: Copy
-  blockedCards: ReadonlySet<string>
+  blockedProducts: ReadonlySet<string>
   disputedTransactions: ReadonlySet<string>
   onExpired: () => void
   onPick: (text: string) => void
@@ -32,7 +32,7 @@ function dateOf(transaction: TransactionView, locale: string): string {
 export function Transactions({
   token,
   copy,
-  blockedCards,
+  blockedProducts,
   disputedTransactions,
   onExpired,
   onPick,
@@ -98,8 +98,8 @@ export function Transactions({
                   <span className="transactions__reference">
                     {copy.transactionsReference(transaction.transaction_id)}
                   </span>
-                  {/* Only a verified block_card reaching state.blockedCards adds a card here. */}
-                  {transaction.card_last4 != null && blockedCards.has(transaction.card_last4) ? (
+                  {/* Only reply.blocked_product_id on a verified block_card adds a card here. */}
+                  {blockedProducts.has(transaction.product_id) ? (
                     <span className="status status--blocked">
                       <LockKey weight="fill" aria-hidden="true" />
                       {copy.transactionsCardBlocked}

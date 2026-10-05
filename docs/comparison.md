@@ -18,7 +18,10 @@ below. It is a single real case (`dev-toolfail-es-mx-001`, a simulated tool outa
 both systems, produced with `live-llm-check` (cost: $0.000986, logged in
 `docs/decision_ledger.md`), reviewed before committing and loaded through the exact same
 `parseComparison()` validation as a hand-picked file — it carries no more trust than the file
-input does. Regenerate it the same way if it ever needs to change; do not hand-edit it.
+input does. The two systems come from two runs of the same case and repeat, put in one file
+(their `run_id`s show it): in the first run the baseline's model call failed and it answered
+with the fallback text, so the baseline was run again alone; no field was edited. Regenerate it
+the same way if it ever needs to change; do not hand-edit it.
 
 ## Zero-cost walkthrough
 

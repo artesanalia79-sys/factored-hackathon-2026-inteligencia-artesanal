@@ -49,7 +49,7 @@ test('a handoff a customer caused shows up on the bank side, with its trace and 
 test('a wrong or missing access code is refused, not a silent empty page', async ({ page }) => {
   await page.goto('/console')
   // The ungated server (port 8765) accepts no header at all here; the point of this test is the
-  // UI's handling of the 401 shape, which the gated project exercises for real against its server.
+  // UI's handling of the 401 shape. console.gated.spec.ts runs the real gate on its server.
   await page.route('**/api/console/**', (route) =>
     route.fulfill({
       status: 401,

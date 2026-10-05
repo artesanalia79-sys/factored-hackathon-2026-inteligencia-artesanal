@@ -17,17 +17,13 @@ export interface ChatState {
   pending: boolean
   /** The write the last reply asks to confirm. Cleared as soon as anything is sent. */
   confirmation: ConfirmationView | null
-  /**
-   * The confirmation a send answers, held past the `confirmation` clear on 'sent' so 'replied'
-   * can still tell which write a verified `block_card` belongs to. Cleared once read.
-   */
-  pendingConfirmation: ConfirmationView | null
-  /** Card endings the customer has seen verified as blocked, this conversation. Never cleared
-   * optimistically: only a 'replied' event with `block_card` in `claimed_actions` adds one. */
-  blockedCards: ReadonlySet<string>
-  /** Transaction ids the customer has seen verified as disputed, this conversation. The server
-   * names the id directly (`reply.disputed_transaction_id`), unlike `blockedCards`: no need to
-   * hold a pending confirmation to tell which write it belongs to. */
+  /** Product ids of the cards the customer has seen verified as blocked, this session. Only a
+   * reply naming one (`reply.blocked_product_id`, set with a verified `block_card` claim) adds
+   * it, never an optimistic guess. A product id, not the card ending: two cards of one customer
+   * can end in the same four digits. */
+  blockedProducts: ReadonlySet<string>
+  /** Transaction ids the customer has seen verified as disputed, this session. The server names
+   * the id directly (`reply.disputed_transaction_id`, set with a verified `create_dispute`). */
   disputedTransactions: ReadonlySet<string>
   /** The language the agent last replied in; the chrome follows it. */
   language: Language
@@ -51,8 +47,7 @@ export function initialChat(language: Language): ChatState {
     nextId: 1,
     pending: false,
     confirmation: null,
-    pendingConfirmation: null,
-    blockedCards: new Set(),
+    blockedProducts: new Set(),
     disputedTransactions: new Set(),
     language,
     failed: null,
@@ -69,9 +64,6 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         nextId: state.nextId + 1,
         pending: true,
         confirmation: null,
-        // Held past the clear above so 'replied' can still tell a verified block_card apart
-        // from any other write, once the reply names what it claims.
-        pendingConfirmation: state.confirmation,
         failed: null,
       }
     case 'replied': {
@@ -87,11 +79,9 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         },
       ]
       if (reply.ended) items.push({ id: state.nextId + 1, kind: 'ended' })
-      const blocked = state.pendingConfirmation
-      const blockedCards =
-        blocked?.action === 'block_card' && reply.claimed_actions.includes('block_card')
-          ? new Set(state.blockedCards).add(blocked.card_last4)
-          : state.blockedCards
+      const blockedProducts = reply.blocked_product_id
+        ? new Set(state.blockedProducts).add(reply.blocked_product_id)
+        : state.blockedProducts
       const disputedTransactions = reply.disputed_transaction_id
         ? new Set(state.disputedTransactions).add(reply.disputed_transaction_id)
         : state.disputedTransactions
@@ -103,8 +93,7 @@ export function chatReducer(state: ChatState, event: ChatEvent): ChatState {
         // An ended conversation asks nothing: the next message starts a new one, where a "yes"
         // would answer no question.
         confirmation: reply.ended ? null : (reply.confirmation ?? null),
-        pendingConfirmation: null,
-        blockedCards,
+        blockedProducts,
         disputedTransactions,
         language: reply.language,
       }

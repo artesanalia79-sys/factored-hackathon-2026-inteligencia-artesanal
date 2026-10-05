@@ -144,7 +144,7 @@ export function ChatScreen({ session, onLanguageChange, onSignedOut }: Props) {
             <Transactions
               token={session.token}
               copy={copy}
-              blockedCards={state.blockedCards}
+              blockedProducts={state.blockedProducts}
               disputedTransactions={state.disputedTransactions}
               onExpired={expire}
               onPick={pick}

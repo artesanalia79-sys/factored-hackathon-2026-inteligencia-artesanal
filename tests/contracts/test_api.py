@@ -92,6 +92,25 @@ def test_chat_response_defaults_to_no_confirmation() -> None:
     assert response.model_dump(mode="json")["language"] == "pt"
 
 
+def test_a_reply_marks_a_transaction_or_card_only_with_its_verified_claim() -> None:
+    """The UI tags the Transactions panel from these ids: never one without its claimed write."""
+    base: dict[str, object] = {"reply_text": "Hecho", "ended": True, "language": "es"}
+    ChatTurnResponse.model_validate(
+        {**base, "claimed_actions": ["create_dispute"], "disputed_transaction_id": "TXN-1"}
+    )
+    ChatTurnResponse.model_validate(
+        {**base, "claimed_actions": ["block_card"], "blocked_product_id": "CARD-1"}
+    )
+    for claimed, field in (
+        ([], "disputed_transaction_id"),
+        (["block_card"], "disputed_transaction_id"),
+        ([], "blocked_product_id"),
+        (["create_dispute"], "blocked_product_id"),
+    ):
+        with pytest.raises(ValidationError):
+            ChatTurnResponse.model_validate({**base, "claimed_actions": claimed, field: "ID-1"})
+
+
 def test_chat_request_language_is_optional_and_bounded_to_supported_languages() -> None:
     assert ChatTurnRequest(text="No").language is None
     assert ChatTurnRequest(text="No", language=Language.PT).language == Language.PT

@@ -158,10 +158,14 @@ export interface ChatTurnRequest {
  * customer's message otherwise. ``disputed_transaction_id`` is set exactly when
  * ``claimed_actions`` includes ``create_dispute``: the disputed transaction's own id, already
  * shown to the customer as "Ref. <id>" in the Transactions panel, so the UI can mark it there.
- * Unlike ``ConfirmationView`` (the question's own facts, nothing more), this field is about a
- * write already verified, not about what a question says.
+ * ``blocked_product_id`` is the same for ``block_card``: the blocked card's product id, which
+ * each of its movements carries in that panel (``TransactionView.product_id``); not the card
+ * ending, which two cards of one customer can share. Unlike ``ConfirmationView`` (the
+ * question's own facts, nothing more), these fields are about a write already verified, not
+ * about what a question says, and neither may be set without its claim.
  */
 export interface ChatTurnResponse {
+  blocked_product_id?: string | null
   claimed_actions: ActionType[]
   confirmation?: ConfirmationView | null
   disputed_transaction_id?: string | null

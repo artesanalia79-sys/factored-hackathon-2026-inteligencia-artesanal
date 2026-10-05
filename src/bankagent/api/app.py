@@ -139,6 +139,7 @@ def create_app(
             language=output.language,
             confirmation=output.confirmation,
             disputed_transaction_id=output.disputed_transaction_id,
+            blocked_product_id=output.blocked_product_id,
         )
 
     if transaction_reader is not None:

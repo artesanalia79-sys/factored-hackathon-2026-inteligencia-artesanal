@@ -163,7 +163,7 @@ export default function ComparisonScreen() {
     await loadText(await file.text())
   }
 
-  // One real recorded run (docs/comparison.md "Example on load"): the only `comparison.json`
+  // One real recorded case (docs/comparison.md, "The bundled demo example"): the only `comparison.json`
   // this repo commits, as a deliberate, reviewed exception to "never commit run artifacts" — so
   // a judge opening the public site has something to click without running the harness
   // themselves. Fetched from the same origin, through the same parseComparison() validation as

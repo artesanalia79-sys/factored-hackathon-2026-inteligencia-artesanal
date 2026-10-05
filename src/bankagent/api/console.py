@@ -18,7 +18,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 
 from bankagent.auth.http import SafeValidationRoute
 from bankagent.auth.service import AccessCodeRequired, AuthService
@@ -35,6 +35,10 @@ from bankagent.contracts.records import ExecutionRecord
 from bankagent.policy.schema import ACTION_KINDS, PolicyConfig
 
 DEFAULT_LIMIT = 50
+MAX_LIMIT = 200
+# A bound, not a filter: a negative number would mean no limit to SQLite, and one past 64 bits
+# would not reach it at all (a 500). Either is a 422 here instead.
+Limit = Annotated[int, Query(ge=1, le=MAX_LIMIT)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +80,7 @@ def build_console_router(*, auth: AuthService, deps: ConsoleDeps) -> APIRouter:
         return tuple(rows)
 
     def require_access(
+        response: Response,
         x_console_access_code: Annotated[str | None, Header()] = None,
     ) -> None:
         try:
@@ -85,6 +90,8 @@ def build_console_router(*, auth: AuthService, deps: ConsoleDeps) -> APIRouter:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"error": AccessCodeRequired.code},
             ) from None
+        # Every customer's cases, opened by a header no shared cache keys on: never stored.
+        response.headers["Cache-Control"] = "no-store"
 
     def handoff_entry(handoff: HandoffPacket) -> ConsoleHandoffEntry:
         return ConsoleHandoffEntry(
@@ -94,7 +101,7 @@ def build_console_router(*, auth: AuthService, deps: ConsoleDeps) -> APIRouter:
         )
 
     @router.get("/handoffs", dependencies=[Depends(require_access)])
-    def handoffs(limit: int = DEFAULT_LIMIT) -> list[ConsoleHandoffEntry]:
+    def handoffs(limit: Limit = DEFAULT_LIMIT) -> list[ConsoleHandoffEntry]:
         return [handoff_entry(handoff) for handoff in deps.list_handoffs(limit)]
 
     @router.get("/handoffs/{handoff_id}", dependencies=[Depends(require_access)])
@@ -109,7 +116,7 @@ def build_console_router(*, auth: AuthService, deps: ConsoleDeps) -> APIRouter:
         )
 
     @router.get("/disputes", dependencies=[Depends(require_access)])
-    def disputes(limit: int = DEFAULT_LIMIT) -> list[ConsoleDisputeEntry]:
+    def disputes(limit: Limit = DEFAULT_LIMIT) -> list[ConsoleDisputeEntry]:
         return [
             ConsoleDisputeEntry(
                 customer_id=customer_id,
@@ -121,7 +128,7 @@ def build_console_router(*, auth: AuthService, deps: ConsoleDeps) -> APIRouter:
         ]
 
     @router.get("/card-blocks", dependencies=[Depends(require_access)])
-    def card_blocks(limit: int = DEFAULT_LIMIT) -> list[ConsoleCardBlockEntry]:
+    def card_blocks(limit: Limit = DEFAULT_LIMIT) -> list[ConsoleCardBlockEntry]:
         return [
             ConsoleCardBlockEntry(
                 customer_id=customer_id,

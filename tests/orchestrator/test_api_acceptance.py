@@ -129,6 +129,7 @@ def test_fx001_unrecognized_charge_creates_verified_dispute(
     assert third["claimed_actions"] == ["create_dispute"]
     # The UI tags this transaction as disputed in the Transactions panel from this id alone.
     assert third["disputed_transaction_id"] == "TXN-FX-0101"
+    assert third["blocked_product_id"] is None  # the block is only offered on this turn
     assert store.count("confirmation_tokens") == 1
     dispute = store.get_dispute("CUST-FX-001", transaction_id="TXN-FX-0101")
     assert dispute is not None
@@ -142,6 +143,7 @@ def test_fx001_unrecognized_charge_creates_verified_dispute(
     assert declined["ended"]
     assert declined["claimed_actions"] == []
     assert declined["disputed_transaction_id"] is None  # nothing claimed this turn
+    assert declined["blocked_product_id"] is None  # a declined block marks no card
     assert declined["reply_text"] == "Entendido, no bloquearé la tarjeta."
     assert store.count("card_blocks") == 0
     assert store.count("disputes") == 1
@@ -165,12 +167,15 @@ def test_fx004_accepted_block_offer_blocks_the_disputed_card(
     assert created["reply_text"].startswith("Abri a contestação")
     assert created["reply_text"].endswith("Você confirma o bloqueio do cartão com final 2208?")
     assert created["disputed_transaction_id"] is not None
+    assert created["blocked_product_id"] is None  # offered, not yet confirmed
     assert created["disputed_transaction_id"].startswith("TXN-")
     assert store.get_card_block("CUST-FX-004", "CARD-FX-041") is None
     blocked = _turn(client, headers, "Sim, pode bloquear o cartão.")
     assert blocked["ended"]
     assert blocked["claimed_actions"] == ["block_card"]
     assert blocked["disputed_transaction_id"] is None  # this turn claims block_card, not a dispute
+    # The UI tags this card's movements as blocked from this id alone, not from the card ending.
+    assert blocked["blocked_product_id"] == "CARD-FX-041"
     assert blocked["reply_text"] == "Bloqueei o cartão com final 2208."
     block = store.get_card_block("CUST-FX-004", "CARD-FX-041")
     assert block is not None

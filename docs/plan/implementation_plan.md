@@ -220,8 +220,8 @@ Fallback matrix (LLM timeout/malformed/unavailable, tool unavailable), PII redac
 
 **T21. Agent console, evidence view, `/lineage`** [P0 lineage / P1 views] (Jacobo + Juan José)
 Handoff queue view, evidence view per case, dbt docs published at `/lineage`. Handoff queue and
-evidence view done (branch `t21-analyst-console`, also lists disputes and card blocks); `/lineage`
-still open.
+evidence view done (PR #71, also lists disputes and card blocks); `/lineage` still
+open.
 
 ### M3 Hardening (D5-6)
 

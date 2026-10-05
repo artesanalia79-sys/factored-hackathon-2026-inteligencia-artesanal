@@ -118,6 +118,55 @@ def _seed(store: OpsStore, customer_id: str = MARIANA_ID) -> None:
     )
 
 
+def _seed_more(store: OpsStore) -> None:
+    """A second case of each kind, for another customer, created a minute later."""
+    later = NOW.replace(minute=1)
+    store.insert_dispute(
+        "CUST-B",
+        DisputeCase(
+            dispute_id="dsp-2",
+            transaction_id="txn-2",
+            reason=DisputeReason.UNRECOGNIZED,
+            status=DisputeStatus.SUBMITTED,
+            created_at=later,
+            amount=Decimal("5.00"),
+            currency="MXN",
+            idempotency_key="idem-4",
+            policy_version="dispute-v1.1",
+            # Stored in this order on purpose: the decisive rule must still come first.
+            rule_ids=("DSP-ELIG-01", "DSP-ACT-01"),
+        ),
+    )
+    store.insert_card_block(
+        "CUST-B",
+        CardBlockEvent(
+            block_id="blk-2",
+            product_id="prod-2",
+            card_last4="1234",
+            blocked_at=later,
+            reason="unrecognized charge",
+            idempotency_key="idem-5",
+        ),
+    )
+    draft = HandoffDraft(
+        trace_id="tr-2",
+        language=Language.ES,
+        request="cargo de alto riesgo",
+        intent=Intent.DISPUTE_UNRECOGNIZED,
+        trigger_rule_ids=("DSP-ESC-01",),
+        policy_version="dispute-v1.1",
+        routing=HandoffRouting(
+            specialty=Specialty.FRAUD, language=Language.ES, priority=Priority.HIGH
+        ),
+    )
+    store.insert_handoff(
+        HandoffPacket(
+            **draft.model_dump(), handoff_id="hof-2", created_at=later, customer_id="CUST-B"
+        ),
+        "idem-6",
+    )
+
+
 def _name_lookup(directory: Directory) -> Callable[[str], str | None]:
     def lookup(customer_id: str) -> str | None:
         profile = directory.customer(customer_id)
@@ -143,11 +192,48 @@ def client(service: AuthService, store: OpsStore, directory: Directory) -> TestC
     return TestClient(app)
 
 
-def test_no_header_and_wrong_code_are_both_refused(client: TestClient) -> None:
-    for headers in ({}, {"X-Console-Access-Code": CODE + "x"}):
-        response = client.get("/api/console/handoffs", headers=headers)
+# Every console read, each behind its own `Depends(require_access)`: one missing is a leak.
+EVERY_READ = (
+    "/api/console/handoffs",
+    "/api/console/handoffs/hof-1",
+    "/api/console/disputes",
+    "/api/console/card-blocks",
+)
+
+
+@pytest.mark.parametrize("path", EVERY_READ)
+def test_no_header_and_wrong_code_are_both_refused(client: TestClient, path: str) -> None:
+    for headers in ({}, {"X-Console-Access-Code": CODE + "x"}, {"X-Console-Access-Code": ""}):
+        response = client.get(path, headers=headers)
         assert response.status_code == 401
+        assert response.json() == {"detail": {"error": "access_code_required"}}
         assert CODE not in response.text
+
+
+@pytest.mark.parametrize("path", EVERY_READ)
+def test_every_read_is_never_stored_by_a_cache(client: TestClient, path: str) -> None:
+    response = client.get(path, headers={"X-Console-Access-Code": CODE})
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+@pytest.mark.parametrize("path", ["/api/console/handoffs", "/api/console/disputes"])
+@pytest.mark.parametrize("limit", ["0", "-1", "201", str(10**20)])
+def test_a_limit_outside_1_to_200_is_a_422_not_every_row_or_a_500(
+    client: TestClient, path: str, limit: str
+) -> None:
+    """SQLite reads LIMIT -1 as no limit, and an int past 64 bits made the read raise (500)."""
+    response = client.get(path, params={"limit": limit}, headers={"X-Console-Access-Code": CODE})
+    assert response.status_code == 422
+
+
+def test_a_limit_inside_the_bounds_is_applied(client: TestClient, store: OpsStore) -> None:
+    _seed_more(store)
+    headers = {"X-Console-Access-Code": CODE}
+    for path in ("/api/console/handoffs", "/api/console/disputes", "/api/console/card-blocks"):
+        assert len(client.get(path, headers=headers).json()) == 2
+        assert len(client.get(path, params={"limit": 1}, headers=headers).json()) == 1
+        assert len(client.get(path, params={"limit": 200}, headers=headers).json()) == 2
 
 
 def test_the_right_code_opens_every_console_read(client: TestClient) -> None:
@@ -181,6 +267,26 @@ def test_the_right_code_opens_every_console_read(client: TestClient) -> None:
     assert blocks.status_code == 200
     assert blocks.json()[0]["customer_name"] == "Mariana"
     assert blocks.json()[0]["event"]["block_id"] == "blk-1"
+
+
+def test_rules_are_explained_decisive_first_whatever_the_stored_order(
+    client: TestClient, store: OpsStore
+) -> None:
+    _seed_more(store)
+    headers = {"X-Console-Access-Code": CODE}
+    policy = {rule.rule_id: rule.description for rule in load_policy().rules}
+    newest = client.get("/api/console/disputes", headers=headers).json()[0]
+    assert newest["case"]["dispute_id"] == "dsp-2"
+    assert [(r["rule_id"], r["decisive"]) for r in newest["rule_explanations"]] == [
+        ("DSP-ACT-01", True),
+        ("DSP-ELIG-01", False),
+    ]
+    # A handoff's trigger rules are its decisive ones, each explained from the policy file.
+    handoff = client.get("/api/console/handoffs", headers=headers).json()[0]
+    assert handoff["handoff"]["handoff_id"] == "hof-2"
+    assert handoff["rule_explanations"] == [
+        {"rule_id": "DSP-ESC-01", "description": policy["DSP-ESC-01"], "decisive": True}
+    ]
 
 
 def test_an_id_outside_the_directory_gets_no_name_not_an_error(
@@ -220,8 +326,9 @@ def test_a_customer_session_token_alone_does_not_open_the_console(
     challenge = service.start_login(persona_of("Mariana"), CODE)
     assert challenge.mock_otp is not None
     token = service.verify_otp(challenge.challenge_id, challenge.mock_otp).token
-    response = client.get("/api/console/handoffs", headers={"Authorization": f"Bearer {token}"})
-    assert response.status_code == 401
+    for path in EVERY_READ:
+        response = client.get(path, headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 401
 
 
 def test_no_code_configured_means_no_gate(

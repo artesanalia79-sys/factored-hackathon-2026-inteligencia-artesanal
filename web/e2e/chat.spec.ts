@@ -63,6 +63,10 @@ test('happy path: a dispute is created only after confirming its exact facts', a
   await expect(log(page)).toContainText('Conversación finalizada')
   await expect(confirmation(page)).toHaveCount(0)
   await expect(page.getByText('Bloqueo de tarjeta verificado')).toHaveCount(0)
+  // A declined block marks no card: only a verified block_card names one.
+  await expect(
+    page.getByRole('region', { name: 'Tus movimientos recientes' }).getByText('Tarjeta bloqueada'),
+  ).toHaveCount(0)
 })
 
 test('keyboard only, in Portuguese: sign in, dispute and block the card', async ({ page }) => {
@@ -125,8 +129,12 @@ test('keyboard only, in Portuguese: sign in, dispute and block the card', async 
   await expect(log(page)).toContainText('Bloqueei o cartão com final 2208.')
   await expect(page.getByText('Bloqueio do cartão verificado')).toBeVisible()
   // The customer can see it, not just read it once in the log: every movement on that card is
-  // now tagged, for the rest of this conversation.
+  // now tagged, and only those, for the rest of this session.
   await expect(page.getByText('Cartão bloqueado').first()).toBeVisible()
+  const rows = page.locator('.transactions__row')
+  await expect(rows.filter({ hasText: 'Cartão bloqueado' })).toHaveCount(
+    await rows.filter({ hasText: 'final 2208' }).count(),
+  )
   await expect(log(page)).toContainText('Conversa encerrada')
   await expect(composer(page)).toBeFocused()
 })

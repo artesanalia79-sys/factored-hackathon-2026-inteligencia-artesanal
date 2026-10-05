@@ -574,6 +574,7 @@ def test_unverified_dispute_escalates_without_claiming_it() -> None:
     agent.handle_turn(_session(), "No fui yo")
     output = agent.handle_turn(_session(), "Sí, confirmo")
     assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
+    assert output.disputed_transaction_id is None  # an unverified write marks nothing
     assert "Creé el reclamo" not in output.reply_text
     assert handoff.draft is not None
     assert "read-back" in handoff.draft.open_questions[0]
@@ -589,6 +590,7 @@ def test_failed_dispute_write_escalates_the_confirmed_request() -> None:
     output = agent.handle_turn(_session(), "Sí, confirmo")
     assert write.calls == 1
     assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
+    assert output.disputed_transaction_id is None  # a failed write marks nothing
     assert handoff.draft is not None
     # A refusal can also mean the dispute exists under another key (two sessions racing):
     # the person is told to look before filing, never to file blindly.
@@ -1162,6 +1164,8 @@ def test_verified_dispute_offers_the_block_in_the_same_reply() -> None:
     assert output.reply_text.startswith("Creé el reclamo DSP-001")
     assert output.reply_text.endswith("¿Confirmas bloquear la tarjeta terminada en 1234?")
     assert output.claimed_actions == (ActionType.CREATE_DISPUTE,)
+    assert output.disputed_transaction_id == "TXN-FX-0101"
+    assert output.blocked_product_id is None  # offered, not confirmed
     assert not output.ended
     assert cards.calls == 1
     assert block.calls == 0
@@ -1174,6 +1178,9 @@ def test_yes_to_the_block_writes_it_under_the_decision_and_claims_it() -> None:
     assert output.ended
     assert output.claimed_actions == (ActionType.BLOCK_CARD,)
     assert output.reply_text == "Bloqueé la tarjeta terminada en 1234."
+    # The UI marks this card from its product id (two cards can share an ending).
+    assert output.blocked_product_id == BLOCKABLE_CARD
+    assert output.disputed_transaction_id is None
     assert block.calls == 1
     args = block.args[0]
     assert args.product_id == BLOCKABLE_CARD  # the decision's target, nothing else
@@ -1268,6 +1275,8 @@ def test_a_decision_without_block_card_never_offers_it() -> None:
     output = _dispute_created(agent)
     assert output.ended
     assert output.claimed_actions == (ActionType.CREATE_DISPUTE,)
+    # Ending without an offer still names the disputed transaction for the UI.
+    assert output.disputed_transaction_id == "TXN-FX-0101"
     assert "bloquear" not in output.reply_text
     assert cards.calls == block.calls == 0
 
@@ -1298,6 +1307,7 @@ def test_a_failed_block_escalates_without_claiming_it() -> None:
     output = agent.handle_turn(_session(), "Sí")
     assert block.calls == 1
     assert output.claimed_actions == (ActionType.CREATE_HANDOFF,)
+    assert output.blocked_product_id is None  # a failed block marks no card
     assert "Bloqueé" not in output.reply_text
     assert handoff.draft is not None
     question = handoff.draft.open_questions[0]
