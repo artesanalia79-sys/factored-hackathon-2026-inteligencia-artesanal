@@ -3,7 +3,7 @@ import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { ApiError, api } from '../api/client.ts'
 import { type Language, LIMITS, type LoginResponse, type PersonaResponse } from '../api/contracts.gen.ts'
 import { BrandMark } from '../BrandMark.tsx'
-import { COPY, type Copy, countryName } from '../i18n.ts'
+import { COPY, type Copy, countryName, PRODUCT_NAME } from '../i18n.ts'
 import type { ChatSession } from '../session.ts'
 
 type Personas =
@@ -161,7 +161,8 @@ export function LoginScreen({
       <header className="topbar">
         <div className="brand">
           <BrandMark />
-          <span className="brand__name">{copy.product}</span>
+          <span className="brand__name">{PRODUCT_NAME}</span>
+          <span className="brand__tagline">{copy.product}</span>
         </div>
         <fieldset className="segmented">
           <legend className="sr-only">{copy.chooseLanguage}</legend>

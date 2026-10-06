@@ -52,3 +52,19 @@ test('the chat fits a phone screen without sideways scrolling', async ({ page })
   expect(overflow).toBeLessThanOrEqual(0)
   expect(await violations(page)).toEqual([])
 })
+
+test('the top bars keep the product name at 320 px without sideways scrolling', async ({ page }) => {
+  // WCAG 2.2 SC 1.4.10 (Reflow) is checked at 320 CSS px; the longest persona name is the worst case.
+  await page.setViewportSize({ width: 320, height: 640 })
+  const overflow = () =>
+    page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Português' }).click()
+  await expect(page.locator('.topbar .brand__name')).toBeVisible()
+  expect(await overflow()).toBeLessThanOrEqual(0)
+  await page.getByRole('button', { name: 'Español' }).click()
+  await signIn(page, 'Valentina')
+  await expect(page.locator('.topbar .brand__name')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Cerrar sesión' })).toBeVisible()
+  expect(await overflow()).toBeLessThanOrEqual(0)
+})

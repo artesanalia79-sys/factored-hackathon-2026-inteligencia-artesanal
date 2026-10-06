@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { ComparisonBundle, ComparisonRun } from '../api/contracts.gen.ts'
 import { BrandMark } from '../BrandMark.tsx'
+import { CREDIT_EN, PRODUCT_NAME } from '../i18n.ts'
 import { MAX_FILE_BYTES, parseComparison } from './load.ts'
 import './comparison.css'
 
@@ -195,9 +196,9 @@ export default function ComparisonScreen() {
   return (
     <main className="comparison" lang="en">
       <header className="comparison__top">
-        <a className="brand" href="/">
+        <a className="brand" href="/" aria-label={`${PRODUCT_NAME}, back to home`}>
           <BrandMark />
-          <span>Back to home</span>
+          <span className="brand__name">{PRODUCT_NAME}</span>
         </a>
         <span className="comparison__eyebrow">Lab / T22</span>
       </header>
@@ -341,6 +342,7 @@ export default function ComparisonScreen() {
           </p>
         </section>
       )}
+      <p className="comparison__credit">{CREDIT_EN}</p>
     </main>
   )
 }

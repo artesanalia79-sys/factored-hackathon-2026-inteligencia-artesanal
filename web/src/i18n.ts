@@ -2,8 +2,15 @@
 // is never written here: it comes from the backend templates (docs/rules/web.md).
 import type { ActionType, Language } from './api/contracts.gen.ts'
 
+/** The product's name: a brand, so the same in every language. */
+export const PRODUCT_NAME = 'Verdict'
+
+/** Who made it, for the pages in English (the customer's pages carry `Copy.credit`). */
+export const CREDIT_EN = `${PRODUCT_NAME} is a prototype by Inteligencia Artesanal for the Factored AI & Data Hackathon 2026.`
+
 export interface Copy {
   locale: string
+  /** What the product does, shown next to its name. */
   product: string
   pageDescription: string
   demoNotice: string
@@ -144,7 +151,7 @@ const es: Copy = {
       : 'Demasiados intentos con este código. Elige el cliente de nuevo para recibir otro.',
   networkError: 'No pudimos conectar con el servicio. Inténtalo de nuevo.',
   sessionEnded: 'Tu sesión terminó. Entra de nuevo para continuar.',
-  credit: 'Prototipo de Inteligencia Artesanal para el Factored AI & Data Hackathon 2026.',
+  credit: `${PRODUCT_NAME} es un prototipo de Inteligencia Artesanal para el Factored AI & Data Hackathon 2026.`,
   sessionUntil: (time) => `Sesión hasta las ${time}`,
   signOut: 'Cerrar sesión',
   greeting: (name) => `Hola, ${name}`,
@@ -247,7 +254,7 @@ const pt: Copy = {
       : 'Muitas tentativas com este código. Escolha o cliente de novo para receber outro.',
   networkError: 'Não conseguimos conectar ao serviço. Tente de novo.',
   sessionEnded: 'Sua sessão terminou. Entre de novo para continuar.',
-  credit: 'Protótipo da Inteligencia Artesanal para o Factored AI & Data Hackathon 2026.',
+  credit: `${PRODUCT_NAME} é um protótipo da Inteligencia Artesanal para o Factored AI & Data Hackathon 2026.`,
   sessionUntil: (time) => `Sessão até ${time}`,
   signOut: 'Sair',
   greeting: (name) => `Olá, ${name}`,

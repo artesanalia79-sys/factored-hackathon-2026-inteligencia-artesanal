@@ -199,6 +199,15 @@ svg {
   white-space: nowrap;
 }
 
+/* What the product does, set off from its name by a hairline rather than a separator glyph. */
+.brand__tagline {
+  padding-left: var(--s3);
+  border-left: 1px solid var(--hairline);
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
 .mark {
   display: inline-grid;
   place-items: center;
@@ -1248,10 +1257,20 @@ svg {
   .personas__grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .brand__name,
+  .brand__tagline,
   .who__country,
   .composer__hint {
     display: none;
+  }
+  /* The icon alone on a phone, so the product's name keeps its place in the top bar. */
+  .signout__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .confirm {
     padding: var(--s4);
@@ -1259,6 +1278,15 @@ svg {
   .confirm__buttons,
   .confirm__buttons .button {
     flex: 1;
+  }
+}
+
+/* The narrowest phones (320 px, WCAG reflow): tighter top bar, so the name still fits. */
+@media (max-width: 360px) {
+  .topbar,
+  .topbar__session,
+  .brand {
+    gap: var(--s2);
   }
 }
 

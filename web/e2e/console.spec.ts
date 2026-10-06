@@ -28,7 +28,8 @@ test('a handoff a customer caused shows up on the bank side, with its trace and 
   // English, not the customer's language: the page, the document and the tab title.
   await expect(page.locator('main')).toHaveAttribute('lang', 'en')
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
-  await expect(page).toHaveTitle('Bank-side console')
+  await expect(page).toHaveTitle('Bank-side console · Verdict')
+  await expect(page.locator('.console__credit')).toHaveText(/^Verdict is a prototype by Inteligencia Artesanal/)
   const handoffsTab = page.getByRole('button', { name: /^Escalated/ })
   await expect(handoffsTab).toBeVisible()
   // The customer's name is shown next to their id, and the case has a date/time. chat.spec.ts
@@ -56,7 +57,7 @@ test('a handoff a customer caused shows up on the bank side, with its trace and 
   await expect(page.getByRole('alert')).toHaveCount(0)
   await page.getByRole('button', { name: /^Blocked cards/ }).click()
   await expect(page.getByRole('alert')).toHaveCount(0)
-  await page.getByRole('link', { name: 'Back to home' }).click()
+  await page.getByRole('link', { name: 'Verdict, back to home' }).click()
   await expect(page.getByRole('link', { name: 'Lado del banco' })).toBeVisible()
 })
 

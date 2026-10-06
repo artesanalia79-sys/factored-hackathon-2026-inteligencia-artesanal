@@ -2,7 +2,7 @@ import { IconContext } from '@phosphor-icons/react'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { Language } from './api/contracts.gen.ts'
 import { ChatScreen } from './chat/ChatScreen.tsx'
-import { browserLanguage, COPY } from './i18n.ts'
+import { browserLanguage, COPY, PRODUCT_NAME } from './i18n.ts'
 import { LoginScreen } from './login/LoginScreen.tsx'
 import type { ChatSession } from './session.ts'
 
@@ -39,11 +39,11 @@ export function App() {
   useEffect(() => {
     if (reviewer !== null) {
       document.documentElement.lang = 'en'
-      document.title = REVIEWER_TITLE[reviewer]
+      document.title = `${REVIEWER_TITLE[reviewer]} · ${PRODUCT_NAME}`
       return
     }
     document.documentElement.lang = COPY[language].locale
-    document.title = COPY[language].product
+    document.title = `${PRODUCT_NAME} · ${COPY[language].product}`
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute('content', COPY[language].pageDescription)

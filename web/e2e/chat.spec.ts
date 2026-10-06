@@ -143,6 +143,12 @@ test('Portuguese selection carries through login and a Spanish-profile demo', as
   await page.goto('/')
   await page.getByRole('button', { name: 'Português' }).click()
   await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR')
+  // The name is a brand: the same in both languages, next to what the product does.
+  await expect(page).toHaveTitle('Verdict · Assistente de contestações')
+  await expect(page.locator('.topbar .brand__name')).toHaveText('Verdict')
+  await expect(page.getByRole('contentinfo')).toContainText(
+    'Verdict é um protótipo da Inteligencia Artesanal',
+  )
   await expect(page.locator('meta[name="description"]')).toHaveAttribute(
     'content',
     /Assistente de contestações de cartão/,
