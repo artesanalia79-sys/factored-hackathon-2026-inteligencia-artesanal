@@ -9,6 +9,13 @@ write by reading it back.
 > Status: evaluated. The final evaluation ran on 2026-10-04 on a sealed held-out set of 90 cases:
 > seven of nine pre-registered gates pass and **two fail** (see [Results](#results)).
 
+## Submission
+
+- **Repository:** <https://github.com/artesanalia79-sys/factored-hackathon-2026-inteligencia-artesanal>
+- **Deployed demo:** <https://bankagent-staging.onrender.com> (access code sent with the submission email)
+- **Slides (4-6):** <https://drive.google.com/file/d/1FR9k7vx8MjiXIIJr67UWDXW7n2m8eFhk/view?usp=sharing>
+- **Video pitch (≤3 min):** <https://www.youtube.com/watch?v=4RVDeBmaqL0>
+
 ## Try it
 
 - **Public demo:** <https://bankagent-staging.onrender.com>. It asks for an access code, sent with
@@ -161,6 +168,9 @@ Known limitations: [`docs/limitations.md`](docs/limitations.md).
 
 ## Team
 
-Jacobo (fullstack: interpreter, orchestrator, API, web UI), Juan José (data engineering, analysis
-and backend: auth, tools, policy), Santiago (data engineering and automation: harness, CI,
-evaluation, deploy).
+- Jacobo Zuluaga ([@jacobozj](https://github.com/jacobozj)) — fullstack: interpreter,
+  orchestrator, API, web UI.
+- Juan José Restrepo ([@jjresher](https://github.com/jjresher)) — data engineering, analysis and
+  backend: auth, tools, policy.
+- Santiago Gómez Alzate ([@santig005](https://github.com/santig005)) — data engineering and
+  automation: harness, CI, evaluation, deploy.
