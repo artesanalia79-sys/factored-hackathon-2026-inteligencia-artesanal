@@ -1,4 +1,4 @@
-# Inteligencia Artesanal: AI-first dispute intake for LATAM Bank
+# Verdict - Inteligencia Artesanal: AI-first dispute intake for LATAM Bank
 
 Factored AI & Data Hackathon 2026. A chat agent that takes a transaction dispute from the first
 customer message (Spanish or Portuguese) to a **verified** dispute case, optionally blocking the
