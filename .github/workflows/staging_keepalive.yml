@@ -1,0 +1,19 @@
+# Keeps the Render free-tier staging demo warm during Colombia daytime so judges don't hit a
+# cold start. Pings only the health check (no auth, no write): it must never create a dispute.
+#
+# Cron is UTC-only; Colombia is UTC-5 year-round (no DST), so 04:00-23:00 COT is 09:00-23:00 UTC
+# plus 00:00-03:00 UTC the next day. The service sleeps during the 23:00-04:00 COT gap (Render
+# free plan: 15 min idle to sleep), which also keeps monthly usage under the 750 free-hour cap.
+name: Staging keep-alive
+
+on:
+  schedule:
+    - cron: "*/10 0-3,9-23 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the staging demo
+        run: curl -fsS --max-time 70 https://bankagent-staging.onrender.com/ready
