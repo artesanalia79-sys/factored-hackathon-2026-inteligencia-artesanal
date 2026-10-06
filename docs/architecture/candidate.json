@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Dispute intake architecture",
+    "output": ".archify/architecture-dispute-intake-20261005-194136/dispute-intake.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/artesanalia79-sys/factored-hackathon-2026-inteligencia-artesanal.git",
+      "revision": "2763d44a106a0fbddabb7dc58c952b15baff255c"
+    }
+  },
+  "components": [
+    {
+      "id": "chat",
+      "type": "frontend",
+      "label": "Customer chat",
+      "sublabel": "React / Spanish + Portuguese",
+      "pos": [
+        40,
+        60
+      ],
+      "size": [
+        220,
+        76
+      ],
+      "sources": [
+        {
+          "path": "web/src/api/client.ts",
+          "line": 99,
+          "end_line": 109
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "security",
+      "label": "FastAPI + session",
+      "sublabel": "Server-owned customer identity",
+      "pos": [
+        400,
+        60
+      ],
+      "size": [
+        220,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/bankagent/api/app.py",
+          "line": 115,
+          "end_line": 143
+        }
+      ]
+    },
+    {
+      "id": "control",
+      "type": "backend",
+      "label": "Deterministic agent",
+      "sublabel": "Policy + confirmation + templates",
+      "pos": [
+        400,
+        260
+      ],
+      "size": [
+        220,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/bankagent/orchestrator/agent.py",
+          "line": 795,
+          "end_line": 852
+        },
+        {
+          "path": "src/bankagent/orchestrator/wiring.py",
+          "line": 23,
+          "end_line": 62
+        },
+        {
+          "path": "src/bankagent/orchestrator/agent.py",
+          "line": 627,
+          "end_line": 684
+        }
+      ]
+    },
+    {
+      "id": "interpreter",
+      "type": "external",
+      "label": "Message interpreter",
+      "sublabel": "LLM or stub; keyword fallback",
+      "pos": [
+        40,
+        260
+      ],
+      "size": [
+        220,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/bankagent/orchestrator/agent.py",
+          "line": 351,
+          "end_line": 378
+        },
+        {
+          "path": "src/bankagent/api/wiring.py",
+          "line": 53,
+          "end_line": 68
+        }
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "Scoped tools",
+      "sublabel": "Read / dispute / block / handoff",
+      "pos": [
+        400,
+        470
+      ],
+      "size": [
+        220,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/bankagent/tools/writes.py",
+          "line": 55,
+          "end_line": 171
+        }
+      ]
+    },
+    {
+      "id": "serving",
+      "type": "database",
+      "label": "Serving data / DuckDB",
+      "sublabel": "Read-only customer transactions",
+      "pos": [
+        40,
+        470
+      ],
+      "size": [
+        220,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/bankagent/tools/reads.py",
+          "line": 50,
+          "end_line": 85
+        }
+      ]
+    },
+    {
+      "id": "ops",
+      "type": "database",
+      "label": "Operations / SQLite",
+      "sublabel": "Disputes, blocks, handoffs, traces",
+      "pos": [
+        760,
+        470
+      ],
+      "size": [
+        220,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/bankagent/store/ops.py",
+          "line": 1,
+          "end_line": 23
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "chat-api",
+      "from": "chat",
+      "to": "api",
+      "label": "HTTP + token"
+    },
+    {
+      "id": "api-control",
+      "from": "api",
+      "to": "control",
+      "label": "Session + message"
+    },
+    {
+      "id": "control-interpreter",
+      "from": "control",
+      "to": "interpreter",
+      "label": "Interpret only"
+    },
+    {
+      "id": "control-tools",
+      "from": "control",
+      "to": "tools",
+      "label": "Policy-gated actions"
+    },
+    {
+      "id": "tools-serving",
+      "from": "tools",
+      "to": "serving",
+      "label": "Scoped reads"
+    },
+    {
+      "id": "tools-ops",
+      "from": "tools",
+      "to": "ops",
+      "label": "Write + read-back"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Control before action",
+      "items": [
+        "The attack gate runs before interpretation.",
+        "Dispute and block require explicit confirmation",
+        "and a single-use token bound to exact arguments."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Verified outcomes",
+      "items": [
+        "Templates claim only verified actions.",
+        "Uncertain cases clarify, abstain or hand off.",
+        "The bank console reads handoffs and traces."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Data and runtime scope",
+      "items": [
+        "Public demo uses synthetic serving data.",
+        "Curated data is local-only; router is offline.",
+        "Auth, policy and traces also use the stores."
+      ]
+    }
+  ]
+}
