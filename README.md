@@ -53,6 +53,20 @@ files: `aws configure --profile factored`.
 
 ## How it works
 
+### Architecture
+
+![Dispute intake architecture: customer chat calls the authenticated FastAPI API, which passes the server session to a deterministic agent. The agent uses an interpreter and scoped tools; tools read DuckDB serving data and write and verify operational records in SQLite.](docs/architecture/dispute-intake.svg)
+
+The main runtime path is shown above. The deterministic agent owns policy evaluation,
+confirmation and response templates; the interpreter returns structured message intent and
+slots. DuckDB holds read-only serving data, while SQLite holds operational state. Authentication,
+policy lookups and execution logging also use these stores; their secondary connections are
+omitted from this overview.
+
+[Diagram source, validation and interactive viewer instructions](docs/architecture/README.md).
+
+### Conversation flow
+
 ```
 AUTH → UNDERSTAND (keyword attack gate, then LLM) → IDENTIFY_TXN → RECOGNIZE → CHECK_POLICY
      → CONFIRM → ACT → VERIFY (read-back) → RESPOND        | CLARIFY | ABSTAIN | ESCALATE
